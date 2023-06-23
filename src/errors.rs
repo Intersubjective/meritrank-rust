@@ -4,6 +4,7 @@ pub enum MeritRankError {
     NodeDoesNotExist,
     SelfReferenceNotAllowed,
     RandomChoiceError,
+    NoPathExists,
 }
 
 impl std::fmt::Display for MeritRankError {
@@ -12,6 +13,7 @@ impl std::fmt::Display for MeritRankError {
             MeritRankError::NodeDoesNotExist => write!(f, "NodeDoesNotExist"),
             MeritRankError::SelfReferenceNotAllowed => write!(f, "SelfReferenceNotAllowed"),
             MeritRankError::RandomChoiceError => write!(f, "RandomChoiceError"),
+            MeritRankError::NoPathExists => write!(f, "NoPathExists"),
         }
     }
 }

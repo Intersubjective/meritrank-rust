@@ -94,19 +94,37 @@ impl MeritRank {
         self.personal_hits.get(node).and_then(|counter| counter.get_count(node)).cloned()
     }
 
-    pub fn increment_hit_counts(&mut self, _walk: &RandomWalk) {
-        unimplemented!()
+    /// Increment the hit counts based on a RandomWalk.
+    ///
+    /// This function will iterate over the nodes visited in the given RandomWalk,
+    /// and increment the hit count for each node.
+    ///
+    /// # Arguments
+    ///
+    /// * `walk` - A reference to a RandomWalk instance.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use meritrank::{RandomWalk, MyGraph, MeritRank};
+    ///
+    /// let graph = MyGraph::new();
+    /// let mut merit_rank = MeritRank::new(graph).unwrap();
+    /// let walk = RandomWalk::new();
+    /// merit_rank.increment_hit_counts(&walk);
+    /// ```
+    pub fn increment_hit_counts(&mut self, walk: &RandomWalk) {
+        for &node in walk.get_nodes() {
+            // This will get the counter for the node, or insert a new counter if it doesn't exist.
+            let counter = self.personal_hits.entry(node).or_insert(Counter::new());
+
+            // TODO: Check this!
+
+            // Increment the count for the node in the counter.
+            counter.increment_counts(vec![node]);
+        }
     }
 
-    // /// Returns the graph of the `MeritRank` instance.
-    // fn get_graph(&self) -> MyGraph {
-    //     self.graph.clone()
-    // }
-
-    // /// Returns the number of walks for a given node.
-    // fn get_walks_count_for_node(&self, src: NodeId) -> usize {
-    //     self.walks.get_walks_starting_from_node(src).len()
-    // }
 
     /// Calculates the MeritRank from the perspective of the given node.
     ///
@@ -152,24 +170,23 @@ impl MeritRank {
             return Err(MeritRankError::NodeDoesNotExist);
         }
 
-        let negs = self.neighbors_weighted(ego, false).unwrap_or_else(HashMap::new);
+        let negs = self.neighbors_weighted(ego, false).ok_or(MeritRankError::NodeDoesNotExist)?;
 
         for _ in 0..num_walks {
             let walk = self.perform_walk(ego)?;
+            let walk_steps = walk.iter().cloned();
 
-            let cloned_walk = walk.clone();
+            self.personal_hits
+                .entry(ego)
+                .or_insert_with(Counter::new)
+                .increment_unique_counts(walk_steps);
 
-            if let Some(counter_ref) = self.personal_hits.get_mut(&ego) {
-                counter_ref.increment_unique_counts(cloned_walk.iter().cloned());
-            } else {
-                let mut counter = Counter::new();
-                counter.increment_unique_counts(cloned_walk.iter().cloned());
-                self.personal_hits.insert(ego, counter);
-            }
-
-            self.walks.add_walk(cloned_walk, 0);
+            self.walks.add_walk(walk.clone(), 0);
             self.update_negative_hits(&walk, &negs, false);
         }
+
+        // Save the negs to the neg_hits field
+        self.neg_hits.insert(ego, negs);
 
         Ok(())
     }
@@ -202,25 +219,32 @@ impl MeritRank {
     /// let ego = NodeId::UInt(1);
     /// let target = NodeId::UInt(2);
     ///
-    /// let score = merit_rank._get_node_score(ego, target);
+    /// let score = merit_rank.get_node_score(ego, target);
     ///
     /// println!("MeritRank score for node {:?} from node {:?}: {:?}", target, ego, score);
     /// ```
-    pub fn _get_node_score(&self, ego: NodeId, target: NodeId) -> Weight {
-        let counter = self.personal_hits.get(&ego).unwrap_or_default();
+    pub fn get_node_score(&self, ego: NodeId, target: NodeId) -> Result<Weight, MeritRankError> {
+        let counter = self
+            .personal_hits
+            .get(&ego)
+            .ok_or(MeritRankError::NodeDoesNotExist)?;
+
         let hits = counter.get_count(&target).copied().unwrap_or(0.0);
 
         let has_path = self.graph.is_connecting(ego, target);
 
         if hits > 0.0 && !has_path {
-            panic!("No path exists from ego to target");
+            return Err(MeritRankError::NoPathExists);
         }
 
         let binding = HashMap::new();
-        let neg_hits = self.neg_hits.get(&ego).unwrap_or(&binding);
+        let neg_hits = self
+            .neg_hits
+            .get(&ego)
+            .unwrap_or(&binding);
         let hits_penalized = hits + neg_hits.get(&target).copied().unwrap_or(0.0);
 
-        hits_penalized / counter.total_count()
+        Ok(hits_penalized / counter.total_count())
     }
 
 
@@ -238,21 +262,26 @@ impl MeritRank {
     /// # Returns
     ///
     /// A dictionary of peer ranks, where keys are peer node IDs and values are their corresponding ranks.
-    pub fn get_ranks(&self, ego: NodeId, limit: Option<usize>) -> HashMap<NodeId, Weight> {
-
-        let binding = Counter::default();
-        let counter = self.personal_hits.get(&ego).unwrap_or(&binding);
+    pub fn get_ranks(&self, ego: NodeId, limit: Option<usize>) -> Result<HashMap<NodeId, Weight>, MeritRankError> {
+        let counter = self
+            .personal_hits
+            .get(&ego)
+            .ok_or(MeritRankError::NodeDoesNotExist)?;
 
         let mut peer_scores: Vec<(NodeId, Weight)> = counter
-            .keys().iter()
-            .map(|&peer| (peer, self._get_node_score(ego, peer)))
-            .collect();
+            .keys()
+            .iter()
+            .map(|&peer| Ok((peer, self.get_node_score(ego, peer)?)))
+            .collect::<Result<Vec<(NodeId, Weight)>, MeritRankError>>()?;
 
-        peer_scores.sort_unstable_by(|(_, score1), (_, score2)| score2.partial_cmp(score1).unwrap_or(std::cmp::Ordering::Equal));
+        peer_scores.sort_unstable_by(|(_, score1), (_, score2)| {
+            score2.partial_cmp(score1).unwrap_or(std::cmp::Ordering::Equal)
+        });
 
-        let limit = limit.unwrap_or_else(|| peer_scores.len());
+        let limit = limit.unwrap_or(peer_scores.len());
+        let peer_scores: HashMap<_, _> = peer_scores.into_iter().take(limit).collect();
 
-        peer_scores.into_iter().take(limit).collect()
+        Ok(peer_scores)
     }
 
     /// Retrieves the weighted neighbors of a node.
@@ -291,9 +320,9 @@ impl MeritRank {
     /// ```
     pub fn neighbors_weighted(&self, node: NodeId, positive: bool) -> Option<HashMap<NodeId, Weight>> {
         let neighbors: HashMap<_, _> = self.graph.neighbors(node)
-            .iter()
-            .filter_map(|&nbr| {
-                let weight = self.graph.edge_weight(node, nbr).unwrap_or(0.0);
+        .into_iter()
+        .filter_map(|nbr| {
+            let weight = self.graph.edge_weight(node, nbr).unwrap_or_else(|| 0.0);
                 if (positive && weight > 0.0) || (!positive && weight < 0.0) {
                     Some((nbr, weight))
                 } else {

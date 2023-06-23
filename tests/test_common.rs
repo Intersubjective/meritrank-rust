@@ -74,40 +74,6 @@ mod tests {
         assert_ne!(walk_id1, walk_id2);
     }
 
-// #[test]
-// fn test_sign() {
-//     assert_eq!(sign(10), 1);
-//     assert_eq!(sign(-10), -1);
-//     assert_eq!(sign(0), 0);
-//     assert_eq!(sign(10.5), 1);
-//     assert_eq!(sign(-10.5), -1);
-// }
-
-    #[test]
-    fn test_decide_skip_invalidation() {
-        let storage = WalkStorage::new();
-        let walk = RandomWalk::from_nodes(vec![NodeId::UInt(1), NodeId::UInt(2)]);
-        let pos = 0;
-        let edge: EdgeId = (NodeId::UInt(1), NodeId::UInt(2));
-        let step_recalc_probability = 0.5;
-
-        let rng_seed = 1234;
-
-        // Create a deterministic random number generator
-        let mut rng = StdRng::seed_from_u64(rng_seed);
-
-        let (_may_skip, _new_pos) = storage.decide_skip_invalidation_on_edge_addition(&walk, pos, edge, step_recalc_probability, Some(&mut rng));
-    }
-
-// #[test]
-// fn test_walk_id_generator() {
-//     // let generator = WalkIdGenerator::new();
-//     let id1 = WalkIdGenerator::new().get_id();
-//     let id2 = WalkIdGenerator::new().get_id();
-//
-//     assert_ne!(id1, id2);
-// }
-
     #[test]
     fn test_sign() {
         assert_eq!(sign(5), 1);
@@ -172,5 +138,27 @@ mod tests {
 
         let weight: Weight = NodeId::UInt(123).into();
         assert_eq!(weight, 123.0);
+    }
+
+    #[test]
+    fn test_decide_skip_invalidation() {
+        let storage = WalkStorage::new();
+        let walk = RandomWalk::from_nodes(vec![NodeId::UInt(1), NodeId::UInt(2)]);
+        let pos = 0;
+        let edge: EdgeId = (NodeId::UInt(1), NodeId::UInt(2));
+        let step_recalc_probability = 0.5;
+
+        let rng_seed = 1234;
+
+        // Create a deterministic random number generator
+        let mut rng = StdRng::seed_from_u64(rng_seed);
+
+        let (_may_skip, _new_pos) = storage.decide_skip_invalidation_on_edge_addition(
+            &walk, // walk: This is the walk that is being invalidated
+            pos, // pos: This is the position in the walk that is being invalidated
+            edge, // edge: This is the edge that is being added
+            step_recalc_probability, // The probability that the step will be recalculated
+            Some(&mut rng), // rng: This is the random number generator
+        );
     }
 }

@@ -208,3 +208,47 @@ impl MyGraph {
         }
     }
 }
+
+impl PartialEq for MyGraph {
+    fn eq(&self, other: &Self) -> bool {
+        // Check if the number of nodes and edges are equal
+        if self.graph.node_count() != other.graph.node_count() || self.graph.edge_count() != other.graph.edge_count() {
+            return false;
+        }
+
+        // Compare nodes
+        for node in self.graph.node_indices() {
+            let node1 = &self.graph[node];
+            let node2 = &other.graph[node];
+
+            if node1 != node2 {
+                return false;
+            }
+        }
+
+        // Compare edges
+        for edge in self.graph.edge_references() {
+            let source = edge.source();
+            let target = edge.target();
+            let &weight1 = edge.weight();
+            let weight2 = other.graph.edge_weight(other.graph.find_edge(source, target).unwrap());
+
+            if let Some(w2) = weight2 {
+                if weight1 != *w2 {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+
+        true
+
+        // let self_nodes: HashSet<NodeId> = self.graph.raw_nodes().iter().map(|node| node.clone()).collect();
+        // let other_nodes: HashSet<NodeId> = other.graph.raw_nodes().iter().map(|node| node.clone()).collect();
+
+        // self_nodes == other_nodes
+    }
+}
+
+impl Eq for MyGraph {}
