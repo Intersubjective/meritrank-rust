@@ -7,6 +7,10 @@ edition = "2021"
 name = "meritrank"
 path = "src/main.rs"
 
+[[test]]
+name = "test_dumps"
+path = "tests/test_dumps.rs"
+
 #[[test]]
 #name = "test_randomwalk"
 #path = "tests/*"
@@ -25,3 +29,5 @@ fixedbitset = "0.2.0"
 once_cell = "1.8.0"
 ordered-float = "1.0"
 num-traits = "0.2.14"
+csv = "1.1.6"
+flate2 = "1.0.20"

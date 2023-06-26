@@ -89,39 +89,94 @@ impl MeritRank {
             .map(|&count| count as f64)
     }
 
-    // Get the count for a specific node
-    fn _get_count(&self, node: &NodeId) -> Option<f64> {
-        self.personal_hits.get(node).and_then(|counter| counter.get_count(node)).cloned()
-    }
+    // // Get the count for a specific node
+    // fn _get_count(&self, node: &NodeId) -> Option<f64> {
+    //     self.personal_hits.get(node).and_then(|counter| counter.get_count(node)).cloned()
+    // }
 
-    /// Increment the hit counts based on a RandomWalk.
+    // /// Increment the hit counts based on a RandomWalk.
+    // ///
+    // /// This function will iterate over the nodes visited in the given RandomWalk,
+    // /// and increment the hit count for each node.
+    // ///
+    // /// # Arguments
+    // ///
+    // /// * `walk` - A reference to a RandomWalk instance.
+    // ///
+    // /// # Example
+    // ///
+    // /// ```rust
+    // /// use meritrank::{RandomWalk, MyGraph, MeritRank};
+    // ///
+    // /// let graph = MyGraph::new();
+    // /// let mut merit_rank = MeritRank::new(graph).unwrap();
+    // /// let walk = RandomWalk::new();
+    // /// merit_rank.increment_hit_counts(&walk);
+    // /// ```
+    // pub fn increment_hit_counts(&mut self, walk: &RandomWalk) {
+    //     for &node in walk.get_nodes() {
+    //         // This will get the counter for the node, or insert a new counter if it doesn't exist.
+    //         let counter = self.personal_hits.entry(node).or_insert(Counter::new());
+    //
+    //         // TODO: Check this!
+    //
+    //         // Increment the count for the node in the counter.
+    //         counter.increment_counts(vec![node]);
+    //     }
+    // }
+
+
+    /// Retrieves the weighted neighbors of a node.
     ///
-    /// This function will iterate over the nodes visited in the given RandomWalk,
-    /// and increment the hit count for each node.
+    /// This method returns a hashmap of the neighbors of the specified `node`, along with their weights.
+    /// Only neighbors with positive weights are returned if `positive` is `true`, and only neighbors with negative
+    /// weights are returned if `positive` is `false`.
     ///
     /// # Arguments
     ///
-    /// * `walk` - A reference to a RandomWalk instance.
+    /// * `node` - The node for which to retrieve the neighbors.
+    /// * `positive` - A boolean value indicating whether to return positive neighbors.
     ///
-    /// # Example
+    /// # Returns
     ///
-    /// ```rust
-    /// use meritrank::{RandomWalk, MyGraph, MeritRank};
+    /// A hashmap of the neighbors of the specified `node` and their weights, or `None` if no neighbors exist.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use meritrank::{MyGraph, NodeId, MeritRankError, MeritRank};
     ///
     /// let graph = MyGraph::new();
-    /// let mut merit_rank = MeritRank::new(graph).unwrap();
-    /// let walk = RandomWalk::new();
-    /// merit_rank.increment_hit_counts(&walk);
+    /// let merit_rank = MeritRank::new(graph).unwrap();
+    ///
+    /// let node = NodeId::UInt(1);
+    /// let positive = true;
+    ///
+    /// if let Some(neighbors) = merit_rank.neighbors_weighted(node, positive) {
+    ///     for (neighbor, weight) in neighbors {
+    ///         println!("Neighbor: {:?}, Weight: {:?}", neighbor, weight);
+    ///     }
+    /// } else {
+    ///     println!("No neighbors found for the node.");
+    /// }
     /// ```
-    pub fn increment_hit_counts(&mut self, walk: &RandomWalk) {
-        for &node in walk.get_nodes() {
-            // This will get the counter for the node, or insert a new counter if it doesn't exist.
-            let counter = self.personal_hits.entry(node).or_insert(Counter::new());
+    pub fn neighbors_weighted(&self, node: NodeId, positive: bool) -> Option<HashMap<NodeId, Weight>> {
+        let neighbors: HashMap<_, _> = self.graph.neighbors(node)
+            .into_iter()
+            .filter_map(|nbr| {
+                let weight = self.graph.edge_weight(node, nbr).unwrap_or_else(|| 0.0);
+                if (positive && weight > 0.0) || (!positive && weight < 0.0) {
+                    Some((nbr, weight))
+                } else {
+                    None
+                }
+            })
+            .collect();
 
-            // TODO: Check this!
-
-            // Increment the count for the node in the counter.
-            counter.increment_counts(vec![node]);
+        if neighbors.is_empty() {
+            None
+        } else {
+            Some(neighbors)
         }
     }
 
@@ -170,26 +225,49 @@ impl MeritRank {
             return Err(MeritRankError::NodeDoesNotExist);
         }
 
-        let negs = self.neighbors_weighted(ego, false).ok_or(MeritRankError::NodeDoesNotExist)?;
+        let negs = self.neighbors_weighted(ego, false).unwrap_or(HashMap::new());
+
+        self.personal_hits.insert(ego, Counter::new());
 
         for _ in 0..num_walks {
             let walk = self.perform_walk(ego)?;
             let walk_steps = walk.iter().cloned();
 
-            self.personal_hits
-                .entry(ego)
-                .or_insert_with(Counter::new)
-                .increment_unique_counts(walk_steps);
+            self.personal_hits.entry(ego)
+                .and_modify(|counter| counter.increment_unique_counts(walk_steps));
 
-            self.walks.add_walk(walk.clone(), 0);
+            self.walks.add_walk(walk.clone(), 1);
             self.update_negative_hits(&walk, &negs, false);
         }
 
-        // Save the negs to the neg_hits field
-        self.neg_hits.insert(ego, negs);
-
         Ok(())
     }
+
+    /// Updates the negative hits based on a random walk and negative penalties.
+    ///
+    /// This method updates the negative hit counts for each node in the `walk` based on the penalties
+    /// specified in the `negs` hashmap. The `subtract` flag determines whether the penalties should be added
+    /// or subtracted from the hit counts.
+    ///
+    /// # Arguments
+    ///
+    /// * `walk` - The random walk for which to update the negative hits.
+    /// * `negs` - A hashmap containing the negative penalties for each node.
+    /// * `subtract` - A boolean flag indicating whether to subtract the penalties from the hit counts.
+    pub fn update_negative_hits(&mut self, walk: &RandomWalk, negs: &HashMap<NodeId, Weight>, subtract: bool) {
+        if walk.intersects_nodes(&negs.keys().cloned().collect::<Vec<NodeId>>()) {
+            let ego_neg_hits = self.neg_hits
+                .entry(walk.first_node().unwrap())
+                .or_insert_with(HashMap::new);
+
+            for (node, penalty) in walk.calculate_penalties(negs) {
+                let adjusted_penalty = if subtract { -penalty } else { penalty };
+                let entry = ego_neg_hits.entry(node).or_insert(0.0);
+                *entry += adjusted_penalty;
+            }
+        }
+    }
+
 
     /// Retrieves the MeritRank score for a target node from the perspective of the ego node.
     ///
@@ -231,10 +309,12 @@ impl MeritRank {
 
         let hits = counter.get_count(&target).copied().unwrap_or(0.0);
 
-        let has_path = self.graph.is_connecting(ego, target);
+        if ASSERT {
+            let has_path = self.graph.is_connecting(ego, target);
 
-        if hits > 0.0 && !has_path {
-            return Err(MeritRankError::NoPathExists);
+            if hits > 0.0 && !has_path {
+                return Err(MeritRankError::NoPathExists);
+            }
         }
 
         let binding = HashMap::new();
@@ -282,60 +362,6 @@ impl MeritRank {
         let peer_scores: HashMap<_, _> = peer_scores.into_iter().take(limit).collect();
 
         Ok(peer_scores)
-    }
-
-    /// Retrieves the weighted neighbors of a node.
-    ///
-    /// This method returns a hashmap of the neighbors of the specified `node`, along with their weights.
-    /// Only neighbors with positive weights are returned if `positive` is `true`, and only neighbors with negative
-    /// weights are returned if `positive` is `false`.
-    ///
-    /// # Arguments
-    ///
-    /// * `node` - The node for which to retrieve the neighbors.
-    /// * `positive` - A boolean value indicating whether to return positive neighbors.
-    ///
-    /// # Returns
-    ///
-    /// A hashmap of the neighbors of the specified `node` and their weights, or `None` if no neighbors exist.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use meritrank::{MyGraph, NodeId, MeritRankError, MeritRank};
-    ///
-    /// let graph = MyGraph::new();
-    /// let merit_rank = MeritRank::new(graph).unwrap();
-    ///
-    /// let node = NodeId::UInt(1);
-    /// let positive = true;
-    ///
-    /// if let Some(neighbors) = merit_rank.neighbors_weighted(node, positive) {
-    ///     for (neighbor, weight) in neighbors {
-    ///         println!("Neighbor: {:?}, Weight: {:?}", neighbor, weight);
-    ///     }
-    /// } else {
-    ///     println!("No neighbors found for the node.");
-    /// }
-    /// ```
-    pub fn neighbors_weighted(&self, node: NodeId, positive: bool) -> Option<HashMap<NodeId, Weight>> {
-        let neighbors: HashMap<_, _> = self.graph.neighbors(node)
-        .into_iter()
-        .filter_map(|nbr| {
-            let weight = self.graph.edge_weight(node, nbr).unwrap_or_else(|| 0.0);
-                if (positive && weight > 0.0) || (!positive && weight < 0.0) {
-                    Some((nbr, weight))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        if neighbors.is_empty() {
-            None
-        } else {
-            Some(neighbors)
-        }
     }
 
     /// Performs a random walk starting from the specified node.
@@ -458,30 +484,6 @@ impl MeritRank {
         values.get(index).copied()
     }
 
-    /// Updates the negative hits based on a random walk and negative penalties.
-    ///
-    /// This method updates the negative hit counts for each node in the `walk` based on the penalties
-    /// specified in the `negs` hashmap. The `subtract` flag determines whether the penalties should be added
-    /// or subtracted from the hit counts.
-    ///
-    /// # Arguments
-    ///
-    /// * `walk` - The random walk for which to update the negative hits.
-    /// * `negs` - A hashmap containing the negative penalties for each node.
-    /// * `subtract` - A boolean flag indicating whether to subtract the penalties from the hit counts.
-    pub fn update_negative_hits(&mut self, walk: &RandomWalk, negs: &HashMap<NodeId, Weight>, subtract: bool) {
-        if walk.intersects_nodes(&negs.keys().cloned().collect::<Vec<NodeId>>()) {
-            let ego_neg_hits = self.neg_hits
-                .entry(walk.first_node().unwrap())
-                .or_insert_with(HashMap::new);
-
-            for (node, penalty) in walk.calculate_penalties(negs) {
-                let adjusted_penalty = if subtract { -penalty } else { penalty };
-                let entry = ego_neg_hits.entry(node).or_insert(0.0);
-                *entry += adjusted_penalty;
-            }
-        }
-    }
 
     /// Retrieves the weight of an edge between two nodes.
     ///

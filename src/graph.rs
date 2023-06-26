@@ -30,6 +30,11 @@ impl MyGraph {
         }
     }
 
+    /// Checks if the graph is empty.
+    pub fn is_empty(&self) -> bool {
+        self.graph.node_count() == 0
+    }
+
     /// Adds a node to the graph and returns its `NodeIndex`.
     pub fn add_node(&mut self, node: Node) -> NodeIndex {
         // Add a node to the graph and store its NodeIndex in the nodes mapping

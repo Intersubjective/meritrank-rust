@@ -1,3 +1,5 @@
+use crate::MeritRankError;
+
 // use uuid::Uuid;
 
 // use crate::error::MeritRankError;
@@ -110,6 +112,23 @@ impl From<Weight> for NodeId {
             id if id < 0.0 => NodeId::Int(id as i32),
             id if id >= 0.0 => NodeId::UInt(id as usize),
             _ => NodeId::default(),
+        }
+    }
+}
+
+use std::str::FromStr;
+
+impl FromStr for NodeId {
+    type Err = MeritRankError;
+
+    /// Parses a NodeId from a string.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.parse::<i32>() {
+            Ok(id) => Ok(NodeId::Int(id)),
+            Err(_) => match s.parse::<usize>() {
+                Ok(id) => Ok(NodeId::UInt(id)),
+                Err(_) => Err(MeritRankError::NodeIdParseError),
+            },
         }
     }
 }
