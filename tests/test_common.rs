@@ -2,16 +2,16 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use meritrank::common::sign;
+    use meritrank::edge::EdgeId;
     use meritrank::errors::MeritRankError;
-    use meritrank::edge::{EdgeId};
-    use meritrank::node::{NodeId, Node, Weight};
-    use meritrank::common::{sign};
-    use meritrank::random_walk::{RandomWalk};
+    use meritrank::node::{Node, NodeId, Weight};
+    use meritrank::random_walk::RandomWalk;
     use meritrank::walk::{WalkId, WalkIdGenerator};
-    use meritrank::walk_storage::{WalkStorage};
+    use meritrank::walk_storage::WalkStorage;
 
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     #[test]
     fn test_is_none() {
@@ -154,8 +154,8 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(rng_seed);
 
         let (_may_skip, _new_pos) = storage.decide_skip_invalidation_on_edge_addition(
-            &walk, // walk: This is the walk that is being invalidated
-            pos, // pos: This is the position in the walk that is being invalidated
+            &walk,                   // walk: This is the walk that is being invalidated
+            pos,  // pos: This is the position in the walk that is being invalidated
             edge, // edge: This is the edge that is being added
             step_recalc_probability, // The probability that the step will be recalculated
             Some(&mut rng), // rng: This is the random number generator

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{NodeId, RandomWalk, WalkStorage, PosWalk};
+use crate::{NodeId, PosWalk, RandomWalk, WalkStorage};
 
 impl fmt::Debug for NodeId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -44,6 +44,11 @@ impl fmt::Debug for PosWalk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Implement the formatting logic for PosWalk
         // Here you can format the PosWalk fields as desired
-        write!(f, "PosWalk {{ pos: {:?}, walk: {:?} }}", self.get_pos(), self.get_walk())
+        write!(
+            f,
+            "PosWalk {{ pos: {:?}, walk: {:?} }}",
+            self.get_pos(),
+            self.get_walk()
+        )
     }
 }

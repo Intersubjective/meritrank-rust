@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use petgraph::graph::DiGraph;
 use petgraph::algo::has_path_connecting;
+use petgraph::graph::DiGraph;
 use petgraph::prelude::NodeIndex;
 
 #[allow(unused_imports)]
@@ -9,7 +9,7 @@ use petgraph::visit::EdgeRef;
 
 // use crate::{MeritRankError, NodeId, Weight, Node};
 use crate::errors::MeritRankError;
-use crate::node::{NodeId, Weight, Node};
+use crate::node::{Node, NodeId, Weight};
 
 pub type MyDiGraph = DiGraph<Node, Weight>;
 
@@ -75,10 +75,9 @@ impl MyGraph {
     /// Checks if an edge between the two given nodes exists in the graph.
     pub fn contains_edge(&self, source: NodeId, target: NodeId) -> bool {
         // Check if the source and target nodes have valid NodeIndices in the graph
-        if let (Some(source_index), Some(target_index)) = (
-            self.get_node_index(source),
-            self.get_node_index(target),
-        ) {
+        if let (Some(source_index), Some(target_index)) =
+            (self.get_node_index(source), self.get_node_index(target))
+        {
             // Check if there is an edge between the source and target NodeIndices
             self.graph.contains_edge(source_index, target_index)
         } else {
@@ -89,10 +88,9 @@ impl MyGraph {
     /// Adds an edge between the two given nodes in the graph.
     pub fn add_edge(&mut self, source: NodeId, target: NodeId, weight: Weight) {
         // Check if the source and target nodes have valid NodeIndices in the graph
-        if let (Some(source_index), Some(target_index)) = (
-            self.get_node_index(source),
-            self.get_node_index(target),
-        ) {
+        if let (Some(source_index), Some(target_index)) =
+            (self.get_node_index(source), self.get_node_index(target))
+        {
             // Add an edge between the source and target NodeIndices with the given weight
             self.graph.add_edge(source_index, target_index, weight);
         }
@@ -101,10 +99,9 @@ impl MyGraph {
     /// Removes the edge between the two given nodes from the graph.
     pub fn remove_edge(&mut self, source: NodeId, target: NodeId) {
         // Check if the source and target nodes have valid NodeIndices in the graph
-        if let (Some(source_index), Some(target_index)) = (
-            self.get_node_index(source),
-            self.get_node_index(target),
-        ) {
+        if let (Some(source_index), Some(target_index)) =
+            (self.get_node_index(source), self.get_node_index(target))
+        {
             // Find the edge index between the source and target NodeIndices and remove it from the graph
             if let Some(edge_index) = self.graph.find_edge(source_index, target_index) {
                 self.graph.remove_edge(edge_index);
@@ -151,16 +148,18 @@ impl MyGraph {
             let filtered_edges = ego_edges.filter(|edge| edge.source() == ego_index);
 
             // Collect the filtered edges into a vector of tuples
-            let collected_edges: Vec<_> = filtered_edges.map(|edge| {
-                // Get the target NodeIndex and weight of the edge
-                let target_index = edge.target();
-                let weight = edge.weight().clone();
+            let collected_edges: Vec<_> = filtered_edges
+                .map(|edge| {
+                    // Get the target NodeIndex and weight of the edge
+                    let target_index = edge.target();
+                    let weight = edge.weight().clone();
 
-                // Get the NodeId of the target node from the nodes mapping
-                let target = self.graph[target_index].get_id();
+                    // Get the NodeId of the target node from the nodes mapping
+                    let target = self.graph[target_index].get_id();
 
-                (ego, target, weight)
-            }).collect();
+                    (ego, target, weight)
+                })
+                .collect();
 
             if collected_edges.is_empty() {
                 None
@@ -173,10 +172,9 @@ impl MyGraph {
     /// Checks if there is a path between the two given nodes.
     pub fn is_connecting(&self, source: NodeId, target: NodeId) -> bool {
         // Check if the source and target nodes have valid NodeIndices in the graph
-        if let (Some(source_index), Some(target_index)) = (
-            self.get_node_index(source),
-            self.get_node_index(target),
-        ) {
+        if let (Some(source_index), Some(target_index)) =
+            (self.get_node_index(source), self.get_node_index(target))
+        {
             // Use the `has_path_connecting` function from the petgraph library to check if there is a path
             // between the source and target NodeIndices in the graph
             has_path_connecting(&self.graph, source_index, target_index, None)
@@ -199,10 +197,9 @@ impl MyGraph {
     /// Retrieves the weight of the edge between the two given nodes.
     pub fn edge_weight(&self, source: NodeId, target: NodeId) -> Option<Weight> {
         // Check if the source and target nodes have valid NodeIndices in the graph
-        if let (Some(source_index), Some(target_index)) = (
-            self.get_node_index(source),
-            self.get_node_index(target),
-        ) {
+        if let (Some(source_index), Some(target_index)) =
+            (self.get_node_index(source), self.get_node_index(target))
+        {
             // Find the edge index between the source and target NodeIndices
             // and retrieve the corresponding weight if it exists
             self.graph
@@ -217,7 +214,9 @@ impl MyGraph {
 impl PartialEq for MyGraph {
     fn eq(&self, other: &Self) -> bool {
         // Check if the number of nodes and edges are equal
-        if self.graph.node_count() != other.graph.node_count() || self.graph.edge_count() != other.graph.edge_count() {
+        if self.graph.node_count() != other.graph.node_count()
+            || self.graph.edge_count() != other.graph.edge_count()
+        {
             return false;
         }
 
@@ -236,7 +235,9 @@ impl PartialEq for MyGraph {
             let source = edge.source();
             let target = edge.target();
             let &weight1 = edge.weight();
-            let weight2 = other.graph.edge_weight(other.graph.find_edge(source, target).unwrap());
+            let weight2 = other
+                .graph
+                .edge_weight(other.graph.find_edge(source, target).unwrap());
 
             if let Some(w2) = weight2 {
                 if weight1 != *w2 {
@@ -248,12 +249,5 @@ impl PartialEq for MyGraph {
         }
 
         true
-
-        // let self_nodes: HashSet<NodeId> = self.graph.raw_nodes().iter().map(|node| node.clone()).collect();
-        // let other_nodes: HashSet<NodeId> = other.graph.raw_nodes().iter().map(|node| node.clone()).collect();
-
-        // self_nodes == other_nodes
     }
 }
-
-impl Eq for MyGraph {}

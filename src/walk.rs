@@ -1,8 +1,7 @@
 use uuid::Uuid;
 
-use rand::Rng;
 use rand::thread_rng;
-
+use rand::Rng;
 
 pub type WalkId = Uuid;
 
@@ -12,7 +11,9 @@ pub struct WalkIdGenerator {
 
 impl WalkIdGenerator {
     pub fn new() -> Self {
-        WalkIdGenerator { id: Uuid::from_u128(thread_rng().gen()) }
+        WalkIdGenerator {
+            id: Uuid::from_u128(thread_rng().gen()),
+        }
     }
 
     pub fn get_id(&self) -> WalkId {

@@ -68,8 +68,8 @@ impl Node {
 }
 
 impl<T> From<T> for Node
-    where
-        T: Into<NodeId>,
+where
+    T: Into<NodeId>,
 {
     /// Converts the value into a Node using the provided id.
     fn from(id: T) -> Self {

@@ -8,7 +8,6 @@ pub struct Counter {
     counter: HashMap<NodeId, Weight>,
 }
 
-#[allow(dead_code)]
 impl Counter {
     /// Creates a new empty counter.
     pub fn new() -> Self {
@@ -23,19 +22,18 @@ impl Counter {
 
     /// Updates the counter by incrementing the counts for the provided values.
     pub fn increment_counts<I>(&mut self, items: I)
-        where
-            I: IntoIterator<Item=NodeId>,
+    where
+        I: IntoIterator<Item = NodeId>,
     {
         for item in items {
-            let count = self.counter.entry(item).or_insert(0.0);
-            *count += 1.0;
+            *self.counter.entry(item).or_insert(0.0) += 1.0;
         }
     }
 
     /// Updates the counter with unique values, incrementing their counts.
     pub fn increment_unique_counts<I>(&mut self, items: I)
-        where
-            I: IntoIterator<Item=NodeId>,
+    where
+        I: IntoIterator<Item = NodeId>,
     {
         let unique_values: HashSet<NodeId> = items.into_iter().collect();
         self.increment_counts(unique_values);
@@ -47,8 +45,8 @@ impl Counter {
     }
 
     /// Returns a mutable reference to the count value for the given node ID, if it exists.
-    pub fn get_mut_count(&mut self, key: &NodeId) -> Option<&mut Weight> {
-        self.counter.get_mut(key)
+    pub fn get_mut_count(&mut self, key: &NodeId) -> &mut Weight {
+        self.counter.entry(key.clone()).or_insert(0.0)
     }
 
     /// Increments the count for the specified node and returns a mutable reference to the count.
@@ -57,7 +55,7 @@ impl Counter {
     }
 
     /// Returns an iterator over the count values.
-    pub fn count_values(&self) -> impl Iterator<Item=&Weight> {
+    pub fn count_values(&self) -> impl Iterator<Item = &Weight> {
         self.counter.values()
     }
 
@@ -78,7 +76,6 @@ impl Default for Counter {
 }
 
 use once_cell::sync::Lazy;
-
 
 impl Default for &Counter {
     fn default() -> Self {

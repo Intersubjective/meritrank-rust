@@ -1,4 +1,4 @@
-use std::collections::{HashMap};
+use std::collections::HashMap;
 
 use crate::node::{NodeId, Weight};
 use crate::walk::{WalkId, WalkIdGenerator};
@@ -192,7 +192,7 @@ impl RandomWalk {
     ///     println!("Node ID: {:?}", node_id);
     /// }
     /// ```
-    pub fn iter(&self) -> impl Iterator<Item=&NodeId> {
+    pub fn iter(&self) -> impl Iterator<Item = &NodeId> {
         self.nodes.iter()
     }
 
@@ -294,7 +294,10 @@ impl RandomWalk {
     ///
     /// Returns:
     /// - A map containing the penalties for nodes.
-    pub fn calculate_penalties(&self, neg_weights: &HashMap<NodeId, Weight>) -> HashMap<NodeId, Weight> {
+    pub fn calculate_penalties(
+        &self,
+        neg_weights: &HashMap<NodeId, Weight>,
+    ) -> HashMap<NodeId, Weight> {
         let mut penalties: HashMap<NodeId, Weight> = HashMap::new();
         let mut negs = neg_weights.clone();
         let mut accumulated_penalty = 0.0;

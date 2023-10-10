@@ -1,6 +1,6 @@
 pub fn sign<T>(x: T) -> i32
-    where
-        T: Into<f64> + Copy,
+where
+    T: Into<f64> + Copy,
 {
     let x: f64 = x.into();
 

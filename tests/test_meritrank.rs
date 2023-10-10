@@ -2,13 +2,13 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use indexmap::{indexmap};
-    use meritrank::node::{NodeId, Node};
-    use meritrank::edge::{EdgeId};
-    use meritrank::poswalk::{PosWalk};
-    use meritrank::random_walk::{RandomWalk};
-    use meritrank::walk_storage::{WalkStorage};
-    use meritrank::{MyGraph, MeritRank};
+    use indexmap::indexmap;
+    use meritrank::edge::EdgeId;
+    use meritrank::node::{Node, NodeId};
+    use meritrank::poswalk::PosWalk;
+    use meritrank::random_walk::RandomWalk;
+    use meritrank::walk_storage::WalkStorage;
+    use meritrank::{MeritRank, MyGraph};
 
     use std::collections::HashMap;
 
@@ -38,7 +38,10 @@ mod tests {
         let merit_rank = MeritRank::new(graph).unwrap();
 
         let walks = merit_rank.get_walks();
-        assert!(walks.is_empty(), "Newly created MeritRank should not have any walks");
+        assert!(
+            walks.is_empty(),
+            "Newly created MeritRank should not have any walks"
+        );
     }
 
     // lets write test for get_neg_hits(&self) -> &HashMap<NodeId, HashMap<NodeId, Weight>>
@@ -65,7 +68,10 @@ mod tests {
         let graph = MyGraph::new();
         let merit_rank = MeritRank::new(graph.clone()).unwrap();
         let result = merit_rank.get_graph();
-        assert_eq!(result, &graph, "The graph returned by get_graph did not match the original");
+        assert_eq!(
+            result, &graph,
+            "The graph returned by get_graph did not match the original"
+        );
     }
 
     // lets write test for get_graph_mut(&mut self) -> &mut MyGraph
@@ -74,7 +80,10 @@ mod tests {
         let mut graph = MyGraph::new();
         let mut merit_rank = MeritRank::new(graph.clone()).unwrap();
         let result = merit_rank.get_graph_mut();
-        assert_eq!(result, &mut graph, "The mutable graph returned by get_graph_mut did not match the original");
+        assert_eq!(
+            result, &mut graph,
+            "The mutable graph returned by get_graph_mut did not match the original"
+        );
     }
 
     // lets write test for get_alpha(&self) -> Weight
@@ -103,7 +112,10 @@ mod tests {
         let merit_rank = MeritRank::new(graph).unwrap();
         let node = NodeId::UInt(1);
         let result = merit_rank.get_hit_counts(&node);
-        assert!(result.is_none(), "Should return an Option<f64>, if not found then None");
+        assert!(
+            result.is_none(),
+            "Should return an Option<f64>, if not found then None"
+        );
     }
 
     // lets write test for increment_hit_counts(&mut self, _walk: &RandomWalk)

@@ -1,6 +1,6 @@
 // use crate::error::MeritRankError;
 // use crate::graph::{MyGraph, MyDiGraph};
-use crate::node::{NodeId};
+use crate::node::NodeId;
 // use crate::edge::EdgeId;
 use crate::random_walk::RandomWalk;
 // use crate::counter::{Counter, CounterIterator};
@@ -33,7 +33,7 @@ impl PosWalk {
     }
 
     /// Returns a mutable reference to the `RandomWalk` associated with the `PosWalk`.
-    pub fn _get_walk_mut(&mut self) -> &mut RandomWalk {
+    pub fn get_walk_mut(&mut self) -> &mut RandomWalk {
         &mut self.walk
     }
 
@@ -59,7 +59,10 @@ impl PosWalk {
     /// Panics:
     /// - If the current position is out of bounds of the random walk.
     pub fn get_current_node(&self) -> NodeId {
-        assert!(self.pos < self.walk.len(), "Current position is out of bounds.");
+        assert!(
+            self.pos < self.walk.len(),
+            "Current position is out of bounds."
+        );
         *self.walk.get_nodes().get(self.pos).unwrap()
     }
 }
