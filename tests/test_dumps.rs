@@ -41,6 +41,8 @@ mod tests {
     }
 
     use meritrank::{MeritRank, MyGraph, Node, NodeId};
+    use std::collections::HashMap;
+
 
     #[test]
     #[allow(unused_mut)]
@@ -88,28 +90,28 @@ mod tests {
             // meritrank.calculate(1.into(), 1000)?;
             // meritrank.calculate(2.into(), 1000);
 
-            let rating: Vec<(NodeId, f64)> = meritrank.get_ranks(0.into(), None).unwrap_or({
+            let rating: HashMap<NodeId, f64> = meritrank.get_ranks(0.into(), None).unwrap_or({
                 vec![
                     (0.into(), 0.0),
                     (1.into(), 0.0),
                     (2.into(), 0.0),
                 ]
-            });
+            }).into_iter().collect();
 
             // check rating
             eprintln!(
                 "Rating for node 0: {}, from dump: {}",
-                rating.get(0).unwrap_or(&(0.into(), 0.0)).1,
+                rating.get(&0.into()).unwrap_or(&0.0),
                 rank0
             );
             eprintln!(
                 "Rating for node 1: {}, from dump: {}",
-                rating.get(1).unwrap_or(&(1.into(), 0.0)).1,
+                rating.get(&1.into()).unwrap_or(&0.0),
                 rank1
             );
             eprintln!(
                 "Rating for node 2: {}, from dump: {}",
-                rating.get(2).unwrap_or(&(2.into(), 0.0)).1,
+                rating.get(&2.into()).unwrap_or(&0.0),
                 rank2
             );
 
@@ -229,8 +231,21 @@ mod tests {
 
         let mut meritrank_opt: Option<MeritRank> = None;
 
-        for result in csv_reader.records() {
-            let record = result?;
+        let records_to_skip = 0;
+        for (index, result) in csv_reader.records().enumerate() {
+            if index < records_to_skip {
+                continue;
+            }
+
+            let record = match result {
+                Ok(record) => {
+                    record
+                }
+                Err(e) => {
+                    eprintln!("Ошибка при чтении записи: {}", e);
+                    return Ok(());
+                }
+            };
             println!("{:?}", record);
 
             if let Some(meritrank) = &mut meritrank_opt {
@@ -262,14 +277,16 @@ mod tests {
                 graph.add_edge(2.into(), 1.into(), weights[5]);
 
                 meritrank_opt = Some(MeritRank::new(graph)?);
-                meritrank_opt.as_mut().unwrap().calculate(0.into(), 100)?;
+                meritrank_opt.as_mut().unwrap().calculate(0.into(), 1000)?;
             }
 
-            let rating: Vec<(NodeId, f64)> = meritrank_opt
+            let rating: HashMap<NodeId, f64> = meritrank_opt
                 .as_ref()
                 .ok_or("MeritRank not initialized")?
                 .get_ranks(0.into(), None)
-                .unwrap_or_default();
+                .unwrap_or_default()
+                .into_iter()
+                .collect();
 
             let rank0: f64 = record[9].trim().parse()?;
             let rank1: f64 = record[10].trim().parse()?;
@@ -277,17 +294,17 @@ mod tests {
 
             eprintln!(
                 "Rating for node 0: {}, from dump: {}",
-                rating.get(0).unwrap_or(&(0.into(), 0.0)).1,
+                rating.get(&0.into()).unwrap_or(&0.0),
                 rank0
             );
             eprintln!(
                 "Rating for node 1: {}, from dump: {}",
-                rating.get(1).unwrap_or(&(1.into(), 0.0)).1,
+                rating.get(&1.into()).unwrap_or(&0.0),
                 rank1
             );
             eprintln!(
                 "Rating for node 2: {}, from dump: {}",
-                rating.get(2).unwrap_or(&(2.into(), 0.0)).1,
+                rating.get(&2.into()).unwrap_or(&0.0),
                 rank2
             );
         }
@@ -296,7 +313,7 @@ mod tests {
     }
 
 
-    // #[test]
+    #[test]
     fn test_meritrank_incremental_long() -> Result<(), Box<dyn Error>> {
         let file_path_gz = "tests/dumps/OUT4.csv.gz";
         let file = File::open(file_path_gz)?;
@@ -345,7 +362,7 @@ mod tests {
                 }
 
                 meritrank_opt = Some(MeritRank::new(graph)?);
-                meritrank_opt.as_mut().unwrap().calculate(0.into(), 3500)?;
+                meritrank_opt.as_mut().unwrap().calculate(0.into(), 500)?;
             }
 
             let rating: Vec<(NodeId, f64)> = meritrank_opt

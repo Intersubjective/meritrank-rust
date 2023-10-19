@@ -72,57 +72,49 @@ impl WalkStorage {
     ///
     /// * `invalidated_walks` - The vector of invalidated walks
     pub fn implement_changes(&mut self, invalidated_walks: Vec<(RandomWalk, RandomWalk)>) {
-        for (new_walk, old_walk) in invalidated_walks {
-            // let _start_node = old_walk.first_node().unwrap();
-            let old_walk_id = old_walk.get_walk_id();
-            let new_walk_id = new_walk.get_walk_id();
+        for (updated_walk, invalidated_segment) in invalidated_walks {
+            let updated_walk_id = updated_walk.get_walk_id();
 
             let mut nodes_to_update: HashSet<NodeId> = HashSet::new();
-            nodes_to_update.extend(old_walk.get_nodes().iter().copied());
-            nodes_to_update.extend(new_walk.get_nodes().iter().copied());
+            nodes_to_update.extend(updated_walk.get_nodes().iter().copied());
+            nodes_to_update.extend(invalidated_segment.iter().copied());
 
             for node in nodes_to_update {
-                let old_walk_present = old_walk.contains(&node);
-                let new_walk_present = new_walk.contains(&node);
+                let updated_walk_present = updated_walk.contains(&node);
+                let invalidated_segment_present = invalidated_segment.contains(&node);
 
-                if old_walk_present && new_walk_present {
-                    // Update existing PosWalk entry
+                if updated_walk_present || invalidated_segment_present {
                     if let Some(pos_walks) = self.walks.get_mut(&node) {
-                        if let Some(_old_pos_walk) = pos_walks.remove(&old_walk_id) {
-                            let start_pos = new_walk
+                        if updated_walk_present {
+                            // Update existing PosWalk entry
+                            let start_pos = updated_walk
                                 .get_nodes()
                                 .iter()
                                 .position(|&n| n == node)
                                 .unwrap();
-                            let new_pos_walk = PosWalk::new(new_walk.clone(), start_pos);
-                            pos_walks.insert(new_walk_id, new_pos_walk);
+                            let updated_pos_walk = PosWalk::new(updated_walk.clone(), start_pos);
+                            pos_walks.insert(updated_walk_id, updated_pos_walk);
+                        } else {
+                            // Remove invalidated PosWalk entry
+                            pos_walks.remove(&updated_walk_id);
                         }
-                    }
-                } else if old_walk_present && !new_walk_present {
-                    // Remove invalidated PosWalk entry
-                    if let Some(pos_walks) = self.walks.get_mut(&node) {
-                        pos_walks.remove(&old_walk_id);
-                    }
-                } else if !old_walk_present && new_walk_present {
-                    // Add new PosWalk entry or update existing entry
-                    let start_pos = new_walk
-                        .get_nodes()
-                        .iter()
-                        .position(|&n| n == node)
-                        .unwrap();
-                    let pos_walk = PosWalk::new(new_walk.clone(), start_pos);
+                    } else if updated_walk_present {
+                        // Add new PosWalk entry
+                        let start_pos = updated_walk
+                            .get_nodes()
+                            .iter()
+                            .position(|&n| n == node)
+                            .unwrap();
+                        let new_pos_walk = PosWalk::new(updated_walk.clone(), start_pos);
 
-                    if let Some(pos_walks) = self.walks.get_mut(&node) {
-                        pos_walks.insert(new_walk_id, pos_walk);
-                    } else {
                         let mut pos_walks = IndexMap::new();
-                        pos_walks.insert(new_walk_id, pos_walk);
+                        pos_walks.insert(updated_walk_id, new_pos_walk);
                         self.walks.insert(node, pos_walks);
                     }
                 }
             }
 
-            // retain only the nodes that are still present in the storage
+            // Retain only the nodes that are still present in the storage
             self.walks.retain(|_, pos_walks| !pos_walks.is_empty());
         }
     }
