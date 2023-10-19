@@ -41,7 +41,7 @@ fn main() {
     };
 
     // calculate merit rank
-    match newrank.calculate(1.into(), 500) {
+    match newrank.calculate(1.into(), 100) {
         Ok(_) => {
             println!("Calculation successful.");
         }
@@ -61,10 +61,18 @@ fn main() {
     // newrank.add_edge(2.into(), 3.into(), 1.0);
     // newrank.add_edge(2.into(), 4.into(), 1.0);
     // newrank.add_edge(3.into(), 4.into(), 1.0);
-    newrank.add_edge(2.into(), 3.into(), -1.0);
+    // newrank.add_edge(2.into(), 3.into(), -1.0);
+    // newrank.add_edge(2.into(), 4.into(), 1.0);
+    println!("Adding edges 2 -> 4");
     newrank.add_edge(2.into(), 4.into(), 1.0);
-    newrank.add_edge(3.into(), 5.into(), 1.0);
+    println!("Adding edges 3 -> 4");
+    newrank.add_edge(3.into(), 4.into(), -1.0);
+    println!("Adding edges 4 -> 5");
     newrank.add_edge(4.into(), 5.into(), 1.0);
+    println!("Adding edges 3 -> 5");
+    newrank.add_edge(3.into(), 5.into(), -1.0);
+    // newrank.add_edge(3.into(), 5.into(), 1.0);
+    // newrank.add_edge(4.into(), 5.into(), 1.0);
     // newrank.add_edge(4.into(), 5.into(), 1.0);
     // newrank.add_edge(4.into(), 5.into(), 1.0);
     // newrank.add_edge(4.into(), 5.into(), 0.0);

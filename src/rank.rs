@@ -549,15 +549,17 @@ impl MeritRank {
         let ego = walk.first_node().unwrap();
 
         // Get or insert the hit counter for the starting node
-        let counter = self.personal_hits.entry(ego).or_insert_with(Counter::new);
+        let counter: &mut Counter = self.personal_hits.entry(ego).or_insert_with(Counter::new);
 
         // Subtract the nodes in the invalidated segment from the hit counter
-        let to_remove: HashSet<&NodeId> = invalidated_segment.into_iter().collect();
+        let to_remove: HashSet<&NodeId> = invalidated_segment
+            .into_iter()
+            .filter(|node| !walk.contains(node))
+            .collect();
+
         if to_remove.len() > 0 {
-            for node in walk.get_nodes() {
-                if !to_remove.contains(node) {
-                    *counter.get_mut_count(node) -= 1.0;
-                }
+            for node_to_remove in to_remove {
+                *counter.get_mut_count(node_to_remove) -= 1.0;
             }
 
             // Check if hit counter values are non-negative
@@ -637,7 +639,7 @@ impl MeritRank {
         }
 
         // Update the personal hits counter for the new segment
-        let counter = self.personal_hits.entry(ego).or_insert_with(Counter::new);
+        let counter: &mut Counter = self.personal_hits.entry(ego).or_insert_with(Counter::new);
         let node_set: HashSet<_> = new_segment.iter().cloned().collect();
         let diff: HashSet<_> = node_set
             .difference(&walk.get_nodes().iter().cloned().collect())
@@ -727,6 +729,15 @@ impl MeritRank {
             self.walks
                 .invalidate_walks_through_node(src, Some(dest), step_recalc_probability);
 
+        if VERBOSE {
+            for (_, hits) in &self.personal_hits {
+                for (peer, count) in hits {
+                    let walks = self.walks.get_walks_through_node(*peer, |_| true);
+                    println!("Peer: {:?}, Count: {:?}, Walks: {:?}", *peer, *count as usize, walks.len());
+                }
+            }
+        }
+
         let mut negs_cache: HashMap<NodeId, HashMap<NodeId, f64>> = HashMap::new();
         for (walk, invalidated_segment) in &invalidated_walks {
             let mut negs = negs_cache
@@ -788,6 +799,9 @@ impl MeritRank {
             for (ego, hits) in &self.personal_hits {
                 for (peer, count) in hits {
                     let walks = self.walks.get_walks_through_node(*peer, |_| true);
+                    if VERBOSE {
+                        println!("Peer: {:?}, Count: {:?}, Walks: {:?}", *peer, *count as usize, walks.len());
+                    }
                     if walks.len() != *count as usize {
                         assert!(false);
                     }
