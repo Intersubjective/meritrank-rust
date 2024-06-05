@@ -8,6 +8,8 @@ pub enum MeritRankError {
     NodeIdParseError,
     NodeDoesNotCalculated,
     InvalidWalkLength,
+    // Experimental
+    InvalidNode
 }
 
 use std::error::Error;
@@ -23,6 +25,7 @@ impl Display for MeritRankError {
             MeritRankError::NodeIdParseError => write!(f, "Node ID parse error"),
             MeritRankError::NodeDoesNotCalculated => write!(f, "Node does not calculated"),
             MeritRankError::InvalidWalkLength => write!(f, "Invalid walk length"),
+            MeritRankError::InvalidNode => write!(f, "Invalid node"),
         }
     }
 }

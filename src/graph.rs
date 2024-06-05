@@ -2,12 +2,11 @@ use std::collections::HashMap;
 
 use petgraph::algo::has_path_connecting;
 use petgraph::graph::DiGraph;
-use petgraph::prelude::NodeIndex;
+use petgraph::graph::{EdgeIndex, NodeIndex};
 
 #[allow(unused_imports)]
 use petgraph::visit::EdgeRef;
 
-// use crate::{MeritRankError, NodeId, Weight, Node};
 use crate::errors::MeritRankError;
 use crate::node::{Node, NodeId, Weight};
 
@@ -209,6 +208,151 @@ impl MyGraph {
             None
         }
     }
+
+    // Experimental
+    pub fn add_node_by_id(&mut self, node_id: NodeId) -> NodeIndex {
+        // Add a node to the graph and store its NodeIndex in the nodes mapping
+        let index = self.graph.add_node(Node::new(node_id));
+        self.nodes.insert(node_id, index);
+        index
+    }
+    pub fn add_node_by_id_if_not_exists(&mut self, node_id: NodeId) -> NodeIndex {
+        self.get_node_index(node_id).unwrap_or_else(|| self.add_node_by_id(node_id))
+    }
+
+    /// Sets an edge between the two given nodes in the graph AND create nodes if needed.
+    pub fn upsert_edge_with_nodes(
+        &mut self,
+        source: NodeId,
+        target: NodeId,
+        weight: Weight,
+    ) -> Result<(), MeritRankError> {
+        let _ = self.add_node_by_id_if_not_exists(source);
+        let _ = self.add_node_by_id_if_not_exists(target);
+        self.upsert_edge(source, target, weight)
+    }
+    /// Sets an edge between the two given nodes in the graph.
+    pub fn upsert_edge(
+        &mut self,
+        source: NodeId,
+        target: NodeId,
+        weight: Weight,
+    ) -> Result<(), MeritRankError> {
+        // Check if the source and target nodes have valid NodeIndices in the graph
+        if let (Some(source_index), Some(target_index)) =
+            (self.get_node_index(source), self.get_node_index(target))
+        {
+            // Add an edge between the source and target NodeIndices with the given weight
+            self.graph.update_edge(source_index, target_index, weight);
+            Ok(())
+        } else {
+            Err(MeritRankError::InvalidNode)
+        }
+    }
+
+    pub fn all(&self) -> (Vec<NodeId>, Vec<(NodeId, NodeId, Weight)>) {
+        let (nodes, edges) =
+            self.graph.clone().into_nodes_edges();
+        (
+            nodes
+                .iter()
+                .map(|n| n.weight.get_id())
+                .collect(),
+            edges
+                .iter()
+                .map(|e| {
+                    (self.index2node(e.source()), self.index2node(e.target()), e.weight)
+                })
+                .collect()
+        )
+    }
+
+    pub fn outgoing(&self, focus_id: NodeId) -> Vec<(EdgeIndex, NodeIndex, NodeId)> {
+        self.get_node_index(focus_id)
+            .map(|focus_index| {
+                self.graph
+                    .edges_directed(focus_index, petgraph::Direction::Outgoing)
+                    .into_iter()
+                    .map(|e| {
+                        (e.id(), e.target(), self.index2node(e.target()))
+                    }
+                    )
+                    .collect()
+            })
+            .unwrap_or_else(Vec::new)
+    }
+
+    pub fn connected(&self, focus_id: NodeId) -> Vec<(EdgeIndex, NodeId, NodeId)> {
+        self.get_node_index(focus_id)
+            .map(|focus_index| {
+                self.graph
+                    .edges(focus_index)
+                    .into_iter()
+                    .map(|e| {
+                        if e.source()==focus_index {
+                            (e.id(), focus_id, self.index2node(e.target()))
+                        } else if e.target()==focus_index {
+                            (e.id(), self.index2node(e.source()), focus_id)
+                        } else {
+                            panic!("Unexpected edge at connected: {:?}", e)
+                        }
+                    }
+                    )
+                    .collect()
+            })
+            .unwrap_or_else(Vec::new)
+    }
+
+    pub fn no_path(&self, start: NodeId, goal: NodeId) -> Option<bool> {
+        let start_index = self.get_node_index(start)?;
+        let goal_index = self.get_node_index(goal)?;
+        let goal_op = Some(goal_index);
+        let path =
+            petgraph::algo::dijkstra(
+                &self.graph,
+                start_index,
+                goal_op,
+                |eref| { *eref.weight() });
+
+        Some( !path.contains_key(&goal_index) )
+    }
+
+    pub fn shortest_path(&self, start:NodeId, goal: NodeId) -> Option<Vec<NodeId>> {
+        let start_index = self.get_node_index(start)?;
+        let goal_index = self.get_node_index(goal)?;
+        let (_, v) =
+            petgraph::algo::astar(
+                &self.graph,
+                start_index,
+                |finish| finish == goal_index,
+                |e| *e.weight(),
+                |_| 0.0f64
+            )?;
+        let result: Vec<NodeId> =
+            v
+                .iter()
+                .map(|&idx| self.index2node(idx))
+                .collect();
+
+        Some(result)
+    }
+
+    /// Returns the number of nodes in the graph
+    pub fn node_count(&self) -> usize {
+        self.graph.node_count()
+    }
+
+    /// Clears the graph.
+    pub fn clear(&mut self) {
+        self.graph.clear();
+        self.nodes.clear();
+    }
+
+    /// NodeIndex --> NodeId
+    pub fn index2node(&self, index: NodeIndex) -> NodeId {
+        self.graph[index].get_id() // "syntax index"
+    }
+
 }
 
 impl PartialEq for MyGraph {

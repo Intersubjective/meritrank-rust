@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 
 use crate::common::sign;
-use crate::constants::{ASSERT, VERBOSE, OPTIMIZE_INVALIDATION};
+use crate::constants::{ASSERT, OPTIMIZE_INVALIDATION};
 use crate::counter::Counter;
 use crate::errors::MeritRankError;
 use crate::graph::MyGraph;
@@ -203,10 +203,6 @@ impl MeritRank {
         for _ in 0..num_walks {
             let walk = self.perform_walk(ego)?;
             let walk_steps = walk.iter().cloned();
-
-            if VERBOSE {
-                println!("Walk: {:?}", walk.iter().cloned().collect::<Vec<NodeId>>());
-            }
 
             self.personal_hits
                 .entry(ego)
@@ -729,15 +725,6 @@ impl MeritRank {
             self.walks
                 .invalidate_walks_through_node(src, Some(dest), step_recalc_probability);
 
-        if VERBOSE {
-            for (_, hits) in &self.personal_hits {
-                for (peer, count) in hits {
-                    let walks = self.walks.get_walks_through_node(*peer, |_| true);
-                    println!("Peer: {:?}, Count: {:?}, Walks: {:?}", *peer, *count as usize, walks.len());
-                }
-            }
-        }
-
         let mut negs_cache: HashMap<NodeId, HashMap<NodeId, f64>> = HashMap::new();
         for (walk, invalidated_segment) in &invalidated_walks {
             let mut negs = negs_cache
@@ -799,9 +786,6 @@ impl MeritRank {
             for (ego, hits) in &self.personal_hits {
                 for (peer, count) in hits {
                     let walks = self.walks.get_walks_through_node(*peer, |_| true);
-                    if VERBOSE {
-                        println!("Peer: {:?}, Count: {:?}, Walks: {:?}", *peer, *count as usize, walks.len());
-                    }
                     if walks.len() != *count as usize {
                         assert!(false);
                     }
@@ -861,5 +845,10 @@ impl MeritRank {
         // Call the nz and zn methods with the given arguments
         self.nz(src, dest, weight);
         self.zn(src, dest, weight);
+    }
+
+    // Experimental
+    pub fn get_personal_hits(&self) -> &HashMap<NodeId, Counter> {
+        &self.personal_hits
     }
 }

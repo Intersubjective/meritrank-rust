@@ -84,15 +84,15 @@ mod tests {
     }
 
     #[test]
-    fn test_merit_rank_error_display() {
+    fn test_meritrank_error_display() {
         let error = MeritRankError::NodeDoesNotExist;
-        assert_eq!(error.to_string(), "NodeDoesNotExist");
+        assert_eq!(error.to_string(), "Node does not exist");
 
         let error = MeritRankError::SelfReferenceNotAllowed;
-        assert_eq!(error.to_string(), "SelfReferenceNotAllowed");
+        assert_eq!(error.to_string(), "Self-reference is not allowed");
 
         let error = MeritRankError::RandomChoiceError;
-        assert_eq!(error.to_string(), "RandomChoiceError");
+        assert_eq!(error.to_string(), "Random choice error");
     }
 
     #[test]
