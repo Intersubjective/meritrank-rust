@@ -94,10 +94,9 @@ impl WalkStorage {
                                 .unwrap();
                             let updated_pos_walk = PosWalk::new(updated_walk.clone(), start_pos);
                             pos_walks.insert(updated_walk_id, updated_pos_walk);
-                        } else {
-                            // Remove invalidated PosWalk entry
-                            pos_walks.remove(&updated_walk_id);
                         }
+                        let old_walk_id = invalidated_segment.get_walk_id();
+                        pos_walks.remove(&old_walk_id);
                     } else if updated_walk_present {
                         // Add new PosWalk entry
                         let start_pos = updated_walk
