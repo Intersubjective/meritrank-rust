@@ -39,7 +39,7 @@ impl RandomWalk {
     /// ```rust
     /// use meritrank::{WalkStorage, RandomWalk, NodeId};
     ///
-    /// let nodes = vec![NodeId::UInt( 1), NodeId::UInt(2), NodeId::UInt(3)];
+    /// let nodes = vec![ 1, 2, 3, ];
     /// let random_walk = RandomWalk::from_nodes(nodes);
     /// ```
     pub fn from_nodes(nodes: Vec<NodeId>) -> Self {
@@ -59,7 +59,7 @@ impl RandomWalk {
     /// use meritrank::{WalkStorage, RandomWalk, NodeId};
     ///
     /// let mut random_walk = RandomWalk::new();
-    /// random_walk._add_node(NodeId::UInt(1));
+    /// random_walk._add_node(1);
     /// ```
     pub fn _add_node(&mut self, node_id: NodeId) {
         self.nodes.push(node_id);
@@ -86,7 +86,7 @@ impl RandomWalk {
     /// ```rust
     /// use meritrank::{WalkStorage, RandomWalk, NodeId};
     ///
-    /// let random_walk = RandomWalk::from_nodes(vec![NodeId::UInt(1), NodeId::UInt(2), NodeId::UInt(3)]);
+    /// let random_walk = RandomWalk::from_nodes(vec![ 1, 2, 3, ]);
     /// let len = random_walk.len();
     /// ```
     pub fn len(&self) -> usize {
@@ -104,8 +104,8 @@ impl RandomWalk {
     /// ```rust
     /// use meritrank::{WalkStorage, RandomWalk, NodeId};
     ///
-    /// let random_walk = RandomWalk::from_nodes(vec![NodeId::UInt(1), NodeId::UInt(2), NodeId::UInt(3)]);
-    /// let contains = random_walk.contains(&NodeId::UInt(2));
+    /// let random_walk = RandomWalk::from_nodes(vec![ 1, 2, 3, ]);
+    /// let contains = random_walk.contains(&2);
     /// ```
     pub fn contains(&self, node_id: &NodeId) -> bool {
         self.nodes.contains(node_id)
@@ -145,7 +145,7 @@ impl RandomWalk {
     /// ```rust
     /// use meritrank::{WalkStorage, RandomWalk, NodeId};
     ///
-    /// let random_walk = RandomWalk::from_nodes(vec![NodeId::UInt(1), NodeId::UInt(2), NodeId::UInt(3)]);
+    /// let random_walk = RandomWalk::from_nodes(vec![ 1, 2, 3, ]);
     /// let first_node = random_walk.first_node();
     /// ```
     pub fn first_node(&self) -> Option<NodeId> {
@@ -159,7 +159,7 @@ impl RandomWalk {
     /// ```rust
     /// use meritrank::{WalkStorage, RandomWalk, NodeId};
     ///
-    /// let random_walk = RandomWalk::from_nodes(vec![NodeId::UInt(1), NodeId::UInt(2), NodeId::UInt(3)]);
+    /// let random_walk = RandomWalk::from_nodes(vec![ 1, 2, 3, ]);
     /// let last_node = random_walk.last_node();
     /// ```
     pub fn last_node(&self) -> Option<NodeId> {
@@ -187,7 +187,7 @@ impl RandomWalk {
     /// ```rust
     /// use meritrank::{WalkStorage, RandomWalk, NodeId};
     ///
-    /// let random_walk = RandomWalk::from_nodes(vec![NodeId::UInt(1), NodeId::UInt(2), NodeId::UInt(3)]);
+    /// let random_walk = RandomWalk::from_nodes(vec![ 1, 2, 3, ]);
     /// for node_id in random_walk.iter() {
     ///     println!("Node ID: {:?}", node_id);
     /// }
@@ -208,7 +208,7 @@ impl RandomWalk {
     /// use meritrank::{WalkStorage, RandomWalk, NodeId};
     ///
     /// let mut random_walk = RandomWalk::new();
-    /// random_walk.push(NodeId::UInt(1));
+    /// random_walk.push(1);
     /// ```
     pub fn push(&mut self, node_id: NodeId) {
         self.nodes.push(node_id);
@@ -226,7 +226,7 @@ impl RandomWalk {
     /// use meritrank::{WalkStorage, RandomWalk, NodeId};
     ///
     /// let mut random_walk = RandomWalk::new();
-    /// let new_segment = vec![NodeId::UInt(2), NodeId::UInt(3)];
+    /// let new_segment = vec![ 1, 2, 3 ];
     /// random_walk.extend(&new_segment);
     /// ```
     pub fn extend(&mut self, new_segment: &[NodeId]) {
@@ -248,7 +248,7 @@ impl RandomWalk {
     /// ```rust
     /// use meritrank::{WalkStorage, RandomWalk, NodeId};
     ///
-    /// let mut random_walk = RandomWalk::from_nodes(vec![NodeId::UInt(1), NodeId::UInt(2), NodeId::UInt(3), NodeId::UInt(4), NodeId::UInt(5)]);
+    /// let mut random_walk = RandomWalk::from_nodes(vec![ 1, 2, 3, 4, 5, ]);
     /// let split_segment = random_walk.split_from(2);
     /// ```
     pub fn split_from(&mut self, pos: usize) -> RandomWalk {

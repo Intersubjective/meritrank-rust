@@ -228,7 +228,7 @@ impl WalkStorage {
     /// use meritrank::{WalkStorage, NodeId};
     ///
     /// let storage = WalkStorage::new();
-    /// let node = NodeId::UInt(1);
+    /// let node : NodeId = 1;
     /// let walks = storage._get_walks_throw_node(node);
     /// ```
     pub fn _get_walks_throw_node(&self, node: NodeId) -> Option<&IndexMap<WalkId, PosWalk>> {
@@ -253,7 +253,7 @@ impl WalkStorage {
     /// use meritrank::{WalkStorage, RandomWalk, NodeId};
     ///
     /// let storage = WalkStorage::new();
-    /// let src_node = NodeId::UInt(1);
+    /// let src_node = 1;
     /// let walks = storage._get_walks_starting_from_node(src_node);
     /// ```
     pub fn _get_walks_starting_from_node(&self, src: NodeId) -> Vec<RandomWalk> {
@@ -285,7 +285,7 @@ impl WalkStorage {
     ///
     /// let mut storage = WalkStorage::new();
     ///
-    /// let node = NodeId::UInt(1);
+    /// let node = 1;
     /// storage.drop_walks_from_node(node);
     /// ```
     pub fn drop_walks_from_node(&mut self, node: NodeId) {
@@ -321,13 +321,13 @@ impl WalkStorage {
     ///
     /// let storage = WalkStorage::new();
     ///
-    /// let node = NodeId::UInt(1);
+    /// let node : NodeId = 1;
     ///
     /// // Example filter: only include walks with a certain length
     /// let walks = storage.get_walks_through_node(node, |pos_walk| pos_walk.get_walk().len() > 5);
     ///
     /// // Example filter: only include walks with a specific starting node
-    /// let walks = storage.get_walks_through_node(node, |pos_walk| pos_walk.get_current_node() == NodeId::Int(2));
+    /// let walks = storage.get_walks_through_node(node, |pos_walk| pos_walk.get_current_node() == 2);
     /// ```
     pub fn get_walks_through_node<F>(&self, node: NodeId, filter: F) -> Vec<RandomWalk>
         where
@@ -369,9 +369,9 @@ impl WalkStorage {
     /// use rand::rngs::StdRng;
     ///
     /// let storage = WalkStorage::new();
-    /// let walk = RandomWalk::from_nodes(vec![NodeId::UInt(1), NodeId::UInt(2), NodeId::UInt(3)]);
+    /// let walk = RandomWalk::from_nodes(vec![ 1, 2, 3, ]);
     /// let pos = 0;
-    /// let edge: EdgeId = (NodeId::UInt(1), NodeId::UInt(2));
+    /// let edge: EdgeId = (1, 2);
     /// let step_recalc_probability = 0.5;
     /// // Create a deterministic random number generator
     /// let rng_seed = 1234;
@@ -422,9 +422,9 @@ impl WalkStorage {
     /// use meritrank::{WalkStorage, RandomWalk, EdgeId, NodeId};
     ///
     /// let storage = WalkStorage::new();
-    /// let walk = RandomWalk::from_nodes(vec![NodeId::UInt(1), NodeId::UInt(2), NodeId::UInt(3)]);
+    /// let walk = RandomWalk::from_nodes(vec![ 1, 2, 3, ]);
     /// let pos = 0;
-    /// let edge: EdgeId = (NodeId::UInt(1), NodeId::UInt(2));
+    /// let edge: EdgeId = (1, 2);
     /// let (may_skip, new_pos) = storage.decide_skip_invalidation_on_edge_deletion(&walk, pos, edge);
     /// ```
     pub fn decide_skip_invalidation_on_edge_deletion(
@@ -477,9 +477,9 @@ impl WalkStorage {
     /// use rand::rngs::StdRng;
     ///
     /// let storage = WalkStorage::new();
-    /// let walk = RandomWalk::from_nodes(vec![NodeId::UInt(1), NodeId::UInt(2)]);
+    /// let walk = RandomWalk::from_nodes(vec![ 1, 2, ]);
     /// let pos = 0;
-    /// let edge: EdgeId = (NodeId::UInt(1), NodeId::UInt(2));
+    /// let edge: EdgeId = (1, 2);
     /// let step_recalc_probability = 0.5;
     /// // Create a deterministic random number generator
     /// let rng_seed = 1234;
@@ -551,8 +551,8 @@ impl WalkStorage {
     ///
     /// let mut storage = WalkStorage::new();
     ///
-    /// let invalidated_node = NodeId::UInt(1);
-    /// let dst_node = Some(NodeId::UInt(2));
+    /// let invalidated_node = 1;
+    /// let dst_node = Some(2);
     /// let step_recalc_probability = 0.0;
     ///
     /// let invalidated_walks = storage.invalidate_walks_through_node(

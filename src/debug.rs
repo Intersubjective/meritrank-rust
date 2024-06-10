@@ -1,26 +1,6 @@
 use std::fmt;
 
-use crate::{NodeId, PosWalk, RandomWalk, WalkStorage};
-
-impl fmt::Debug for NodeId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Implement the formatting logic for NodeId
-        // Here you can format the NodeId fields as desired
-        match self {
-            NodeId::Int(id) => write!(f, "NodeId::Int({})", id),
-            NodeId::UInt(id) => write!(f, "NodeId::UInt({})", id),
-            NodeId::None => write!(f, "NodeId::None"),
-        }
-    }
-}
-
-// impl fmt::Debug for WalkId {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         // Implement the formatting logic for WalkId
-//         // Here you can format the WalkId fields as desired
-//         write!(f, "WalkId {{ id: {:?} }}", self.id)
-//     }
-// }
+use crate::{PosWalk, RandomWalk, WalkStorage};
 
 impl fmt::Debug for RandomWalk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

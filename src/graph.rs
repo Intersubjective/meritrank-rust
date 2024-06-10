@@ -8,9 +8,9 @@ use petgraph::graph::{EdgeIndex, NodeIndex};
 use petgraph::visit::EdgeRef;
 
 use crate::errors::MeritRankError;
-use crate::node::{Node, NodeId, Weight};
+use crate::node::{NodeId, Weight};
 
-pub type MyDiGraph = DiGraph<Node, Weight>;
+pub type MyDiGraph = DiGraph<NodeId, Weight>;
 
 #[derive(Debug, Clone)]
 pub struct MyGraph {
@@ -35,10 +35,10 @@ impl MyGraph {
     }
 
     /// Adds a node to the graph and returns its `NodeIndex`.
-    pub fn add_node(&mut self, node: Node) -> NodeIndex {
+    pub fn add_node(&mut self, node: NodeId) -> NodeIndex {
         // Add a node to the graph and store its NodeIndex in the nodes mapping
         let index = self.graph.add_node(node.clone());
-        self.nodes.insert(node.get_id(), index);
+        self.nodes.insert(node, index);
         index
     }
 
@@ -50,7 +50,7 @@ impl MyGraph {
             // and find the first node with a matching NodeId
             self.graph
                 .node_indices()
-                .find(|&index| self.graph[index].get_id() == node_id)
+                .find(|&index| self.graph[index] == node_id)
         })
     }
 
@@ -61,7 +61,7 @@ impl MyGraph {
         self.nodes = self
             .graph
             .node_indices()
-            .map(|index| (self.graph[index].get_id(), index))
+            .map(|index| (self.graph[index], index))
             .collect();
     }
 
@@ -117,7 +117,7 @@ impl MyGraph {
                 // and retrieve their corresponding NodeIds
                 self.graph
                     .neighbors(ego_index)
-                    .map(|neighbor_index| self.graph[neighbor_index].get_id())
+                    .map(|neighbor_index| self.graph[neighbor_index])
                     .collect()
             })
             .unwrap_or_else(Vec::new)
@@ -154,7 +154,7 @@ impl MyGraph {
                     let weight = edge.weight().clone();
 
                     // Get the NodeId of the target node from the nodes mapping
-                    let target = self.graph[target_index].get_id();
+                    let target = self.graph[target_index];
 
                     (ego, target, weight)
                 })
@@ -212,7 +212,7 @@ impl MyGraph {
     // Experimental
     pub fn add_node_by_id(&mut self, node_id: NodeId) -> NodeIndex {
         // Add a node to the graph and store its NodeIndex in the nodes mapping
-        let index = self.graph.add_node(Node::new(node_id));
+        let index = self.graph.add_node(node_id);
         self.nodes.insert(node_id, index);
         index
     }
@@ -256,7 +256,7 @@ impl MyGraph {
         (
             nodes
                 .iter()
-                .map(|n| n.weight.get_id())
+                .map(|n| n.weight)
                 .collect(),
             edges
                 .iter()
@@ -350,7 +350,7 @@ impl MyGraph {
 
     /// NodeIndex --> NodeId
     pub fn index2node(&self, index: NodeIndex) -> NodeId {
-        self.graph[index].get_id() // "syntax index"
+        self.graph[index] // "syntax index"
     }
 
 }

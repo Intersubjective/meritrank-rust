@@ -16,7 +16,7 @@ pub use counter::{Counter, CounterIterator};
 pub use edge::EdgeId;
 pub use errors::MeritRankError;
 pub use graph::{MyDiGraph, MyGraph};
-pub use node::{Node, NodeId, Weight};
+pub use node::{NodeId, Weight};
 pub use poswalk::PosWalk;
 pub use random_walk::RandomWalk;
 pub use rank::MeritRank;

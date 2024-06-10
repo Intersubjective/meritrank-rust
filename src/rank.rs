@@ -13,7 +13,6 @@ use crate::node::{NodeId, Weight};
 use crate::poswalk::PosWalk;
 use crate::random_walk::RandomWalk;
 use crate::walk::WalkId;
-use crate::node::Node;
 use crate::walk_storage::WalkStorage;
 
 pub struct MeritRank {
@@ -113,7 +112,7 @@ impl MeritRank {
     /// let graph = MyGraph::new();
     /// let merit_rank = MeritRank::new(graph).unwrap();
     ///
-    /// let node = NodeId::UInt(1);
+    /// let node : NodeId = 1;
     /// let positive = true;
     ///
     /// if let Some(neighbors) = merit_rank.neighbors_weighted(node, positive) {
@@ -175,7 +174,7 @@ impl MeritRank {
     /// let graph = MyGraph::new();
     /// let mut merit_rank = MeritRank::new(graph).unwrap();
     ///
-    /// let ego = NodeId::UInt(1);
+    /// let ego : NodeId = 1;
     /// let num_walks = 1000;
     ///
     /// if let Err(err) = merit_rank.calculate(ego, num_walks) {
@@ -271,8 +270,8 @@ impl MeritRank {
     /// let graph = MyGraph::new();
     /// let mut merit_rank = MeritRank::new(graph).unwrap();
     ///
-    /// let ego = NodeId::UInt(1);
-    /// let target = NodeId::UInt(2);
+    /// let ego : NodeId = 1;
+    /// let target : NodeId = 2;
     ///
     /// let score = merit_rank.get_node_score(ego, target);
     ///
@@ -364,7 +363,7 @@ impl MeritRank {
     /// let graph = MyGraph::new();
     /// let merit_rank = MeritRank::new(graph).unwrap();
     ///
-    /// let start_node = NodeId::UInt(1);
+    /// let start_node : NodeId = 1;
     ///
     /// match merit_rank.perform_walk(start_node) {
     ///     Ok(random_walk) => {
@@ -406,7 +405,7 @@ impl MeritRank {
     /// let graph = MyGraph::new();
     /// let merit_rank = MeritRank::new(graph).unwrap();
     ///
-    /// let start_node = NodeId::UInt(1);
+    /// let start_node : NodeId = 1;
     /// let skip_alpha_on_first_step = false;
     ///
     /// match merit_rank.generate_walk_segment(start_node, skip_alpha_on_first_step) {
@@ -590,9 +589,9 @@ impl MeritRank {
     /// let graph = MyGraph::new();
     /// let mut merit_rank = MeritRank::new(graph).unwrap();
     /// let mut random_walk = RandomWalk::new();
-    /// random_walk.extend(&*vec![NodeId::Int(1), NodeId::Int(2)]);
+    /// random_walk.extend(&*vec![ 1, 2, ]);
     /// // ... Initialize random_walk ...
-    /// let force_first_step = Some(NodeId::Int(3));
+    /// let force_first_step = Some(3);
     /// let skip_alpha_on_first_step = true;
     /// merit_rank.recalc_invalidated_walk(&mut random_walk, force_first_step, skip_alpha_on_first_step);
     /// ```
@@ -653,7 +652,7 @@ impl MeritRank {
     }
 
     pub fn add_node(&mut self, node: NodeId) {
-        self.graph.add_node(Node::new(node));
+        self.graph.add_node(node);
     }
 
     /// Adds an edge between two nodes with the specified weight.

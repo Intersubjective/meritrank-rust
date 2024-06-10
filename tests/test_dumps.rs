@@ -40,7 +40,7 @@ mod tests {
         Ok(())
     }
 
-    use meritrank::{MeritRank, MyGraph, Node, NodeId};
+    use meritrank::{MeritRank, MyGraph, NodeId};
     use std::collections::HashMap;
 
 
@@ -70,60 +70,60 @@ mod tests {
 
             // Create the complete graph
             let mut complete_graph = MyGraph::new();
-            let incremental_node_ids: Vec<NodeId> = vec![0.into(), 1.into(), 2.into()];
+            let incremental_node_ids: Vec<NodeId> = vec![0, 1, 2];
 
             for node_id in incremental_node_ids {
-                complete_graph.add_node(Node::new(node_id));
+                complete_graph.add_node(node_id);
             }
 
-            complete_graph.add_edge(0.into(), 1.into(), w0_1);
-            complete_graph.add_edge(0.into(), 2.into(), w0_2);
-            complete_graph.add_edge(1.into(), 0.into(), w1_0);
-            complete_graph.add_edge(1.into(), 2.into(), w1_2);
-            complete_graph.add_edge(2.into(), 0.into(), w2_0);
-            complete_graph.add_edge(2.into(), 1.into(), w2_1);
+            complete_graph.add_edge(0, 1, w0_1);
+            complete_graph.add_edge(0, 2, w0_2);
+            complete_graph.add_edge(1, 0, w1_0);
+            complete_graph.add_edge(1, 2, w1_2);
+            complete_graph.add_edge(2, 0, w2_0);
+            complete_graph.add_edge(2, 1, w2_1);
 
             let mut meritrank = MeritRank::new(complete_graph).unwrap();
 
             // calculate merit rank
-            meritrank.calculate(0.into(), 250)?;
-            // meritrank.calculate(1.into(), 1000)?;
-            // meritrank.calculate(2.into(), 1000);
+            meritrank.calculate(1, 250)?;
+            // meritrank.calculate(2, 1000)?;
+            // meritrank.calculate(3, 1000);
 
-            let rating: HashMap<NodeId, f64> = meritrank.get_ranks(0.into(), None).unwrap_or({
+            let rating: HashMap<NodeId, f64> = meritrank.get_ranks(1, None).unwrap_or({
                 vec![
-                    (0.into(), 0.0),
-                    (1.into(), 0.0),
-                    (2.into(), 0.0),
+                    (0, 0.0),
+                    (1, 0.0),
+                    (2, 0.0),
                 ]
             }).into_iter().collect();
 
             // check rating
             eprintln!(
-                "Rating for node 0: {}, from dump: {}",
-                rating.get(&0.into()).unwrap_or(&0.0),
+                "Rating for node 1: {}, from dump: {}",
+                rating.get(&0).unwrap_or(&0.0),
                 rank0
             );
             eprintln!(
-                "Rating for node 1: {}, from dump: {}",
-                rating.get(&1.into()).unwrap_or(&0.0),
+                "Rating for node 2: {}, from dump: {}",
+                rating.get(&1).unwrap_or(&0.0),
                 rank1
             );
             eprintln!(
-                "Rating for node 2: {}, from dump: {}",
-                rating.get(&2.into()).unwrap_or(&0.0),
+                "Rating for node 3: {}, from dump: {}",
+                rating.get(&2).unwrap_or(&0.0),
                 rank2
             );
 
-            // assert_eq!(rating[&0.into()], rank0);
-            // assert_eq!(rating[&1.into()], rank1);
-            // assert_eq!(rating[&2.into()], rank2);
+            // assert_eq!(rating[&0], rank0);
+            // assert_eq!(rating[&1], rank1);
+            // assert_eq!(rating[&2], rank2);
         }
 
         Ok(())
 
         // // calculate merit rank
-        // let rating = match newrank.calculate(3.into(), 10000) {
+        // let rating = match newrank.calculate(3, 10000) {
         //     Ok(r) => r,
         //     Err(e) => panic!("Error: {}", e),
         // };
@@ -164,60 +164,60 @@ mod tests {
 
             // Create the complete graph
             let mut complete_graph = MyGraph::new();
-            let node_ids: Vec<NodeId> = vec![0.into(), 1.into(), 2.into(), 3.into()];
+            let node_ids: Vec<NodeId> = vec![0, 1, 2, 3];
 
             for node_id in &node_ids {
-                complete_graph.add_node(Node::new(*node_id));
+                complete_graph.add_node(*node_id);
             }
 
-            complete_graph.add_edge(0.into(), 1.into(), w0_1);
-            complete_graph.add_edge(0.into(), 2.into(), w0_2);
-            complete_graph.add_edge(0.into(), 3.into(), w0_3);
-            complete_graph.add_edge(1.into(), 0.into(), w1_0);
-            complete_graph.add_edge(1.into(), 2.into(), w1_2);
-            complete_graph.add_edge(1.into(), 3.into(), w1_3);
-            complete_graph.add_edge(2.into(), 0.into(), w2_0);
-            complete_graph.add_edge(2.into(), 1.into(), w2_1);
-            complete_graph.add_edge(2.into(), 3.into(), w2_3);
-            complete_graph.add_edge(3.into(), 0.into(), w3_0);
-            complete_graph.add_edge(3.into(), 1.into(), w3_1);
-            complete_graph.add_edge(3.into(), 2.into(), w3_2);
+            complete_graph.add_edge(0, 1, w0_1);
+            complete_graph.add_edge(0, 2, w0_2);
+            complete_graph.add_edge(0, 3, w0_3);
+            complete_graph.add_edge(1, 0, w1_0);
+            complete_graph.add_edge(1, 2, w1_2);
+            complete_graph.add_edge(1, 3, w1_3);
+            complete_graph.add_edge(2, 0, w2_0);
+            complete_graph.add_edge(2, 1, w2_1);
+            complete_graph.add_edge(2, 3, w2_3);
+            complete_graph.add_edge(3, 0, w3_0);
+            complete_graph.add_edge(3, 1, w3_1);
+            complete_graph.add_edge(3, 2, w3_2);
 
             let mut meritrank = MeritRank::new(complete_graph).unwrap();
 
             // calculate merit rank
-            meritrank.calculate(0.into(), 25)?;
+            meritrank.calculate(0, 25)?;
 
             let rating: Vec<(NodeId, f64)> =
-                meritrank.get_ranks(0.into(), None).unwrap_or_default();
+                meritrank.get_ranks(0, None).unwrap_or_default();
 
             // check rating
             eprintln!(
                 "Rating for node 0: {}, from dump: {}",
-                rating.get(0).unwrap_or(&(0.into(), 0.0)).1,
+                rating.get(0).unwrap_or(&(0, 0.0)).1,
                 rank0
             );
             eprintln!(
                 "Rating for node 1: {}, from dump: {}",
-                rating.get(1).unwrap_or(&(1.into(), 0.0)).1,
+                rating.get(1).unwrap_or(&(1, 0.0)).1,
                 rank1
             );
             eprintln!(
                 "Rating for node 2: {}, from dump: {}",
-                rating.get(2).unwrap_or(&(2.into(), 0.0)).1,
+                rating.get(2).unwrap_or(&(2, 0.0)).1,
                 rank2
             );
             eprintln!(
                 "Rating for node 3: {}, from dump: {}",
-                rating.get(3).unwrap_or(&(3.into(), 0.0)).1,
+                rating.get(3).unwrap_or(&(3, 0.0)).1,
                 rank3
             );
 
             // You can add assertions if needed
-            // assert_eq!(rating[&0.into()], rank0);
-            // assert_eq!(rating[&1.into()], rank1);
-            // assert_eq!(rating[&2.into()], rank2);
-            // assert_eq!(rating[&3.into()], rank3);
+            // assert_eq!(rating[&0], rank0);
+            // assert_eq!(rating[&1], rank1);
+            // assert_eq!(rating[&2], rank2);
+            // assert_eq!(rating[&3], rank3);
         }
 
         Ok(())
@@ -257,9 +257,9 @@ mod tests {
                 meritrank.add_edge(source, destination, weight);
             } else {
                 let mut graph = MyGraph::new();
-                graph.add_node(0.into());
-                graph.add_node(1.into());
-                graph.add_node(2.into());
+                graph.add_node(0);
+                graph.add_node(1);
+                graph.add_node(2);
 
                 let weights: Vec<f64> = record
                     .iter()
@@ -269,21 +269,21 @@ mod tests {
                     .collect::<Result<Vec<_>, _>>()?
                     .try_into()?;
 
-                graph.add_edge(0.into(), 1.into(), weights[0]);
-                graph.add_edge(0.into(), 2.into(), weights[1]);
-                graph.add_edge(1.into(), 0.into(), weights[2]);
-                graph.add_edge(1.into(), 2.into(), weights[3]);
-                graph.add_edge(2.into(), 0.into(), weights[4]);
-                graph.add_edge(2.into(), 1.into(), weights[5]);
+                graph.add_edge(0, 1, weights[0]);
+                graph.add_edge(0, 2, weights[1]);
+                graph.add_edge(1, 0, weights[2]);
+                graph.add_edge(1, 2, weights[3]);
+                graph.add_edge(2, 0, weights[4]);
+                graph.add_edge(2, 1, weights[5]);
 
                 meritrank_opt = Some(MeritRank::new(graph)?);
-                meritrank_opt.as_mut().unwrap().calculate(0.into(), 1000)?;
+                meritrank_opt.as_mut().unwrap().calculate(0, 1000)?;
             }
 
             let rating: HashMap<NodeId, f64> = meritrank_opt
                 .as_ref()
                 .ok_or("MeritRank not initialized")?
-                .get_ranks(0.into(), None)
+                .get_ranks(0, None)
                 .unwrap_or_default()
                 .into_iter()
                 .collect();
@@ -294,17 +294,17 @@ mod tests {
 
             eprintln!(
                 "Rating for node 0: {}, from dump: {}",
-                rating.get(&0.into()).unwrap_or(&0.0),
+                rating.get(&0).unwrap_or(&0.0),
                 rank0
             );
             eprintln!(
                 "Rating for node 1: {}, from dump: {}",
-                rating.get(&1.into()).unwrap_or(&0.0),
+                rating.get(&1).unwrap_or(&0.0),
                 rank1
             );
             eprintln!(
                 "Rating for node 2: {}, from dump: {}",
-                rating.get(&2.into()).unwrap_or(&0.0),
+                rating.get(&2).unwrap_or(&0.0),
                 rank2
             );
         }
@@ -336,7 +336,7 @@ mod tests {
                 meritrank.add_edge(source, destination, weight);
             } else {
                 let mut graph = MyGraph::new();
-                let node_ids: Vec<NodeId> = vec![0.into(), 1.into(), 2.into(), 3.into()];
+                let node_ids: Vec<NodeId> = vec![0, 1, 2, 3];
 
                 for &node_id in &node_ids {
                     graph.add_node(node_id.into());
@@ -358,17 +358,17 @@ mod tests {
                 ];
 
                 for (i, &(src, dest)) in edges.iter().enumerate() {
-                    graph.add_edge(src.into(), dest.into(), weights[i]);
+                    graph.add_edge(src, dest, weights[i]);
                 }
 
                 meritrank_opt = Some(MeritRank::new(graph)?);
-                meritrank_opt.as_mut().unwrap().calculate(0.into(), 500)?;
+                meritrank_opt.as_mut().unwrap().calculate(0, 500)?;
             }
 
             let rating: Vec<(NodeId, f64)> = meritrank_opt
                 .as_ref()
                 .ok_or("MeritRank not initialized")?
-                .get_ranks(0.into(), None)
+                .get_ranks(0, None)
                 .unwrap_or_default();
 
             let expected_ranks: [f64; 4] = [
@@ -382,7 +382,7 @@ mod tests {
                 eprintln!(
                     "Rating for node {}: {}, from dump: {}",
                     i,
-                    rating.get(i).unwrap_or(&(i.into(), 0.0)).1,
+                    rating.get(i).unwrap_or(&(i as NodeId, 0.0)).1,
                     expected_rank
                 );
             }
