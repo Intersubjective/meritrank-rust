@@ -6,8 +6,8 @@ use crate::walk::{WalkId, WalkIdGenerator};
 /// Represents a random walk through a graph.
 #[derive(Clone)]
 pub struct RandomWalk {
-    nodes: Vec<NodeId>,
-    walk_id: WalkId,
+    pub nodes   : Vec<NodeId>,
+        walk_id : WalkId,
 }
 
 impl RandomWalk {

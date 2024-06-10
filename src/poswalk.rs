@@ -12,8 +12,8 @@ use crate::random_walk::RandomWalk;
 
 /// Represents a positional random walk.
 pub struct PosWalk {
-    walk: RandomWalk,
-    pos: usize,
+    pub walk : RandomWalk,
+        pos  : usize,
 }
 
 #[allow(dead_code)]

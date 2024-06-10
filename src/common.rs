@@ -6,9 +6,9 @@ where
 {
     let x: f64 = x.into();
 
-    if x >= EPSILON {
+    if x > EPSILON {
         return 1;
-    } else if x <= -EPSILON {
+    } else if x < -EPSILON {
         return -1;
     }
     return 0;

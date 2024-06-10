@@ -742,7 +742,7 @@ impl MeritRank {
             }
         }
 
-        if weight > -EPSILON && weight < EPSILON {
+        if weight >= -EPSILON && weight <= EPSILON {
             if self.graph.contains_edge(src, dest) {
                 self.graph.remove_edge(src, dest);
             }
@@ -764,7 +764,7 @@ impl MeritRank {
             let _ = self.recalc_invalidated_walk(
                 walk_mut,
                 force_first_step,
-                OPTIMIZE_INVALIDATION && weight == 0.0,
+                OPTIMIZE_INVALIDATION && weight >= -EPSILON && weight <= EPSILON,
             );
 
             if let Some(negs) = negs_cache.get_mut(&first_node) {
@@ -785,11 +785,9 @@ impl MeritRank {
         if ASSERT {
             for (ego, hits) in &self.personal_hits {
                 for (peer, count) in hits {
-                    let walks = self.walks.get_walks_through_node(*peer, |_| true);
-                    if walks.len() != *count as usize {
-                        assert!(false);
-                    }
-                    if *count > 0.0 && weight > 0.0 && !self.graph.is_connecting(*ego, *peer) {
+                    let walks = self.walks.get_walks_through_node(*peer, |x| x.walk.nodes[0] == *ego);
+                    assert_eq!(walks.len(), *count as usize);
+                    if *count > 0.0 && weight > EPSILON && !self.graph.is_connecting(*ego, *peer) {
                         assert!(false);
                     }
                 }
