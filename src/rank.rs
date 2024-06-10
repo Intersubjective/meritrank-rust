@@ -281,7 +281,7 @@ impl MeritRank {
         let counter = self
             .personal_hits
             .get(&ego)
-            .ok_or(MeritRankError::NodeDoesNotCalculated)?;
+            .ok_or(MeritRankError::NodeIsNotCalculated)?;
 
         let hits = counter.get_count(&target).copied().unwrap_or(0.0);
 

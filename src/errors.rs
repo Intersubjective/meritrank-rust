@@ -6,10 +6,9 @@ pub enum MeritRankError {
     RandomChoiceError,
     NoPathExists,
     NodeIdParseError,
-    NodeDoesNotCalculated,
+    NodeIsNotCalculated,
     InvalidWalkLength,
-    // Experimental
-    InvalidNode
+    InvalidNode,
 }
 
 use std::error::Error;
@@ -23,7 +22,7 @@ impl Display for MeritRankError {
             MeritRankError::RandomChoiceError => write!(f, "Random choice error"),
             MeritRankError::NoPathExists => write!(f, "No path exists"),
             MeritRankError::NodeIdParseError => write!(f, "Node ID parse error"),
-            MeritRankError::NodeDoesNotCalculated => write!(f, "Node does not calculated"),
+            MeritRankError::NodeIsNotCalculated => write!(f, "Node is not calculated"),
             MeritRankError::InvalidWalkLength => write!(f, "Invalid walk length"),
             MeritRankError::InvalidNode => write!(f, "Invalid node"),
         }
@@ -31,13 +30,4 @@ impl Display for MeritRankError {
 }
 
 impl Error for MeritRankError {
-    // fn source(&self) -> Option<&(dyn Error + 'static)> {
-    //     match self {
-    //         MeritRankError::NodeDoesNotExist => None,
-    //         MeritRankError::SelfReferenceNotAllowed => None,
-    //         MeritRankError::RandomChoiceError => None,
-    //         MeritRankError::NoPathExists => None,
-    //         MeritRankError::NodeIdParseError => None,
-    //     }
-    // }
 }
