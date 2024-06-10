@@ -4,6 +4,7 @@ use rand::prelude::*;
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 
+use crate::constants::EPSILON;
 use crate::common::sign;
 use crate::constants::{ASSERT, OPTIMIZE_INVALIDATION};
 use crate::counter::Counter;
@@ -741,7 +742,7 @@ impl MeritRank {
             }
         }
 
-        if weight == 0.0 {
+        if weight > -EPSILON && weight < EPSILON {
             if self.graph.contains_edge(src, dest) {
                 self.graph.remove_edge(src, dest);
             }
