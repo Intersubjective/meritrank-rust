@@ -270,7 +270,7 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
   ///
   /// println!("MeritRank score for node {:?} from node {:?}: {:?}", target, ego, score);
   /// ```
-  pub fn get_node_score(&self, ego: NodeId, target: NodeId) -> Result<Weight, MeritRankError> {
+  pub fn get_node_score(&self, ego : NodeId, target : NodeId) -> Result<Weight, MeritRankError> {
     let counter = self
       .personal_hits
       .get(&ego)
@@ -291,6 +291,13 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
     let hits_penalized = hits + neg_hits.get(&target).copied().unwrap_or(0.0);
 
     Ok(hits_penalized / counter.total_count())
+  }
+
+  pub fn get_node_data(&self, ego : NodeId) -> Result<NodeData, MeritRankError> {
+    match self.graph.get_node_info(ego) {
+      Some((_, data)) => Ok(data),
+      None            => Err(MeritRankError::NodeDoesNotExist),
+    }
   }
 
   /// Returns the ranks of peers for the given ego node.
