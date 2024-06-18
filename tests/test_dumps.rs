@@ -132,7 +132,7 @@ mod tests {
         // println!("Rating: {:?}", rating);
     }
 
-    // #[test]
+    #[test]
     fn test_meritrank_long() -> Result<(), Box<dyn Error>> {
         let file_path_gz = "tests/dumps/OUT4.csv.gz";
         let file = File::open(file_path_gz)?;

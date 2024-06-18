@@ -54,36 +54,36 @@ impl MeritRank {
         self.walks.add_walk(walk, start_pos);
     }
 
-    fn _get_walks(&self) -> &IndexMap<NodeId, IndexMap<WalkId, PosWalk>> {
+    pub fn _get_walks(&self) -> &IndexMap<NodeId, IndexMap<WalkId, PosWalk>> {
         self.walks.get_walks()
     }
 
-    fn _get_neg_hits(&self) -> &HashMap<NodeId, HashMap<NodeId, Weight>> {
+    pub fn _get_neg_hits(&self) -> &HashMap<NodeId, HashMap<NodeId, Weight>> {
         &self.neg_hits
     }
 
-    fn _get_personal_hits(&self) -> &HashMap<NodeId, Counter> {
+    pub fn _get_personal_hits(&self) -> &HashMap<NodeId, Counter> {
         &self.personal_hits
     }
 
-    fn _get_graph(&self) -> &MyGraph {
+    pub fn _get_graph(&self) -> &MyGraph {
         &self.graph
     }
 
-    fn _get_graph_mut(&mut self) -> &mut MyGraph {
+    pub fn _get_graph_mut(&mut self) -> &mut MyGraph {
         &mut self.graph
     }
 
-    fn _get_alpha(&self) -> Weight {
+    pub fn _get_alpha(&self) -> Weight {
         self.alpha
     }
 
-    fn _set_alpha(&mut self, alpha: Weight) {
+    pub fn _set_alpha(&mut self, alpha: Weight) {
         self.alpha = alpha;
     }
 
     // Get the hit count for a specific node
-    fn _get_hit_counts(&self, node: &NodeId) -> Option<f64> {
+    pub fn _get_hit_counts(&self, node: &NodeId) -> Option<f64> {
         self.personal_hits
             .get(node)
             .and_then(|counter| counter.get_count(node))
