@@ -188,11 +188,11 @@ impl MeritRank {
     /// }
     /// ```
     pub fn calculate(&mut self, ego: NodeId, num_walks: usize) -> Result<(), MeritRankError> {
-        self.walks.drop_walks_from_node(ego);
-
         if !self.graph.contains_node(ego) {
             return Err(MeritRankError::NodeDoesNotExist);
         }
+
+        self.walks.drop_walks_from_node(ego);
 
         let mut negs = self
             .neighbors_weighted(ego, false)
@@ -798,11 +798,15 @@ impl MeritRank {
         if ASSERT {
             for (ego, hits) in &self.personal_hits {
                 for (peer, count) in hits {
-                    let walks = self.walks.get_walks_through_node(*peer, |_| true);
+                    let walks = self.walks.get_walks_through_node(*peer, |walk| {
+    walk.get_walk().get_nodes().first().map_or(false, |first_element| first_element == ego)
+});
+
                     if VERBOSE {
-                        println!("Peer: {:?}, Count: {:?}, Walks: {:?}", *peer, *count as usize, walks.len());
+                        println!("Ego: {:?}, Peer: {:?}, Count: {:?}, Walks: {:?}", *ego, *peer, *count as usize, walks.len());
                     }
                     if walks.len() != *count as usize {
+                        println!("bla: ? {:?}", self.walks.get_walks_through_node(*peer, |_|true));
                         assert!(false);
                     }
                     if *count > 0.0 && weight > 0.0 && !self.graph.is_connecting(*ego, *peer) {
