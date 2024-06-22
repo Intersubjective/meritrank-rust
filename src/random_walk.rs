@@ -252,8 +252,18 @@ impl RandomWalk {
   /// let split_segment = random_walk.split_from(2);
   /// ```
   pub fn split_from(&mut self, pos: usize) -> RandomWalk {
+    // !!!ACHTUNG!!!
+    // This method works differently from Python one:
+    // this one _copies_ the UUID from the original walk as
+    // a horrible hacky way to pass the UUID of the original walk
+    // to the "implement_changes" method. This is necessary to make
+    // "implement_changes" properly delete the original walks before adding
+    // them again
     let split_segment = self.nodes.split_off(pos);
-    RandomWalk::from_nodes(split_segment)
+    return RandomWalk {
+      nodes   : split_segment,
+      walk_id : self.walk_id.clone(), // clone the walk_id from the source object
+    };
   }
 }
 

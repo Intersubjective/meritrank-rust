@@ -3,7 +3,7 @@ mod tests {
   use meritrank::{MeritRank, Graph};
 
   #[test]
-  fn meritrank_smoke() {
+  fn smoke() {
     let mut rank = MeritRank::new(Graph::<()>::new()).unwrap();
 
     rank.add_node(0, ());

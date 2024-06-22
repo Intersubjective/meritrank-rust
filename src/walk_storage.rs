@@ -71,50 +71,51 @@ impl WalkStorage {
   ///
   /// * `invalidated_walks` - The vector of invalidated walks
   pub fn implement_changes(&mut self, invalidated_walks: Vec<(RandomWalk, RandomWalk)>) {
-    for (updated_walk, invalidated_segment) in invalidated_walks {
+    for (_, invalidated_segment) in invalidated_walks.clone() {
+      let invalidated_segment_id = invalidated_segment.get_walk_id();
+
+      let mut nodes_to_remove: HashSet<NodeId> = HashSet::new();
+      nodes_to_remove.extend(invalidated_segment.iter().copied());
+      for node in nodes_to_remove {
+        if let Some(walk_map) = self.walks.get_mut(&node) {
+          // If the mutable reference is found, remove the entry with the updated_walk_id key
+          //println!("remove: \n{:?}\n", node);
+          walk_map.remove(&invalidated_segment_id);
+        }
+      };
+    };
+
+    for (updated_walk, _) in invalidated_walks.clone() {
       let updated_walk_id = updated_walk.get_walk_id();
 
       let mut nodes_to_update: HashSet<NodeId> = HashSet::new();
       nodes_to_update.extend(updated_walk.get_nodes().iter().copied());
-      nodes_to_update.extend(invalidated_segment.iter().copied());
 
       for node in nodes_to_update {
-        let updated_walk_present = updated_walk.contains(&node);
-        let invalidated_segment_present = invalidated_segment.contains(&node);
-
-        if updated_walk_present || invalidated_segment_present {
-          if let Some(pos_walks) = self.walks.get_mut(&node) {
-            if updated_walk_present {
-              // Update existing PosWalk entry
-              let start_pos = updated_walk
-                .get_nodes()
-                .iter()
-                .position(|&n| n == node)
-                .unwrap();
-              let updated_pos_walk = PosWalk::new(updated_walk.clone(), start_pos);
-              pos_walks.insert(updated_walk_id, updated_pos_walk);
-            }
-            let old_walk_id = invalidated_segment.get_walk_id();
-            pos_walks.remove(&old_walk_id);
-          } else if updated_walk_present {
-            // Add new PosWalk entry
-            let start_pos = updated_walk
-              .get_nodes()
-              .iter()
-              .position(|&n| n == node)
-              .unwrap();
-            let new_pos_walk = PosWalk::new(updated_walk.clone(), start_pos);
-
-            let mut pos_walks = IndexMap::new();
-            pos_walks.insert(updated_walk_id, new_pos_walk);
-            self.walks.insert(node, pos_walks);
-          }
+        if let Some(pos_walks) = self.walks.get_mut(&node) {
+          // Update existing PosWalk entry
+          let updated_pos_walk = WalkStorage::create_pos_walk(&updated_walk, &node);
+          pos_walks.insert(updated_walk_id, updated_pos_walk);
+        } else {
+          // Add new PosWalk entry
+          let new_pos_walk  = WalkStorage::create_pos_walk(&updated_walk, &node);
+          let mut pos_walks = IndexMap::new();
+          pos_walks.insert(updated_walk_id, new_pos_walk);
+          self.walks.insert(node, pos_walks);
         }
       }
 
       // Retain only the nodes that are still present in the storage
       self.walks.retain(|_, pos_walks| !pos_walks.is_empty());
     }
+  }
+
+  fn create_pos_walk(walk: &RandomWalk, node: &NodeId) -> PosWalk{
+      let start_pos= walk.get_nodes()
+          .iter()
+          .position(|&n| n == *node)
+          .expect("Node should be present in the walk");
+      return PosWalk::new(walk.clone(), start_pos);
   }
 
   /// Updates the WalkStorage based on a new RandomWalk and an optional old RandomWalk.
@@ -280,7 +281,7 @@ impl WalkStorage {
   /// # Example
   ///
   /// ```rust
-  /// use meritrank::{WalkStorage, NodeId, MeritRankError, MyGraph};
+  /// use meritrank::{WalkStorage, NodeId, MeritRankError, Graph};
   ///
   /// let mut storage = WalkStorage::new();
   ///
@@ -290,10 +291,6 @@ impl WalkStorage {
   pub fn drop_walks_from_node(&mut self, node: NodeId) {
     for (_, pos_walks) in &mut self.walks {
       pos_walks.retain(|_, pos_walk| pos_walk.get_walk().first_node().unwrap() != node);
-    }
-
-    if let Some(pos_walks) = self.walks.get_mut(&node) {
-      pos_walks.clear();
     }
 
     self.walks.retain(|_, pos_walks| !pos_walks.is_empty());
@@ -316,7 +313,7 @@ impl WalkStorage {
   /// # Example
   ///
   /// ```rust
-  /// use meritrank::{WalkStorage, NodeId, MeritRankError, MyGraph};
+  /// use meritrank::{WalkStorage, NodeId, MeritRankError, Graph};
   ///
   /// let storage = WalkStorage::new();
   ///
@@ -546,7 +543,7 @@ impl WalkStorage {
   /// # Examples
   ///
   /// ```rust
-  /// use meritrank::{WalkStorage, NodeId, MeritRankError, MyGraph};
+  /// use meritrank::{WalkStorage, NodeId, MeritRankError, Graph};
   ///
   /// let mut storage = WalkStorage::new();
   ///

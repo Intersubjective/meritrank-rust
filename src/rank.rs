@@ -36,7 +36,7 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
   ///
   /// # Arguments
   ///
-  /// * `graph` - A `MyGraph` instance representing the underlying graph.
+  /// * `graph` - A `Graph` instance representing the underlying graph.
   ///
   /// # Returns
   ///
@@ -98,15 +98,14 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
   /// # Examples
   ///
   /// ```
-  /// use meritrank::{MyGraph, NodeId, MeritRankError, MeritRank};
+  /// use meritrank::{Graph, NodeId, MeritRankError, MeritRank, Neighbors};
   ///
-  /// let graph = MyGraph::new();
+  /// let graph = Graph::<()>::new();
   /// let merit_rank = MeritRank::new(graph).unwrap();
   ///
   /// let node : NodeId = 1;
-  /// let positive = true;
   ///
-  /// if let Some(neighbors) = merit_rank.neighbors_weighted(node, positive) {
+  /// if let Some(neighbors) = merit_rank.neighbors_weighted(node, Neighbors::Positive) {
   ///   for (neighbor, weight) in neighbors {
   ///     println!("Neighbor: {:?}, Weight: {:?}", neighbor, weight);
   ///   }
@@ -162,9 +161,9 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
   /// # Example
   ///
   /// ```rust
-  /// use meritrank::{MeritRank, MeritRankError, MyGraph, NodeId};
+  /// use meritrank::{MeritRank, MeritRankError, Graph, NodeId};
   ///
-  /// let graph = MyGraph::new();
+  /// let graph = Graph::<()>::new();
   /// let mut merit_rank = MeritRank::new(graph).unwrap();
   ///
   /// let ego : NodeId = 1;
@@ -180,11 +179,11 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
   /// }
   /// ```
   pub fn calculate(&mut self, ego: NodeId, num_walks: usize) -> Result<(), MeritRankError> {
-    self.walks.drop_walks_from_node(ego);
-
     if !self.graph.contains_node(ego) {
       return Err(MeritRankError::NodeDoesNotExist);
     }
+
+    self.walks.drop_walks_from_node(ego);
 
     let mut negs = self
       .neighbors_weighted(ego, Neighbors::Negative)
@@ -258,9 +257,9 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
   /// # Example
   ///
   /// ```rust
-  /// use meritrank::{MeritRank, MeritRankError, MyGraph, NodeId, Weight};
+  /// use meritrank::{MeritRank, MeritRankError, Graph, NodeId, Weight};
   ///
-  /// let graph = MyGraph::new();
+  /// let graph = Graph::<()>::new();
   /// let mut merit_rank = MeritRank::new(graph).unwrap();
   ///
   /// let ego : NodeId = 1;
@@ -358,9 +357,9 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
   /// # Examples
   ///
   /// ```
-  /// use meritrank::{MyGraph, NodeId, MeritRankError, MeritRank};
+  /// use meritrank::{Graph, NodeId, MeritRankError, MeritRank};
   ///
-  /// let graph = MyGraph::new();
+  /// let graph = Graph::<()>::new();
   /// let merit_rank = MeritRank::new(graph).unwrap();
   ///
   /// let start_node : NodeId = 1;
@@ -400,9 +399,9 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
   /// # Examples
   ///
   /// ```
-  /// use meritrank::{MyGraph, NodeId, MeritRankError, MeritRank};
+  /// use meritrank::{Graph, NodeId, MeritRankError, MeritRank};
   ///
-  /// let graph = MyGraph::new();
+  /// let graph = Graph::<()>::new();
   /// let merit_rank = MeritRank::new(graph).unwrap();
   ///
   /// let start_node : NodeId = 1;
@@ -584,9 +583,9 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
   /// # Examples
   ///
   /// ```
-  /// use meritrank::{MeritRank, MyGraph, NodeId, RandomWalk};
+  /// use meritrank::{MeritRank, Graph, NodeId, RandomWalk};
   ///
-  /// let graph = MyGraph::new();
+  /// let graph = Graph::<()>::new();
   /// let mut merit_rank = MeritRank::new(graph).unwrap();
   /// let mut random_walk = RandomWalk::new();
   /// random_walk.extend(&*vec![ 1, 2, ]);
@@ -784,7 +783,9 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
     if ASSERT {
       for (ego, hits) in &self.personal_hits {
         for (peer, count) in hits {
-          let walks = self.walks.get_walks_through_node(*peer, |x| x.walk.nodes[0] == *ego);
+          let walks = self.walks.get_walks_through_node(*peer, |walk| {
+            walk.get_walk().get_nodes().first().map_or(false, |first_element| first_element == ego)
+          });
           assert_eq!(walks.len(), *count as usize);
           if *count > 0.0 && weight > EPSILON && !self.graph.is_connecting(*ego, *peer) {
             assert!(false);
