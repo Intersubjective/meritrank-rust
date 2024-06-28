@@ -4,13 +4,13 @@ mod tests {
   use super::*;
   use meritrank::{NodeId, RandomWalk, WalkId, Weight};
 
+
   use std::collections::HashMap;
 
   #[test]
   fn test_random_walk_new() {
     let random_walk = RandomWalk::new();
     assert!(random_walk.get_nodes().is_empty());
-    assert_ne!(random_walk.get_walk_id(), WalkId::nil());
   }
 
   #[test]
@@ -18,7 +18,6 @@ mod tests {
     let nodes = vec![ 1, 2, 3, ];
     let random_walk = RandomWalk::from_nodes(nodes.clone());
     assert_eq!(random_walk.get_nodes(), nodes.as_slice());
-    assert_ne!(random_walk.get_walk_id(), WalkId::nil());
   }
 
   #[test]
@@ -90,12 +89,6 @@ mod tests {
 
     let random_walk = RandomWalk::new();
     assert_eq!(random_walk.last_node(), None);
-  }
-
-  #[test]
-  fn test_random_walk_get_walk_id() {
-    let random_walk = RandomWalk::new();
-    assert_ne!(random_walk.get_walk_id(), WalkId::nil());
   }
 
   #[test]

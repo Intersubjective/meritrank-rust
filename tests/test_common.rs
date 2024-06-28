@@ -6,19 +6,11 @@ mod tests {
   use meritrank::errors::MeritRankError;
   use meritrank::graph::{NodeId, EdgeId, Weight};
   use meritrank::random_walk::RandomWalk;
-  use meritrank::walk::{WalkId, WalkIdGenerator};
   use meritrank::walk_storage::WalkStorage;
 
   use rand::rngs::StdRng;
   use rand::SeedableRng;
 
-  #[test]
-  fn test_walk_id_generator() {
-    // let generator = WalkIdGenerator::new();
-    let walk_id1 = WalkIdGenerator::new().get_id();
-    let walk_id2 = WalkIdGenerator::new().get_id();
-    assert_ne!(walk_id1, walk_id2);
-  }
 
   #[test]
   fn test_sign() {

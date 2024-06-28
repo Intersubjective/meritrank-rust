@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::{PosWalk, RandomWalk, WalkStorage};
+use crate::{RandomWalk, WalkStorage};
 
 impl fmt::Debug for RandomWalk {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -19,15 +19,17 @@ impl fmt::Debug for WalkStorage {
   }
 }
 
-impl fmt::Debug for PosWalk {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    // Implement the formatting logic for PosWalk
-    // Here you can format the PosWalk fields as desired
-    write!(
-      f,
-      "PosWalk {{ pos: {:?}, walk: {:?} }}",
-      self.get_pos(),
-      self.get_walk()
-    )
-  }
+#[macro_export]
+macro_rules! assert_approx_eq {
+    ($a:expr, $b:expr, $rel_tol:expr) => {
+        {
+            let diff = ($a - $b).abs();
+            let max_ab = $a.abs().max($b.abs());
+            assert!(
+                diff <= max_ab * $rel_tol,
+                "assertion failed: `(left ≈ right)`\n  left: `{}`, right: `{}`, diff: `{}`, max_ab: `{}`, relative tolerance: `{}`",
+                $a, $b, diff, max_ab, $rel_tol
+            );
+        }
+    };
 }

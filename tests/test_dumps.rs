@@ -1,3 +1,42 @@
+// Format description for triples from OUT3, and similarly for quadruples from OUT4:
+// OUT3/OUT4 contain all possible transitions between 3-graphs and 4-graphs, respectively,
+// up to isomorphism. For each transition, there are scores from reference Python
+// implementation of MeritRank - both incremental and non-incremental.
+//
+// The first 3 numbers represent the edge change in the format: <src>, <dst>, <weight>
+// For example, 0, 1, -1 means an edge from node 0 to node 1 is added
+// (or overwritten) with a weight of -1.
+// Or for example, 2, 1, 0 means an edge from node 2 to node 1 is removed.
+//
+// The next 6 numbers represent the state of the edge weights after the change, in the format:
+// [(0, 1), (0, 2), (1, 0), (1, 2), (2, 0), (2, 1)]
+// For example, the entry -1, 1, 0, 0, 0, 1 means the following edges with their weights are present:
+// 0->1 (weight -1), 0->2 (weight 1), 2->1 (weight 1)
+//
+// The next 3 numbers represent the ranking for the three nodes computed from
+// scratch (non-incremental)
+// <rank 0>, <rank 1>, <rank 2>
+//
+// The next 3 numbers represent the ranking computed incrementally,
+// as the result of the transition from the previous step
+// (previous row in the table) to the current one, based on the edge
+// change recorded in the first 3 numbers of the table
+// <rank_inc 0>, <rank_inc 1>, <rank_inc 2>
+//
+// For the OUT4 table, the edge weight state format is:
+// [(0, 1), (0, 2), (0, 3), (1, 0), (1, 2), (1, 3), (2, 0), (2, 1), (2, 3), (3, 0), (3, 1), (3, 2)]
+//
+// Note that the initial state is not provided - this is because, firstly,
+// it was tedious to write an exception in the loop (one line, lol),
+// and secondly, because the state in the last row corresponds
+// to the state in the first row. This sequence cyclically traverses
+// the entire graph of possible graph states.
+// Approximately like this (here one letter represents one specific graph/state):
+// A -> B -> C -> D -> C -> B -> A
+
+
+
+
 #[cfg(test)]
 mod tests {
   use csv::ReaderBuilder;
@@ -40,7 +79,7 @@ mod tests {
     Ok(())
   }
 
-  use meritrank::{MeritRank, Graph, NodeId};
+  use meritrank::{MeritRank, Graph, NodeId, assert_approx_eq};
   use std::collections::HashMap;
 
 
@@ -86,11 +125,12 @@ mod tests {
       let mut meritrank = MeritRank::new(complete_graph).unwrap();
 
       // calculate merit rank
-      meritrank.calculate(1, 250)?;
+      // ACHTUNG! To pass, this test requires at least 10,000 walks!
+      meritrank.calculate(0, 10000)?;
       // meritrank.calculate(2, 1000)?;
       // meritrank.calculate(3, 1000);
 
-      let rating: HashMap<NodeId, f64> = meritrank.get_ranks(1, None).unwrap_or({
+      let rating: HashMap<NodeId, f64> = meritrank.get_ranks(0, None).unwrap_or({
         vec![
           (0, 0.0),
           (1, 0.0),
@@ -99,33 +139,32 @@ mod tests {
       }).into_iter().collect();
 
       // check rating
+      let r0 = rating.get(&0).unwrap_or(&0.0);
       eprintln!(
-        "Rating for node 1: {}, from dump: {}",
-        rating.get(&0).unwrap_or(&0.0),
+        "Rating for node 0: {}, from dump: {}",
+        r0,
         rank0
       );
+      assert_approx_eq!(r0, rank0, 0.1);
+
+      let r1 = rating.get(&1).unwrap_or(&0.0);
       eprintln!(
-        "Rating for node 2: {}, from dump: {}",
-        rating.get(&1).unwrap_or(&0.0),
+        "Rating for node 1: {}, from dump: {}",
+        r1,
         rank1
       );
+      assert_approx_eq!(r1, rank1, 0.1);
+
+      let r2 = rating.get(&2).unwrap_or(&0.0);
       eprintln!(
-        "Rating for node 3: {}, from dump: {}",
-        rating.get(&2).unwrap_or(&0.0),
+        "Rating for node 2: {}, from dump: {}",
+        r2,
         rank2
       );
+      assert_approx_eq!(r2, rank2, 0.1);
     }
 
     Ok(())
-
-    // // calculate merit rank
-    // let rating = match newrank.calculate(3, 10000) {
-    //   Ok(r) => r,
-    //   Err(e) => panic!("Error: {}", e),
-    // };
-
-    // print rating
-    // println!("Rating: {:?}", rating);
   }
 
   #[test]
@@ -238,7 +277,7 @@ mod tests {
           record
         }
         Err(e) => {
-          eprintln!("Ошибка при чтении записи: {}", e);
+          eprintln!("Error when reading record: {}", e);
           return Ok(());
         }
       };
@@ -273,7 +312,7 @@ mod tests {
         graph.add_edge(2, 1, weights[5]);
 
         meritrank_opt = Some(MeritRank::new(graph)?);
-        meritrank_opt.as_mut().unwrap().calculate(0, 1000)?;
+        meritrank_opt.as_mut().unwrap().calculate(0, 10000)?;
       }
 
       let rating: HashMap<NodeId, f64> = meritrank_opt
@@ -288,21 +327,30 @@ mod tests {
       let rank1: f64 = record[10].trim().parse()?;
       let rank2: f64 = record[11].trim().parse()?;
 
+      // check rating
+      let r0 = rating.get(&0).unwrap_or(&0.0);
       eprintln!(
         "Rating for node 0: {}, from dump: {}",
-        rating.get(&0).unwrap_or(&0.0),
+        r0,
         rank0
       );
+      assert_approx_eq!(r0, rank0, 0.1);
+
+      let r1 = rating.get(&1).unwrap_or(&0.0);
       eprintln!(
         "Rating for node 1: {}, from dump: {}",
-        rating.get(&1).unwrap_or(&0.0),
+        r1,
         rank1
       );
+      assert_approx_eq!(r1, rank1, 0.1);
+
+      let r2 = rating.get(&2).unwrap_or(&0.0);
       eprintln!(
         "Rating for node 2: {}, from dump: {}",
-        rating.get(&2).unwrap_or(&0.0),
+        r2,
         rank2
       );
+      assert_approx_eq!(r2, rank2, 0.1);
     }
 
     Ok(())

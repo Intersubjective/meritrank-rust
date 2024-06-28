@@ -1,13 +1,11 @@
 use std::collections::HashMap;
 
 use crate::graph::{NodeId, Weight};
-use crate::walk::{WalkId, WalkIdGenerator};
 
 /// Represents a random walk through a graph.
 #[derive(Clone)]
 pub struct RandomWalk {
   pub nodes   : Vec<NodeId>,
-      walk_id : WalkId,
 }
 
 impl RandomWalk {
@@ -21,10 +19,8 @@ impl RandomWalk {
   /// let random_walk = RandomWalk::new();
   /// ```
   pub fn new() -> Self {
-    let walk_id = WalkIdGenerator::new().get_id();
     RandomWalk {
       nodes: Vec::new(),
-      walk_id,
     }
   }
 
@@ -43,8 +39,7 @@ impl RandomWalk {
   /// let random_walk = RandomWalk::from_nodes(nodes);
   /// ```
   pub fn from_nodes(nodes: Vec<NodeId>) -> Self {
-    let walk_id = WalkIdGenerator::new().get_id();
-    RandomWalk { nodes, walk_id }
+    RandomWalk { nodes}
   }
 
   /// Adds a node to the random walk.
@@ -166,19 +161,6 @@ impl RandomWalk {
     self.nodes.last().copied()
   }
 
-  /// Returns the ID of the random walk.
-  ///
-  /// # Examples
-  ///
-  /// ```rust
-  /// use meritrank::{WalkStorage, RandomWalk};
-  ///
-  /// let random_walk = RandomWalk::new();
-  /// let walk_id = random_walk.get_walk_id();
-  /// ```
-  pub fn get_walk_id(&self) -> WalkId {
-    self.walk_id
-  }
 
   /// Returns an iterator over the node IDs in the random walk.
   ///
@@ -252,17 +234,9 @@ impl RandomWalk {
   /// let split_segment = random_walk.split_from(2);
   /// ```
   pub fn split_from(&mut self, pos: usize) -> RandomWalk {
-    // !!!ACHTUNG!!!
-    // This method works differently from Python one:
-    // this one _copies_ the UUID from the original walk as
-    // a horrible hacky way to pass the UUID of the original walk
-    // to the "implement_changes" method. This is necessary to make
-    // "implement_changes" properly delete the original walks before adding
-    // them again
     let split_segment = self.nodes.split_off(pos);
     return RandomWalk {
       nodes   : split_segment,
-      walk_id : self.walk_id.clone(), // clone the walk_id from the source object
     };
   }
 }

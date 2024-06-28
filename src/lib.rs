@@ -4,17 +4,13 @@ pub mod counter;
 pub mod debug;
 pub mod errors;
 pub mod graph;
-pub mod poswalk;
 pub mod random_walk;
 pub mod rank;
-pub mod walk;
 pub mod walk_storage;
 
 pub use counter::{Counter, CounterIterator};
 pub use errors::MeritRankError;
 pub use graph::{Graph, NodeId, EdgeId, Weight};
-pub use poswalk::PosWalk;
 pub use random_walk::RandomWalk;
 pub use rank::{MeritRank, Neighbors};
-pub use walk::{WalkId, WalkIdGenerator};
-pub use walk_storage::WalkStorage;
+pub use walk_storage::{WalkStorage, WalkId};

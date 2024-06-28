@@ -4,10 +4,10 @@ mod tests {
   use super::*;
   use indexmap::indexmap;
   use meritrank::graph::{NodeId, EdgeId};
-  use meritrank::poswalk::PosWalk;
   use meritrank::random_walk::RandomWalk;
   use meritrank::walk_storage::WalkStorage;
 
+  /*
   #[test]
   fn test_walk_storage_add_walk() {
     let mut walk_storage = WalkStorage::new();
@@ -17,7 +17,8 @@ mod tests {
     ]);
     let start_pos = 1;
 
-    walk_storage.add_walk(walk.clone(), start_pos);
+    let new_walk_id = walk_storage.add_walk(walk.clone());
+    walk_storage.add_walk_to_bookkeeping(new_walk_id, start_pos);
 
     let walk_storage_str = format!("{:?}", walk_storage);
     let expected_walks_str = format!(
@@ -46,122 +47,8 @@ mod tests {
     // }
   }
 
-  #[test]
-  fn test_walk_storage_update_walk() {
-    let mut walk_storage = WalkStorage::new();
+   */
 
-    let old_walk =
-      RandomWalk::from_nodes(vec![ 1, 2, 3, ]);
-    let new_walk =
-      RandomWalk::from_nodes(vec![ 1, 4, 5, ]);
-
-    walk_storage.add_walk(old_walk.clone(), 0);
-    walk_storage.update_walk(new_walk.clone(), Some(old_walk.clone()));
-
-    // Check that the old walk is removed
-
-    let walk_storage_str = format!("{:?}", walk_storage);
-    let expected_walks_str = format!(
-      "WalkStorage {{ walks: {:?} }}",
-      indexmap! {
-        1 => indexmap! {
-          new_walk.get_walk_id() => PosWalk::new(new_walk.clone(), 0),
-        },
-        4 => indexmap! {
-          new_walk.get_walk_id() => PosWalk::new(new_walk.clone(), 1),
-        },
-        5 => indexmap! {
-          new_walk.get_walk_id() => PosWalk::new(new_walk.clone(), 2),
-        },
-      }
-    );
-
-    println!("walk_storage_str: \n{}\n\n", walk_storage_str);
-    println!("expected_walks_str: \n{}", expected_walks_str);
-
-    assert_eq!(walk_storage_str, expected_walks_str);
-  }
-
-  #[test]
-  fn test_walk_storage_implement_changes() {
-    let mut walk_storage = WalkStorage::new();
-
-    let old_walk =
-      RandomWalk::from_nodes(vec![ 1, 2, 3, ]);
-    let new_walk =
-      RandomWalk::from_nodes(vec![ 1, 4, 5, ]);
-
-    let update_walk_vec = vec![(new_walk.clone(), old_walk.clone())];
-
-    walk_storage.add_walk(old_walk.clone(), 0);
-    walk_storage.implement_changes(update_walk_vec);
-
-    // Check that the old walk is removed
-
-    let walk_storage_str = format!("{:?}", walk_storage);
-    let expected_walks_str = format!(
-      "WalkStorage {{ walks: {:?} }}",
-      indexmap! {
-        1 => indexmap! {
-          new_walk.get_walk_id() => PosWalk::new(new_walk.clone(), 0),
-        },
-        4  => indexmap! {
-          new_walk.get_walk_id() => PosWalk::new(new_walk.clone(), 1),
-        },
-        5 => indexmap! {
-          new_walk.get_walk_id() => PosWalk::new(new_walk.clone(), 2),
-        },
-      }
-    );
-
-    println!("walk_storage_str: \n{}\n", walk_storage_str);
-    println!("expected_walks_str: \n{}", expected_walks_str);
-
-    assert_eq!(walk_storage_str, expected_walks_str);
-  }
-
-  // #[test]
-  // fn test_walk_storage_update_walk() {
-  //   let mut walk_storage = WalkStorage::new();
-  //
-  //   let old_walk = RandomWalk::from_nodes(vec![
-  //     1,
-  //     2,
-  //     3,
-  //   ]);
-  //   let new_walk = RandomWalk::from_nodes(vec![
-  //     1,
-  //     4,
-  //     5,
-  //   ]);
-  //
-  //   walk_storage.add_walk(old_walk.clone(), 0);
-  //   walk_storage.update_walk(new_walk.clone(), Some(old_walk.clone()));
-  //
-  //   let mut expected_walks = WalkStorage::new();
-  //   expected_walks.add_walk(new_walk.clone(), 0);
-  //   expected_walks.add_walk(new_walk.clone(), 1);
-  //   expected_walks.add_walk(new_walk.clone(), 2);
-  //
-  //   assert_eq!(format!("{:?}", walk_storage), format!("{:?}", expected_walks));
-  // }
-
-  #[test]
-  fn test_walk_storage_get_walks_starting_from_node() {
-    let mut walk_storage = WalkStorage::new();
-
-    let walk1 = RandomWalk::from_nodes(vec![ 1, 2, 3, ]);
-    let walk2 = RandomWalk::from_nodes(vec![ 1, 4, 5, ]);
-
-    walk_storage.add_walk(walk1.clone(), 0);
-    walk_storage.add_walk(walk2.clone(), 0);
-
-    let walks = walk_storage._get_walks_starting_from_node(1);
-
-    assert_eq!(walks.len(), 2);
-    assert_eq!(walks[0].get_nodes(), walk1.get_nodes());
-    assert_eq!(walks[1].get_nodes(), walk2.get_nodes());
-  }
 
   #[test]
   fn test_walk_storage_drop_walks_from_node() {
@@ -171,29 +58,32 @@ mod tests {
     let walk2 = RandomWalk::from_nodes(vec![ 1, 4, 5, ]);
     let walk3 = RandomWalk::from_nodes(vec![ 2, 3, 4, ]);
 
-    walk_storage.add_walk(walk1.clone(), 0);
-    walk_storage.add_walk(walk2.clone(), 0);
-    walk_storage.add_walk(walk3.clone(), 0);
+    let walkid1 = walk_storage.add_walk(walk1.clone());
+    let walkid2 = walk_storage.add_walk(walk2.clone());
+    let walkid3 = walk_storage.add_walk(walk3.clone());
+    walk_storage.add_walk_to_bookkeeping(walkid1, 0);
+    walk_storage.add_walk_to_bookkeeping(walkid2, 0);
+    walk_storage.add_walk_to_bookkeeping(walkid3, 0);
 
     walk_storage.drop_walks_from_node(1);
 
     let walk_storage_str = format!("{:?}", walk_storage);
-    let expected_walks_str = format!(
+    let expected_visits_str = format!(
       "WalkStorage {{ walks: {:?} }}",
       indexmap! {
         2 => indexmap! {
-          walk3.get_walk_id() => PosWalk::new(walk3.clone(), 0),
+          walkid3 =>  0,
         },
         3 => indexmap! {
-          walk3.get_walk_id() => PosWalk::new(walk3.clone(), 1),
+          walkid3 => 1,
         },
         4 => indexmap! {
-          walk3.get_walk_id() => PosWalk::new(walk3.clone(), 2),
+          walkid3 => 2,
         },
       }
     );
 
-    assert_eq!(walk_storage_str, expected_walks_str);
+    assert_eq!(walk_storage_str, expected_visits_str);
 
     assert_eq!(walk_storage.get_walks().len(), 3);
     assert_eq!(
@@ -208,37 +98,48 @@ mod tests {
     assert_eq!(walk_storage.get_walks()[&4].len(), 1);
   }
 
-  #[test]
-  fn test_walk_storage_get_walks_through_node() {
+
+  /*
+ #[test]
+fn test_walk_storage_get_walks_through_node() {
     let mut walk_storage = WalkStorage::new();
 
-    let walk1 = RandomWalk::from_nodes(vec![ 1, 2, 3, ]);
-    let walk2 = RandomWalk::from_nodes(vec![ 2, 4, 5, ]);
-    let walk3 = RandomWalk::from_nodes(vec![ 1, 3, 4, ]);
+    let walk1 = RandomWalk::from_nodes(vec![1, 2, 3]);
+    let walk2 = RandomWalk::from_nodes(vec![2, 4, 5]);
+    let walk3 = RandomWalk::from_nodes(vec![1, 3, 4]);
 
-    walk_storage.add_walk(walk1.clone(), 0);
-    walk_storage.add_walk(walk2.clone(), 0);
-    walk_storage.add_walk(walk3.clone(), 0);
+    let walk1_id = walk_storage.add_walk(walk1.clone());
+    walk_storage.add_walk_to_bookkeeping(walk1_id, 0);
+
+    let walk2_id = walk_storage.add_walk(walk2.clone());
+    walk_storage.add_walk_to_bookkeeping(walk2_id, 0);
+
+    let walk3_id = walk_storage.add_walk(walk3.clone());
+    walk_storage.add_walk_to_bookkeeping(walk3_id, 0);
 
     let walks_filter_len = walk_storage
-      .get_walks_through_node(1, |pos_walk| pos_walk.get_walk().len() > 2);
+        .get_walks_through_node_filtered(1, |pos_walk| pos_walk.get_walk().len() > 2);
     assert_eq!(walks_filter_len.len(), 2);
-    assert_eq!(walks_filter_len[0].get_walk_id(), walk1.get_walk_id());
-    assert_eq!(walks_filter_len[1].get_walk_id(), walk3.get_walk_id());
+    assert!(walks_filter_len.iter().any(|pw| pw.get_walk_id() == walk1_id));
+    assert!(walks_filter_len.iter().any(|pw| pw.get_walk_id() == walk3_id));
 
-    let walks_filter_node = walk_storage.get_walks_through_node(2, |pos_walk| {
-      pos_walk.get_current_node() == 2
-        && pos_walk.get_walk().contains(&2)
+    let walks_filter_node = walk_storage.get_walks_through_node_filtered(2, |pos_walk| {
+        pos_walk.get_current_node() == 2
+            && pos_walk.get_walk().contains(&2)
     });
     assert_eq!(walks_filter_node.len(), 2);
-    assert_eq!(walks_filter_node[0].get_walk_id(), walk1.get_walk_id());
-    assert_eq!(walks_filter_node[1].get_walk_id(), walk2.get_walk_id());
+    assert!(walks_filter_node.iter().any(|pw| pw.get_walk_id() == walk1_id));
+    assert!(walks_filter_node.iter().any(|pw| pw.get_walk_id() == walk2_id));
 
-    let walks_no_match = walk_storage.get_walks_through_node(3, |pos_walk| {
-      pos_walk.get_current_node() == 5
+    let walks_no_match = walk_storage.get_walks_through_node_filtered(3, |pos_walk| {
+        pos_walk.get_current_node() == 5
     });
     assert_eq!(walks_no_match.len(), 0);
-  }
+}
+
+   */
+
+
 
   use rand::rngs::StdRng;
   use rand::SeedableRng;

@@ -1,13 +1,15 @@
+
 #[allow(unused_imports)]
 #[cfg(test)]
+
+
 mod tests {
   use super::*;
   use indexmap::indexmap;
   use meritrank::graph::{NodeId, EdgeId};
-  use meritrank::poswalk::PosWalk;
   use meritrank::random_walk::RandomWalk;
   use meritrank::walk_storage::WalkStorage;
-  use meritrank::{MeritRank, Graph};
+  use meritrank::{MeritRank, Graph, assert_approx_eq};
 
   use std::collections::HashMap;
 
@@ -27,4 +29,115 @@ mod tests {
     let result = merit_rank.get_personal_hits();
     assert!(result.is_empty());
   }
+
+
+  #[test]
+  fn test_basic_chain_graph() {
+    let mut rank_ref = MeritRank::new(Graph::<()>::new()).unwrap();
+    rank_ref.add_node(0, ());
+    let walk_count = 10000;
+
+    let mut rank = MeritRank::new(Graph::<()>::new()).unwrap();
+    rank.add_node(0, ());
+    rank.calculate(0, walk_count).unwrap();
+    for n in 1..8
+    {
+      rank_ref.add_node(n, ());
+      rank_ref.add_edge(n-1, n, 1.0);
+      rank.add_node(n, ());
+      rank.add_edge(n-1, n, 1.0);
+
+    }
+    rank_ref.add_edge(8,1, 1.0);
+    rank.add_edge(8,1, 1.0);
+    rank_ref.calculate(0, walk_count).unwrap();
+    println! ("{:?}", rank.get_ranks(0, None));
+    for n in 1..8
+    {
+      let ref_score = rank_ref.get_node_score(0, n).unwrap() as f64;
+      let score = rank.get_node_score(0, n).unwrap() as f64;
+      assert_approx_eq!(ref_score, score , 0.1);
+    }
+  }
+
+  #[test]
+  fn test_too_early_cut_position_bug() {
+
+
+    let walk_count = 10000;
+    let mut ref_rank = MeritRank::new(Graph::<()>::new()).unwrap();
+    ref_rank.add_node(0, ());
+    ref_rank.add_node(1, ());
+    ref_rank.add_node(2, ());
+    ref_rank.add_edge(0, 1, -1.0);
+    ref_rank.add_edge(0, 2, 1.0);
+    ref_rank.add_edge(1, 2, 1.0);
+    ref_rank.add_edge(2, 1, 1.0);
+    ref_rank.add_edge(2, 1, 1.0);
+    ref_rank.add_edge(2, 0, 1.0);
+    ref_rank.calculate(0, walk_count).unwrap();
+
+    let mut rank = MeritRank::new(Graph::<()>::new()).unwrap();
+    rank.add_node(0, ());
+    rank.add_node(1, ());
+    rank.add_node(2, ());
+    rank.add_edge(0, 1, -1.0);
+    rank.add_edge(0, 2, 1.0);
+    rank.add_edge(1, 2, 1.0);
+    rank.add_edge(2, 1, 1.0);
+    rank.add_edge(2, 1, 1.0);
+
+    rank.calculate(0, walk_count).unwrap();
+
+
+    //rank.print_walks();
+    rank.add_edge(2, 0, 1.0);
+    let ref_score = ref_rank.get_node_score(0, 2).unwrap() as f64;
+    let score = rank.get_node_score(0, 2).unwrap() as f64;
+    assert_approx_eq!(ref_score, score , 0.1);
+
+    println! ("{:?}", rank.get_ranks(0, None));
+    println! ("{:?}", ref_rank.get_ranks(0, None));
+    //rank.print_walks();
+  }
+
+
+  #[test]
+  fn test_too_much_incremental_ego_bug() {
+
+
+    let walk_count = 10000;
+    let mut ref_rank = MeritRank::new(Graph::<()>::new()).unwrap();
+    ref_rank.add_node(0, ());
+    ref_rank.add_node(1, ());
+    ref_rank.add_node(2, ());
+    ref_rank.add_edge(0, 2, 1.0);
+    ref_rank.add_edge(1, 0, 1.0);
+    ref_rank.add_edge(2, 1, 1.0);
+    ref_rank.calculate(0, walk_count).unwrap();
+
+    let mut rank = MeritRank::new(Graph::<()>::new()).unwrap();
+    rank.add_node(0, ());
+    rank.add_node(1, ());
+    rank.add_node(2, ());
+    rank.add_edge(0, 1, -1.0);
+    rank.add_edge(0, 2, 1.0);
+    rank.add_edge(1, 0, 1.0);
+    rank.add_edge(2, 1, 1.0);
+
+    rank.calculate(0, walk_count).unwrap();
+
+
+    //rank.print_walks();
+    rank.add_edge(0, 1, 0.0);
+
+    let ref_score = ref_rank.get_node_score(0, 2).unwrap() as f64;
+    let score = rank.get_node_score(0, 2).unwrap() as f64;
+    assert_approx_eq!(ref_score, score , 0.1);
+
+    println! ("{:?}", rank.get_ranks(0, None));
+    println! ("{:?}", ref_rank.get_ranks(0, None));
+    //rank.print_walks();
+  }
+
 }
