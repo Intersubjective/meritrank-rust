@@ -389,7 +389,6 @@ impl WalkStorage {
 
         for (walk_id, visit_pos) in walks.iter() {
 
-
             let mut _new_pos = *visit_pos;
             let mut may_skip = false;
             // Optimize invalidation by skipping if possible

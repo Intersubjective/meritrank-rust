@@ -39,7 +39,7 @@
 
 #[cfg(test)]
 mod tests {
-  use csv::ReaderBuilder;
+  use csv::{ReaderBuilder, StringRecord};
   use flate2::read::GzDecoder;
   use std::error::Error;
   use std::fs::File;
@@ -167,6 +167,8 @@ mod tests {
     Ok(())
   }
 
+  // ACTHUNG! The current version of OUT4 is broken! GIGO: nodes' positions
+  // are transposed for some result, which makes for unreliable comparisons
   #[test]
   fn test_meritrank_long() -> Result<(), Box<dyn Error>> {
     let file_path_gz = "tests/dumps/OUT4.csv.gz";
@@ -175,9 +177,15 @@ mod tests {
     let reader = BufReader::new(decoder);
     let mut csv_reader = ReaderBuilder::new().from_reader(reader);
 
+    let mut limit_entries = 100;
+
     // Read the graph state from the CSV file
-    for result in csv_reader.records() {
-      let record = result?;
+    for result in csv_reader.records(){
+      let record: StringRecord = result?;
+
+
+      limit_entries -=1;
+      if limit_entries == 0{break}
 
       let w0_1: f64 = record[3].trim().parse()?;
       let w0_2: f64 = record[4].trim().parse()?;
@@ -191,6 +199,7 @@ mod tests {
       let w3_0: f64 = record[12].trim().parse()?;
       let w3_1: f64 = record[13].trim().parse()?;
       let w3_2: f64 = record[14].trim().parse()?;
+
 
       let rank0: f64 = record[15].trim().parse()?;
       let rank1: f64 = record[16].trim().parse()?;
@@ -221,7 +230,7 @@ mod tests {
       let mut meritrank = MeritRank::new(complete_graph).unwrap();
 
       // calculate merit rank
-      meritrank.calculate(0, 25)?;
+      meritrank.calculate(0, 10000)?;
 
       let rating: Vec<(NodeId, f64)> =
         meritrank.get_ranks(0, None).unwrap_or_default();
@@ -249,10 +258,10 @@ mod tests {
       );
 
       // You can add assertions if needed
-      // assert_eq!(rating[&0], rank0);
-      // assert_eq!(rating[&1], rank1);
-      // assert_eq!(rating[&2], rank2);
-      // assert_eq!(rating[&3], rank3);
+      //assert_approx_eq!(rating.get(0).unwrap_or(&(0, 0.0)).1, rank0, 0.1);
+      //assert_approx_eq!(rating.get(1).unwrap_or(&(1, 0.0)).1, rank1, 0.1);
+      //assert_approx_eq!(rating.get(2).unwrap_or(&(2, 0.0)).1, rank2, 0.1);
+      //assert_approx_eq!(rating.get(3).unwrap_or(&(3, 0.0)).1, rank3, 0.1);
     }
 
     Ok(())
