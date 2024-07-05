@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use rand::prelude::*;
 
 use integer_hasher::IntMap;
@@ -12,6 +13,7 @@ pub type WalkId = usize;
 pub struct WalkStorage {
     visits: IntMap<NodeId, IntMap<WalkId, usize>>,
     walks: Vec<RandomWalk>,
+    unused_walks: VecDeque<WalkId>,
 }
 
 impl WalkStorage {
@@ -26,6 +28,8 @@ impl WalkStorage {
         WalkStorage {
             visits: IntMap::default(),
             walks: Vec::new(),
+            unused_walks: VecDeque::new(),
+
         }
     }
 
@@ -48,30 +52,15 @@ impl WalkStorage {
     }
 
 
-
-
-    /// Adds a walk to the storage.
-    ///
-    /// This method adds a `RandomWalk` object to the storage.
-    ///
-    /// # Arguments
-    ///
-    /// * `walk` - The `RandomWalk` object to be added.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use meritrank::{WalkStorage, RandomWalk};
-    ///
-    /// let mut storage = WalkStorage::new();
-    /// let walk = RandomWalk::new();
-    /// storage.add_walk(walk);
-    /// ```
-    pub fn add_walk(&mut self, walk: RandomWalk) -> WalkId {
-        // skip the first start_pos nodes
-        let new_walk_id = self.walks.len() as WalkId;
-        self.walks.push(walk);
-        new_walk_id
+    pub fn get_next_free_walkid(&mut self) -> WalkId {
+        match self.unused_walks.pop_front(){
+            Some(id) => id,
+            None => {
+                let id = self.walks.len() as WalkId;
+                self.walks.push(RandomWalk::new());
+                id
+            }
+        }
     }
 
     pub fn add_walk_to_bookkeeping(&mut self, walk_id: WalkId, start_pos: usize) {
@@ -134,6 +123,8 @@ impl WalkStorage {
                         }
                     }
                 }
+                self.unused_walks.push_back(walk_id);
+                self.walks.get_mut(walk_id).unwrap().clear();
             }
             // Remove any empty entries from the visits HashMap
             self.visits.retain(|_, visits_ref| !visits_ref.is_empty());

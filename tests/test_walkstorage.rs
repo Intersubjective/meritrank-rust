@@ -58,9 +58,14 @@ mod tests {
     let walk2 = RandomWalk::from_nodes(vec![ 1, 4, 5, ]);
     let walk3 = RandomWalk::from_nodes(vec![ 2, 3, 4, ]);
 
-    let walkid1 = walk_storage.add_walk(walk1.clone());
-    let walkid2 = walk_storage.add_walk(walk2.clone());
-    let walkid3 = walk_storage.add_walk(walk3.clone());
+    let walkid1 = walk_storage.get_next_free_walkid();
+    let walkid2 = walk_storage.get_next_free_walkid();
+    let walkid3 = walk_storage.get_next_free_walkid();
+
+    walk_storage.get_walk_mut(walkid1).unwrap().extend(walk1.get_nodes());
+    walk_storage.get_walk_mut(walkid2).unwrap().extend(walk2.get_nodes());
+    walk_storage.get_walk_mut(walkid3).unwrap().extend(walk3.get_nodes());
+
     walk_storage.add_walk_to_bookkeeping(walkid1, 0);
     walk_storage.add_walk_to_bookkeeping(walkid2, 0);
     walk_storage.add_walk_to_bookkeeping(walkid3, 0);
@@ -96,6 +101,9 @@ mod tests {
     assert_eq!(walk_storage.get_walks()[&2].len(), 1);
     assert_eq!(walk_storage.get_walks()[&3].len(), 1);
     assert_eq!(walk_storage.get_walks()[&4].len(), 1);
+
+    // Make sure that the walks are reused
+    assert_eq!(walk_storage.get_next_free_walkid(), 0);
   }
 
 

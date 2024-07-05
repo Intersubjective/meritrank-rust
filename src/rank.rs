@@ -264,7 +264,11 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
     self.personal_hits.insert(ego, Counter::new());
 
     for _ in 0..num_walks {
-      let walk = self.perform_walk(ego)?;
+      let new_walk_id = self.walks.get_next_free_walkid();
+      //let mut walk = self.walks.get_walk_mut(new_walk_id).unwrap();
+
+      self.perform_walk(new_walk_id, ego);
+      let walk = self.walks.get_walk_mut(new_walk_id).unwrap();
       let walk_steps = walk.iter().cloned();
 
       self.personal_hits
@@ -272,7 +276,6 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
         .and_modify(|counter| counter.increment_unique_counts(walk_steps));
 
       update_negative_hits(&mut self.neg_hits, &walk, &negs, false);
-      let new_walk_id= self.walks.add_walk(walk);
       self.walks.add_walk_to_bookkeeping(new_walk_id, 0)
     }
 
@@ -416,13 +419,14 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
   ///   }
   /// }
   /// ```
-  pub fn perform_walk(&self, start_node: NodeId) -> Result<RandomWalk, MeritRankError> {
-    let mut walk = RandomWalk::new();
+  pub fn perform_walk(&mut self, walk_id: WalkId, start_node: NodeId){
+    let new_segment = self.generate_walk_segment(start_node, false).unwrap();
+    let mut walk = self.walks.get_walk_mut(walk_id).unwrap();
+    assert_eq!(walk.len(), 0); // If we are overwriting exising walk, something went very wrong
     walk.push(start_node);
-    let new_segment = self.generate_walk_segment(start_node, false)?;
     walk.extend(&new_segment);
-    Ok(walk)
   }
+
 
   /// Generates a walk segment for the specified start node.
   ///

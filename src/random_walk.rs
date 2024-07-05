@@ -1,6 +1,7 @@
 use integer_hasher::IntMap;
 use tinyset::SetUsize;
 use crate::graph::{NodeId, Weight};
+use crate::MeritRankError;
 
 /// Represents a random walk through a graph.
 #[derive(Clone)]
@@ -163,6 +164,10 @@ impl RandomWalk {
   /// ```
   pub fn last_node(&self) -> Option<NodeId> {
     self.nodes.last().copied()
+  }
+
+  pub fn clear(&mut self){
+    self.nodes.clear();
   }
 
 
