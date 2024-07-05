@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-
+use integer_hasher::IntMap;
+use tinyset::SetUsize;
 use crate::graph::{NodeId, Weight};
 
 /// Represents a random walk through a graph.
@@ -115,9 +115,13 @@ impl RandomWalk {
   /// # Returns
   ///
   /// `true` if the random walk intersects with any of the given nodes, `false` otherwise.
-  pub fn intersects_nodes(&self, nodes: &[NodeId]) -> bool {
-    nodes.iter().any(|&node| self.contains(&node))
-  }
+  pub fn intersects_nodes<'a, I>(&self, nodes: I) -> bool
+    where
+        I: IntoIterator<Item = &'a NodeId>,
+    {
+        let self_set = SetUsize::from_iter(self.nodes.iter().copied());
+        nodes.into_iter().any(|&node| self_set.contains(node))
+    }
 
   /// Returns a mutable reference to the vector of node IDs in the random walk.
   ///
@@ -280,9 +284,9 @@ impl RandomWalk {
   /// - A map containing the penalties for nodes.
   pub fn calculate_penalties(
     &self,
-    neg_weights: &HashMap<NodeId, Weight>,
-  ) -> HashMap<NodeId, Weight> {
-    let mut penalties: HashMap<NodeId, Weight> = HashMap::new();
+    neg_weights: &IntMap<NodeId, Weight>,
+  ) -> IntMap<NodeId, Weight> {
+    let mut penalties= IntMap::default();
     let mut negs = neg_weights.clone();
     let mut accumulated_penalty = 0.0;
 

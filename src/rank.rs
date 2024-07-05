@@ -1,9 +1,10 @@
 use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 
-use std::collections::{HashMap, HashSet};
-use indexmap::IndexMap;
-
+use std::collections::{HashSet};
+use std::ops::Sub;
+use integer_hasher::IntMap;
+use tinyset::SetUsize;
 use crate::constants::EPSILON;
 use crate::common::sign;
 use crate::constants::{ASSERT, OPTIMIZE_INVALIDATION};
@@ -16,8 +17,8 @@ use crate::walk_storage::{WalkId, WalkStorage};
 pub struct MeritRank<NodeData : Copy + Default> {
   pub graph         : Graph<NodeData>,
       walks         : WalkStorage,
-      personal_hits : HashMap<NodeId, Counter>,
-      neg_hits      : HashMap<NodeId, HashMap<NodeId, Weight>>,
+      personal_hits : IntMap<NodeId, Counter>,
+      neg_hits      : IntMap<NodeId, IntMap<NodeId, Weight>>,
   pub alpha         : Weight,
 }
 
@@ -41,16 +42,16 @@ pub enum Neighbors {
 /// * `negs` - A hashmap containing the negative penalties for each node.
 /// * `subtract` - A boolean flag indicating whether to subtract the penalties from the hit counts.
 pub fn update_negative_hits(
-    neg_hits: &mut HashMap<NodeId, HashMap<NodeId, Weight>>,
+    neg_hits: &mut IntMap<NodeId, IntMap<NodeId, Weight>>,
     walk: &RandomWalk,
-    negs: &HashMap<NodeId, Weight>,
+    negs: &IntMap<NodeId, Weight>,
     subtract: bool,
 ) {
-    // TODO: optimize the intersection
-    if walk.intersects_nodes(&negs.keys().cloned().collect::<Vec<NodeId>>()) {
+    // TODO: optimize the intersection - walk members should be checked against negs
+    if walk.intersects_nodes(negs.keys()) {
         let ego_neg_hits = neg_hits
             .entry(walk.first_node().unwrap())
-            .or_insert_with(HashMap::new);
+            .or_insert_with(IntMap::default);
 
         for (node, penalty) in walk.calculate_penalties(negs) {
             let adjusted_penalty = if subtract { -penalty } else { penalty };
@@ -61,36 +62,52 @@ pub fn update_negative_hits(
 }
 
 
+/// Clears an invalidated walk by subtracting the invalidated segment nodes from the hit counter.
+///
+/// This method clears an invalidated walk by subtracting the nodes in the invalidated segment from the hit counter
+/// for the starting node of the invalidated walk. It ensures that the hit counter values remain non-negative.
+/// The invalidated segment may include nodes that are still present in the original walk, so special care is taken
+/// to avoid subtracting them from the counter by accident.
+///
+/// # Arguments
+///
+/// * `walk` - The invalidated walk.
+/// * `invalidated_segment` - The list of invalidated segment nodes.
 pub fn revert_counters_for_walk_from_pos(
-    personal_hits: &mut HashMap<NodeId, Counter>,
+    personal_hits: &mut IntMap<NodeId, Counter>,
     walk: &RandomWalk,
     pos: usize,
 ) {
     // Get the starting node (ego) of the invalidated walk
-    let ego = walk.first_node().unwrap();
+    let ego = walk.first_node().unwrap(); // Assuming first_node() returns NodeId
 
     // Get or insert the hit counter for the starting node
-    let counter: &mut Counter = personal_hits.entry(ego).or_insert_with(Counter::new);
+    let counter = personal_hits.entry(ego).or_insert_with(Counter::new);
 
-    // Subtract the nodes in the invalidated segment from the hit counter
-    let to_remove: HashSet<&NodeId> = walk.get_nodes()[pos..]
-        .iter()
-        .filter(|node| !walk.get_nodes()[..pos].contains(node))
-        .collect();
+    // Collect nodes before pos into a set for efficient membership checking
+    let nodes_before_pos = &walk.get_nodes()[..pos];
 
-    if !to_remove.is_empty() {
-        for node_to_remove in to_remove {
-            *counter.get_mut_count(node_to_remove) -= 1.0;
+    // Remove nodes after pos that were not visited before pos
+    let mut nodes_to_remove = SetUsize::new();
+    for &node in &walk.get_nodes()[pos..] {
+        if !nodes_before_pos.contains(&node) {
+            nodes_to_remove.insert(node);
+        }
+    }
+
+    // Adjust counters for nodes to remove
+    if !nodes_to_remove.is_empty() {
+        for node_to_remove in nodes_to_remove {
+            *counter.get_mut_count(&node_to_remove) -= 1.0;
         }
 
-        // Check if hit counter values are non-negative
+        // Debug assertion to check if hit counter values are non-negative
         #[cfg(debug_assertions)]
         for &c in counter.count_values() {
             assert!(c >= 0.0);
         }
     }
 }
-
 
 
 // #[allow(dead_code)]
@@ -113,17 +130,17 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
     Ok(MeritRank {
       graph,
       walks: WalkStorage::new(),
-      personal_hits: HashMap::new(),
-      neg_hits: HashMap::new(),
+      personal_hits: IntMap::default(),
+      neg_hits: IntMap::default(),
       alpha: 0.85,
     })
   }
 
-  fn _get_neg_hits(&self) -> &HashMap<NodeId, HashMap<NodeId, Weight>> {
+  fn _get_neg_hits(&self) -> &IntMap<NodeId, IntMap<NodeId, Weight>> {
     &self.neg_hits
   }
 
-  fn _get_personal_hits(&self) -> &HashMap<NodeId, Counter> {
+  fn _get_personal_hits(&self) -> &IntMap<NodeId, Counter> {
     &self.personal_hits
   }
 
@@ -172,8 +189,8 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
     &self,
     node  : NodeId,
     mode  : Neighbors,
-  ) -> Option<HashMap<NodeId, Weight>> {
-    let neighbors: HashMap<_, _> = self
+  ) -> Option<IntMap<NodeId, Weight>> {
+    let neighbors: IntMap<_, _> = self
       .graph
       .neighbors(node)
       .into_iter()
@@ -240,9 +257,9 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
 
     self.walks.drop_walks_from_node(ego);
 
-    let mut negs = self
+    let negs = self
       .neighbors_weighted(ego, Neighbors::Negative)
-      .unwrap_or(HashMap::new());
+      .unwrap_or(IntMap::default());
 
     self.personal_hits.insert(ego, Counter::new());
 
@@ -254,7 +271,7 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
         .entry(ego)
         .and_modify(|counter| counter.increment_unique_counts(walk_steps));
 
-      update_negative_hits(&mut self.neg_hits, &walk, &mut negs, false);
+      update_negative_hits(&mut self.neg_hits, &walk, &negs, false);
       let new_walk_id= self.walks.add_walk(walk);
       self.walks.add_walk_to_bookkeeping(new_walk_id, 0)
     }
@@ -311,7 +328,7 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
       }
     }
 
-    let binding = HashMap::new();
+    let binding = IntMap::default();
     let neg_hits = self.neg_hits.get(&ego).unwrap_or(&binding);
     let hits_penalized = hits + neg_hits.get(&target).copied().unwrap_or(0.0);
 
@@ -522,7 +539,7 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
     // It should panic if the edge doesn't exist
     let weight = self.get_edge(src, dest).unwrap();
 
-    let empty_map = IndexMap::new();
+    let empty_map = IntMap::default();
 
     // Retrieve all walks that pass through the destination node and start with the source node
     let affected_walks = self.walks
@@ -539,10 +556,10 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
     });
 
     // Update penalties and negative hits for each affected walk
-    let ego_neg_hits = self.neg_hits.entry(src).or_insert_with(HashMap::new);
+    let ego_neg_hits = self.neg_hits.entry(src).or_insert_with(IntMap::default);
 
     // Create a hashmap with the negative weight of the edge for the affected node
-    let neg_weights: HashMap<NodeId, Weight> = [(dest, weight)].iter().cloned().collect();
+    let neg_weights: IntMap<NodeId, Weight> = [(dest, weight)].iter().cloned().collect();
 
     for walk in affected_walks{
       // Calculate penalties for the affected walk
@@ -560,43 +577,6 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
     }
   }
 
-  /// Clears an invalidated walk by subtracting the invalidated segment nodes from the hit counter.
-  ///
-  /// This method clears an invalidated walk by subtracting the nodes in the invalidated segment from the hit counter
-  /// for the starting node of the invalidated walk. It ensures that the hit counter values remain non-negative.
-  /// The invalidated segment may include nodes that are still present in the original walk, so special care is taken
-  /// to avoid subtracting them from the counter by accident.
-  ///
-  /// # Arguments
-  ///
-  /// * `walk` - The invalidated walk.
-  /// * `invalidated_segment` - The list of invalidated segment nodes.
-  pub fn revert_counters_for_walk_from_pos(&mut self, walk: &RandomWalk, pos: usize) {
-    // Get the starting node (ego) of the invalidated walk
-    let ego = walk.first_node().unwrap();
-
-    // Get or insert the hit counter for the starting node
-    let counter: &mut Counter = self.personal_hits.entry(ego).or_insert_with(Counter::new);
-
-    // Subtract the nodes in the invalidated segment from the hit counter
-    let to_remove: HashSet<&NodeId> = walk.nodes[pos..]
-      .into_iter()
-      .filter(|node| !walk.nodes[0..pos].contains(node))
-      .collect();
-
-    if to_remove.len() > 0 {
-      for node_to_remove in to_remove {
-        *counter.get_mut_count(node_to_remove) -= 1.0;
-      }
-
-      // Check if hit counter values are non-negative
-      if ASSERT {
-        for &c in counter.count_values() {
-          assert!(c >= 0.0);
-        }
-      }
-    }
-  }
 
   /// Recalculates an invalidated random walk by extending it with a new segment.
   ///
@@ -668,12 +648,8 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
     let ego = walk.first_node().ok_or(MeritRankError::InvalidWalkLength)?;
     // Update the personal hits counter for the new segment
     let counter: &mut Counter = self.personal_hits.entry(ego).or_insert_with(Counter::new);
-    let node_set: HashSet<_> = new_segment.iter().cloned().collect();
-    let diff: HashSet<_> = node_set
-      .difference(&walk.get_nodes().iter().cloned().collect())
-      .cloned()
-      .collect();
-    counter.increment_unique_counts(diff.iter().cloned());
+    let diff = SetUsize::from_iter(new_segment.iter().cloned()) - &SetUsize::from_iter(walk.get_nodes().iter().cloned());
+    counter.increment_unique_counts(diff.iter());
 
     // Extend the walk with the new segment
     walk.extend(&new_segment);
@@ -747,7 +723,7 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
       if OPTIMIZE_INVALIDATION && weight > EPSILON && self.graph.contains_node(src) {
         let g_edges = self
           .neighbors_weighted(src, Neighbors::Positive)
-          .unwrap_or_else(HashMap::new);
+          .unwrap_or_else(IntMap::default);
         let sum_of_weights: f64 = g_edges.values().sum();
         weight / (sum_of_weights + weight)
       } else {
@@ -759,7 +735,7 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
         .invalidate_walks_through_node(src, Some(dest), step_recalc_probability);
     // ACHTUNG! Don't mess the cut position vs the node position. Cut position = node pos + 1
 
-    let mut negs_cache: HashMap<NodeId, HashMap<NodeId, f64>> = HashMap::new();
+    let mut negs_cache: IntMap<NodeId, IntMap<NodeId, f64>> = IntMap::default();
 
     for (uid, visit_pos) in &invalidated_walks_ids {
       let walk = self.walks.get_walk(*uid).unwrap();
@@ -767,7 +743,7 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
         .entry(walk.first_node().unwrap())
         .or_insert_with(|| {
           self.neighbors_weighted(walk.first_node().unwrap(), Neighbors::Negative)
-            .unwrap_or_else(HashMap::new)
+            .unwrap_or_else(IntMap::default)
         });
       let cut_position = *visit_pos + 1;
       revert_counters_for_walk_from_pos(&mut self.personal_hits, walk, cut_position);
@@ -892,7 +868,7 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
   }
 
   // Experimental
-  pub fn get_personal_hits(&self) -> &HashMap<NodeId, Counter> {
+  pub fn get_personal_hits(&self) -> &IntMap<NodeId, Counter> {
     &self.personal_hits
   }
 }

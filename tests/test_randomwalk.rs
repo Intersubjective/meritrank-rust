@@ -6,6 +6,7 @@ mod tests {
 
 
   use std::collections::HashMap;
+  use integer_hasher::IntMap;
 
   #[test]
   fn test_random_walk_new() {
@@ -150,7 +151,7 @@ mod tests {
       1, 2, 3, 4, 5, 6, 7,
     ]);
 
-    let mut neg_weights: HashMap<NodeId, Weight> = HashMap::new();
+    let mut neg_weights = IntMap::default();
     neg_weights.insert(4, 1.0);
     neg_weights.insert(6, 1.0);
 

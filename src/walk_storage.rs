@@ -1,6 +1,6 @@
-use indexmap::IndexMap;
-
 use rand::prelude::*;
+
+use integer_hasher::IntMap;
 
 use crate::constants::{ASSERT, OPTIMIZE_INVALIDATION};
 use crate::graph::{NodeId, EdgeId, Weight};
@@ -10,7 +10,7 @@ pub type WalkId = usize;
 
 /// Represents a storage container for walks in the MeritRank graph.
 pub struct WalkStorage {
-    visits: IndexMap<NodeId, IndexMap<WalkId, usize>>,
+    visits: IntMap<NodeId, IntMap<WalkId, usize>>,
     walks: Vec<RandomWalk>,
 }
 
@@ -24,7 +24,7 @@ impl WalkStorage {
     /// A new `WalkStorage` instance.
     pub fn new() -> Self {
         WalkStorage {
-            visits: IndexMap::new(),
+            visits: IntMap::default(),
             walks: Vec::new(),
         }
     }
@@ -39,11 +39,11 @@ impl WalkStorage {
         self.walks.get_mut(uid)
     }
 
-    pub fn get_walks(&self) -> &IndexMap<NodeId, IndexMap<WalkId, usize>> {
+    pub fn get_walks(&self) -> &IntMap<NodeId, IntMap<WalkId, usize>> {
         &self.visits
     }
 
-    pub fn get_visits_through_node(&self, node_id: NodeId) -> Option<&IndexMap<WalkId, usize>> {
+    pub fn get_visits_through_node(&self, node_id: NodeId) -> Option<&IntMap<WalkId, usize>> {
         self.visits.get(&node_id)
     }
 
@@ -78,7 +78,7 @@ impl WalkStorage {
          let walk = &self.walks[walk_id as usize];
         for (pos, &node) in walk.get_nodes().iter().enumerate().skip(start_pos) {
             // add the walk to the node
-            let walks_with_node = self.visits.entry(node).or_insert_with(IndexMap::new);
+            let walks_with_node = self.visits.entry(node).or_insert_with(IntMap::default);
             if !walks_with_node.contains_key(&walk_id) {
                 walks_with_node.insert(walk_id, pos);
             }
