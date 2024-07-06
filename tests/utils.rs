@@ -1,4 +1,4 @@
-#[cfg.test]
+#[cfg(test)]
 #[macro_export]
 macro_rules! assert_approx_eq {
     ($a:expr, $b:expr, $rel_tol:expr) => {
