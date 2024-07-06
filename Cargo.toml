@@ -1,5 +1,5 @@
 [package]
-name = "meritrank2"
+name = "meritrank"
 version = "0.6.0"
 edition = "2021"
 description = "MeritRank algorithm library"
