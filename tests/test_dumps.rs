@@ -321,7 +321,7 @@ mod tests {
         graph.add_edge(2, 1, weights[5]);
 
         meritrank_opt = Some(MeritRank::new(graph)?);
-        meritrank_opt.as_mut().unwrap().calculate(0, 10000)?;
+        meritrank_opt.as_mut().unwrap().calculate(0, 20000)?;
       }
 
       let rating: HashMap<NodeId, f64> = meritrank_opt

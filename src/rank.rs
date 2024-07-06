@@ -1,8 +1,6 @@
 use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 
-use std::collections::{HashSet};
-use std::ops::Sub;
 use integer_hasher::IntMap;
 use tinyset::SetUsize;
 use crate::constants::EPSILON;
@@ -550,7 +548,7 @@ impl<NodeData : Copy + Default> MeritRank<NodeData> {
     .get_visits_through_node(dest)
           .unwrap_or(&empty_map) // Provide a reference to a new empty IndexMap if None
         .iter()
-    .filter_map(|(&id, &pos)| {
+    .filter_map(|(&id, &_)| {
         let walk = self.walks.get_walk(id)?;
         if walk.nodes[0] == src {
             Some(walk)

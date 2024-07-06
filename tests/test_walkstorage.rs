@@ -5,7 +5,7 @@ mod tests {
   use indexmap::indexmap;
   use meritrank::graph::{NodeId, EdgeId};
   use meritrank::random_walk::RandomWalk;
-  use meritrank::walk_storage::WalkStorage;
+  use meritrank::walk_storage::{decide_skip_invalidation, decide_skip_invalidation_on_edge_addition, decide_skip_invalidation_on_edge_deletion, WalkStorage};
 
   /*
   #[test]
@@ -165,13 +165,13 @@ fn test_walk_storage_get_walks_through_node() {
     // Test skipping invalidation on edge deletion
     let storage = WalkStorage::new();
     let (may_skip, new_pos) =
-      storage.decide_skip_invalidation(&walk, 2, edge, 0.0, Some(&mut rng));
+      decide_skip_invalidation(&walk, 2, edge, 0.0, Some(&mut rng));
     assert!(may_skip);
     assert_eq!(new_pos, 2);
 
     // Test skipping invalidation with step recalculation probability
     let storage = WalkStorage::new();
-    let (may_skip, new_pos) = storage.decide_skip_invalidation(
+    let (may_skip, new_pos) = decide_skip_invalidation(
       &walk,
       1,
       edge,
@@ -183,7 +183,7 @@ fn test_walk_storage_get_walks_through_node() {
 
     // Test invalidation without skipping
     let storage = WalkStorage::new();
-    let (may_skip, new_pos) = storage.decide_skip_invalidation(
+    let (may_skip, new_pos) = decide_skip_invalidation(
       &walk,
       0,
       edge,
@@ -201,17 +201,17 @@ fn test_walk_storage_get_walks_through_node() {
     let edge: EdgeId = (2, 3);
 
     // Test invalidation without skipping
-    let (may_skip, new_pos) = storage.decide_skip_invalidation_on_edge_deletion(&walk, 0, edge);
+    let (may_skip, new_pos) = decide_skip_invalidation_on_edge_deletion(&walk, 0, edge);
     assert!(!may_skip);
     assert_eq!(new_pos, 1);
 
     // Test invalidation with skipping
-    let (may_skip, new_pos) = storage.decide_skip_invalidation_on_edge_deletion(&walk, 1, edge);
+    let (may_skip, new_pos) = decide_skip_invalidation_on_edge_deletion(&walk, 1, edge);
     assert!(!may_skip);
     assert_eq!(new_pos, 1);
 
     // Test invalidation at the end of the walk
-    let (may_skip, new_pos) = storage.decide_skip_invalidation_on_edge_deletion(&walk, 2, edge);
+    let (may_skip, new_pos) = decide_skip_invalidation_on_edge_deletion(&walk, 2, edge);
     assert!(may_skip);
     assert_eq!(new_pos, 2);
   }
@@ -235,7 +235,7 @@ fn test_walk_storage_get_walks_through_node() {
     let mut rng = StdRng::seed_from_u64(rng_seed);
 
     // Test invalidation without skipping
-    let (may_skip, new_pos) = storage.decide_skip_invalidation_on_edge_addition(
+    let (may_skip, new_pos) = decide_skip_invalidation_on_edge_addition(
       &walk,
       0,
       edge,
@@ -246,7 +246,7 @@ fn test_walk_storage_get_walks_through_node() {
     assert_eq!(new_pos, 2);
 
     // Test invalidation with skipping
-    let (may_skip, new_pos) = storage.decide_skip_invalidation_on_edge_addition(
+    let (may_skip, new_pos) = decide_skip_invalidation_on_edge_addition(
       &walk,
       2,
       edge,
@@ -257,7 +257,7 @@ fn test_walk_storage_get_walks_through_node() {
     assert_eq!(new_pos, 2);
 
     // Test invalidation with step recalculation
-    let (may_skip, new_pos) = storage.decide_skip_invalidation_on_edge_addition(
+    let (may_skip, new_pos) = decide_skip_invalidation_on_edge_addition(
       &walk,
       1,
       edge,

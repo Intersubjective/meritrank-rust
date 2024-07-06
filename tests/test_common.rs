@@ -6,7 +6,7 @@ mod tests {
   use meritrank::errors::MeritRankError;
   use meritrank::graph::{NodeId, EdgeId, Weight};
   use meritrank::random_walk::RandomWalk;
-  use meritrank::walk_storage::WalkStorage;
+  use meritrank::walk_storage::{decide_skip_invalidation_on_edge_addition, WalkStorage};
 
   use rand::rngs::StdRng;
   use rand::SeedableRng;
@@ -46,7 +46,7 @@ mod tests {
     // Create a deterministic random number generator
     let mut rng = StdRng::seed_from_u64(rng_seed);
 
-    let (_may_skip, _new_pos) = storage.decide_skip_invalidation_on_edge_addition(
+    let (_may_skip, _new_pos) = decide_skip_invalidation_on_edge_addition(
       &walk,           // walk: This is the walk that is being invalidated
       pos,  // pos: This is the position in the walk that is being invalidated
       edge, // edge: This is the edge that is being added

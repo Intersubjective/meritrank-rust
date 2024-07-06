@@ -3,7 +3,7 @@ use rand::prelude::*;
 
 use integer_hasher::IntMap;
 
-use crate::constants::{ASSERT, OPTIMIZE_INVALIDATION};
+use crate::constants::{OPTIMIZE_INVALIDATION};
 use crate::graph::{NodeId, EdgeId, Weight};
 use crate::random_walk::RandomWalk;
 
@@ -105,7 +105,6 @@ impl WalkStorage {
     pub fn drop_walks_from_node(&mut self, node: NodeId) {
         // Check if there are any visits for the given node
         if let Some(visits_for_node) = self.visits.get_mut(&node) {
-            /// TODO: add cleaning matching .walks also
             // Identify the walks that start from the given node (i.e., position is 0)
             let walkids_to_remove: Vec<WalkId> = visits_for_node
                 .iter()
@@ -132,186 +131,8 @@ impl WalkStorage {
 
 }
 
-    /// Determines whether to skip invalidation of a walk based on the edge change.
-    ///
-    /// This method decides whether to skip the invalidation of a walk based on the edge change. It uses the provided `step_recalc_probability` to determine the probability of skipping the invalidation.
-    ///
-    /// # Arguments
-    ///
-    /// * `walk` - The walk to be considered for invalidation.
-    /// * `pos` - The position in the walk to be considered for invalidation.
-    /// * `edge` - The edge that has changed.
-    /// * `step_recalc_probability` - The probability of recalculating the step.
-    ///
-    /// # Returns
-    ///
-    /// A tuple containing a boolean value indicating whether to skip invalidation and the updated position in the walk.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use meritrank::{WalkStorage, RandomWalk, EdgeId, NodeId, Weight};
-    /// use rand::SeedableRng;
-    /// use rand::rngs::StdRng;
-    ///
-    /// let storage = WalkStorage::new();
-    /// let walk = RandomWalk::from_nodes(vec![ 1, 2, 3, ]);
-    /// let pos = 0;
-    /// let edge: EdgeId = (1, 2);
-    /// let step_recalc_probability = 0.5;
-    /// // Create a deterministic random number generator
-    /// let rng_seed = 1234;
-    /// let mut rng = StdRng::seed_from_u64(rng_seed);
-    /// let (may_skip, new_pos) = storage.decide_skip_invalidation(&walk, pos, edge, step_recalc_probability, Some(&mut rng));
-    /// ```
-    pub fn decide_skip_invalidation<R>(
-        &self,
-        walk: &RandomWalk,
-        pos: usize,
-        edge: EdgeId,
-        step_recalc_probability: Weight,
-        rnd: Option<R>,
-    ) -> (bool, usize)
-    where
-        R: RngCore,
-    {
-        if step_recalc_probability == 0.0 {
-            self.decide_skip_invalidation_on_edge_deletion(walk, pos, edge)
-        } else {
-            self.decide_skip_invalidation_on_edge_addition(
-                walk,
-                pos,
-                edge,
-                step_recalc_probability,
-                rnd,
-            )
-        }
-    }
 
-    /// Determines whether to skip invalidation on edge deletion.
-    ///
-    /// This method decides whether to skip the invalidation of a walk based on the edge deletion.
-    ///
-    /// # Arguments
-    ///
-    /// * `walk` - The walk to be considered for invalidation.
-    /// * `pos` - The position in the walk to be considered for invalidation.
-    /// * `edge` - The edge that has been deleted.
-    ///
-    /// # Returns
-    ///
-    /// A tuple containing a boolean value indicating whether to skip invalidation and the updated position in the walk.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use meritrank::{WalkStorage, RandomWalk, EdgeId, NodeId};
-    ///
-    /// let storage = WalkStorage::new();
-    /// let walk = RandomWalk::from_nodes(vec![ 1, 2, 3, ]);
-    /// let pos = 0;
-    /// let edge: EdgeId = (1, 2);
-    /// let (may_skip, new_pos) = storage.decide_skip_invalidation_on_edge_deletion(&walk, pos, edge);
-    /// ```
-    pub fn decide_skip_invalidation_on_edge_deletion(
-        &self,
-        walk: &RandomWalk,
-        pos: usize,
-        edge: EdgeId,
-    ) -> (bool, usize) {
-        assert!(pos < walk.len()); // Assert pos < len(walk)
-        let (invalidated_node, dst_node) = edge;
 
-        let mut may_skip = true;
-        let mut new_pos = pos;
-
-        if pos == walk.len() - 1 {
-            may_skip = true;
-        } else {
-            for i in pos..walk.len() - 1 {
-                if walk.get_nodes()[i] == invalidated_node && walk.get_nodes()[i + 1] == dst_node {
-                    new_pos = i;
-                    may_skip = false;
-                    break;
-                }
-            }
-        }
-
-        (may_skip, new_pos)
-    }
-
-    /// Determines whether to skip invalidation on edge addition.
-    ///
-    /// This method decides whether to skip the invalidation of a walk based on the edge addition.
-    ///
-    /// # Arguments
-    ///
-    /// * `walk` - The walk to be considered for invalidation.
-    /// * `pos` - The position in the walk to be considered for invalidation.
-    /// * `edge` - The edge that has been added.
-    /// * `step_recalc_probability` - The probability of recalculating the step.
-    ///
-    /// # Returns
-    ///
-    /// A tuple containing a boolean value indicating whether to skip invalidation and the updated position in the walk.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use meritrank::{WalkStorage, RandomWalk, EdgeId, Weight, NodeId};
-    /// use rand::SeedableRng;
-    /// use rand::rngs::StdRng;
-    ///
-    /// let storage = WalkStorage::new();
-    /// let walk = RandomWalk::from_nodes(vec![ 1, 2, ]);
-    /// let pos = 0;
-    /// let edge: EdgeId = (1, 2);
-    /// let step_recalc_probability = 0.5;
-    /// // Create a deterministic random number generator
-    /// let rng_seed = 1234;
-    /// let mut rng = StdRng::seed_from_u64(rng_seed);
-    /// let (may_skip, new_pos) = storage.decide_skip_invalidation_on_edge_addition(&walk, pos, edge, step_recalc_probability, Some(&mut rng));
-    /// ```
-    pub fn decide_skip_invalidation_on_edge_addition<R>(
-        &self,
-        walk: &RandomWalk,
-        pos: usize,
-        edge: EdgeId,
-        step_recalc_probability: Weight,
-        mut rnd: Option<R>,
-    ) -> (bool, usize)
-    where
-        R: RngCore,
-    {
-        assert!(pos < walk.len()); // Assert pos < len(walk)
-        let (invalidated_node, _dst_node) = edge;
-
-        // Use the provided generator or fall back to thread_rng()
-        let mut binding = rand::thread_rng();
-        let rng: &mut dyn RngCore = match rnd {
-            Some(ref mut r) => r,
-            None => &mut binding,
-        };
-
-        // let mut rng: &mut dyn RngCore = rnd
-        //   .as_mut()
-        //   .unwrap_or_else(|| &mut rand::thread_rng());
-
-        let mut may_skip = true;
-        let mut new_pos = pos;
-
-        for i in pos..walk.len() {
-            if walk.get_nodes()[i] == invalidated_node {
-                new_pos = i;
-                if rng.gen::<Weight>() < step_recalc_probability {
-                    may_skip = false;
-                    break;
-                }
-            }
-        }
-
-        (may_skip, new_pos)
-    }
 
     pub fn assert_visits_consistency(&self)
     {
@@ -378,14 +199,10 @@ impl WalkStorage {
             None => return invalidated_walks_ids,
         };
 
-        for (walk_id, visit_pos) in walks.iter() {
-
-            let mut _new_pos = *visit_pos;
-            let mut may_skip = false;
-            // Optimize invalidation by skipping if possible
-            if OPTIMIZE_INVALIDATION && dst_node.is_some() {
+        walks.iter().for_each(|(walk_id, visit_pos)| {
+            let _new_pos = if OPTIMIZE_INVALIDATION && dst_node.is_some() {
                 let mut rng = thread_rng();
-                (may_skip, _new_pos) = self.decide_skip_invalidation(
+                let (may_skip, new_pos) = decide_skip_invalidation(
                     self.get_walk(*walk_id).unwrap(),
                     *visit_pos,
                     (invalidated_node, dst_node.unwrap()),
@@ -394,12 +211,15 @@ impl WalkStorage {
                 );
                 if may_skip {
                     // Skip invalidating this walk if it is determined to be unnecessary
-                    continue;
+                    return;
                 }
-            }
+                new_pos
+            } else {
+                *visit_pos
+            };
 
             invalidated_walks_ids.push((*walk_id, _new_pos));
-        }
+        });
 
         invalidated_walks_ids
     }
@@ -425,4 +245,91 @@ impl WalkStorage {
             }
         }
     }
+}
+
+pub fn decide_skip_invalidation<R>(
+    walk: &RandomWalk,
+    pos: usize,
+    edge: EdgeId,
+    step_recalc_probability: Weight,
+    rnd: Option<R>,
+) -> (bool, usize)
+where
+    R: RngCore,
+{
+    if step_recalc_probability == 0.0 {
+        decide_skip_invalidation_on_edge_deletion(walk, pos, edge)
+    } else {
+        decide_skip_invalidation_on_edge_addition(
+            walk,
+            pos,
+            edge,
+            step_recalc_probability,
+            rnd,
+        )
+    }
+}
+pub fn decide_skip_invalidation_on_edge_deletion(
+    walk: &RandomWalk,
+    pos: usize,
+    edge: EdgeId,
+) -> (bool, usize) {
+    assert!(pos < walk.len());
+    let (invalidated_node, dst_node) = edge;
+
+    if pos == walk.len() - 1 {
+        return (true, pos);
+    }
+
+    walk.get_nodes()[pos..walk.len() - 1]
+        .iter()
+        .enumerate()
+        .find_map(|(i, &node)| {
+            if node == invalidated_node && walk.get_nodes()[pos + i + 1] == dst_node {
+                Some((false, pos + i))
+            } else {
+                None
+            }
+        })
+        .unwrap_or((true, pos))
+}
+
+
+
+
+
+pub fn decide_skip_invalidation_on_edge_addition<R>(
+    walk: &RandomWalk,
+    pos: usize,
+    edge: EdgeId,
+    step_recalc_probability: Weight,
+    mut rnd: Option<R>,
+) -> (bool, usize)
+where
+    R: RngCore,
+{
+    assert!(pos < walk.len(), "Position must be within walk length");
+    let (invalidated_node, _dst_node) = edge;
+
+    let mut thread_rng = thread_rng();
+    let rng = rnd.as_mut().map(|r| r as &mut dyn RngCore).unwrap_or(&mut thread_rng);
+
+    let mut new_pos = pos;
+    let result = walk.get_nodes()[pos..]
+        .iter()
+        .enumerate()
+        .find_map(|(i, &node)| {
+            if node == invalidated_node {
+                new_pos = pos + i;
+                if rng.gen::<Weight>() < step_recalc_probability {
+                    Some(false)  // may_skip = false, exit early
+                } else {
+                    None  // continue searching
+                }
+            } else {
+                None  // continue searching
+            }
+        });
+
+    (result.is_none(), new_pos)
 }

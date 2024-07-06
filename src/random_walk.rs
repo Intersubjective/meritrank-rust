@@ -1,7 +1,6 @@
 use integer_hasher::IntMap;
 use tinyset::SetUsize;
 use crate::graph::{NodeId, Weight};
-use crate::MeritRankError;
 
 /// Represents a random walk through a graph.
 #[derive(Clone)]
