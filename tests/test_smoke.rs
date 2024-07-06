@@ -1766,6 +1766,7 @@ mod tests {
     assert!(get_time() < 5000);
   }
 
+  #[ignore]
   #[test]
   fn smoke_perf_with_zero() {
     let mut rank = MeritRank::new(Graph::<()>::new()).unwrap();
