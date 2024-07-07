@@ -1,17 +1,17 @@
-use std::collections::{HashMap, HashSet};
+use integer_hasher::IntMap;
 use crate::graph::{NodeId, Weight};
 
 /// A counter that keeps track of the counts for different nodes.
 #[derive(Clone)]
 pub struct Counter {
-  counter : HashMap<NodeId, Weight>,
+  counter : IntMap<NodeId, Weight>,
 }
 
 impl Counter {
   /// Creates a new empty counter.
   pub fn new() -> Self {
     Counter {
-      counter : HashMap::new(),
+      counter : IntMap::default(),
     }
   }
 
@@ -34,7 +34,7 @@ impl Counter {
   where
     I: IntoIterator<Item = NodeId>,
   {
-    let unique_values: HashSet<NodeId> = items.into_iter().collect();
+    let unique_values: SetUsize = SetUsize::from_iter(items.into_iter());
     self.increment_counts(unique_values);
   }
 
@@ -58,7 +58,7 @@ impl Counter {
     self.counter.values()
   }
 
-  pub fn get_tree_map(&self) -> &HashMap<NodeId, Weight> {
+  pub fn get_tree_map(&self) -> &IntMap<NodeId, Weight> {
     &self.counter
   }
 
@@ -75,11 +75,12 @@ impl Default for Counter {
 }
 
 use once_cell::sync::Lazy;
+use tinyset::SetUsize;
 
 impl Default for &Counter {
   fn default() -> Self {
     static DEFAULT_COUNTER: Lazy<Counter> = Lazy::new(|| Counter {
-      counter: HashMap::new(),
+      counter: IntMap::default(),
     });
     &DEFAULT_COUNTER
   }

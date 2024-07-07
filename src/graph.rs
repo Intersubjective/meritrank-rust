@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-
+use integer_hasher::IntMap;
 use petgraph::algo::has_path_connecting;
 use petgraph::graph::DiGraph;
 use petgraph::graph::{EdgeIndex, NodeIndex};
@@ -9,14 +9,14 @@ use petgraph::visit::EdgeRef;
 
 use crate::errors::MeritRankError;
 
-pub type NodeId = u64;
+pub type NodeId = usize;
 pub type Weight = f64;
 pub type EdgeId = (NodeId, NodeId);
 
 #[derive(Debug, Clone)]
 pub struct Graph<NodeData : Copy + Default> {
   graph : DiGraph<NodeId, Weight>,
-  nodes : HashMap<NodeId, (NodeIndex, NodeData)>,
+  nodes : IntMap<NodeId, (NodeIndex, NodeData)>,
 }
 
 #[allow(dead_code)]
@@ -26,7 +26,7 @@ impl<NodeData : Copy + Default> Graph<NodeData> {
     // Initialize a new Graph with an empty directed graph and an empty mapping of NodeId to NodeIndex
     Graph {
       graph : DiGraph::<NodeId, Weight>::new(),
-      nodes : HashMap::new(),
+      nodes : IntMap::default(),
     }
   }
 
