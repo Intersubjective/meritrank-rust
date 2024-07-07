@@ -14,3 +14,4 @@ pub use graph::{Graph, NodeId, EdgeId, Weight};
 pub use random_walk::RandomWalk;
 pub use rank::{MeritRank, Neighbors};
 pub use walk_storage::{WalkStorage, WalkId};
+pub use integer_hasher::IntMap;
