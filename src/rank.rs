@@ -99,7 +99,7 @@ impl<NodeData: Copy + Default> MeritRank<NodeData> {
 
     pub fn get_ranks(&self, ego: NodeId, limit: Option<usize>) -> Result<Vec<(NodeId, Weight)>, MeritRankError> {
         let counter = self.personal_hits.get(&ego)
-            .ok_or(MeritRankError::NodeDoesNotExist)?;
+            .ok_or(MeritRankError::NodeIsNotCalculated)?;
 
         let mut peer_scores: Vec<_> = counter.keys().iter()
             .map(|&peer| self.get_node_score(ego, peer).map(|score| (peer, score)))
