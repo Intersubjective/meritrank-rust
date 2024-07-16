@@ -61,6 +61,36 @@ mod tests {
   }
 
   #[test]
+  fn test_clone_basic_chain_graph() {
+    let mut rank_ref = MeritRank::new(Graph::<()>::new()).unwrap();
+    rank_ref.add_node(0, ());
+    let walk_count = 10000;
+
+    let mut rank = MeritRank::new(Graph::<()>::new()).unwrap();
+    rank.add_node(0, ());
+    rank.calculate(0, walk_count).unwrap();
+    for n in 1..8
+    {
+      rank_ref.add_node(n, ());
+      rank_ref.add_edge(n-1, n, 1.0);
+      rank.add_node(n, ());
+      rank.add_edge(n-1, n, 1.0);
+
+    }
+    rank_ref.add_edge(8,1, 1.0);
+    rank.add_edge(8,1, 1.0);
+    let cloned = rank.clone();
+    rank_ref.calculate(0, walk_count).unwrap();
+    println! ("{:?}", cloned.get_ranks(0, None));
+    for n in 1..8
+    {
+      let ref_score = rank_ref.get_node_score(0, n).unwrap() as f64;
+      let score = cloned.get_node_score(0, n).unwrap() as f64;
+      assert_approx_eq!(ref_score, score , 0.1);
+    }
+  }
+
+  #[test]
   fn test_too_early_cut_position_bug() {
 
 

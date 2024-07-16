@@ -3,13 +3,14 @@ use rand::prelude::*;
 
 use integer_hasher::IntMap;
 
-use crate::constants::{OPTIMIZE_INVALIDATION};
+use crate::constants::OPTIMIZE_INVALIDATION;
 use crate::graph::{NodeId, EdgeId, Weight};
 use crate::random_walk::RandomWalk;
 
 pub type WalkId = usize;
 
 /// Represents a storage container for walks in the MeritRank graph.
+#[derive(Clone)]
 pub struct WalkStorage {
     visits: IntMap<NodeId, IntMap<WalkId, usize>>,
     walks: Vec<RandomWalk>,

@@ -17,6 +17,7 @@ pub enum Neighbors {
     Negative,
 }
 
+#[derive(Clone)]
 pub struct MeritRank<NodeData: Copy + Default> {
     pub graph: Graph<NodeData>,
     walks: WalkStorage,
