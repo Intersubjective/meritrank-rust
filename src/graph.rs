@@ -18,12 +18,20 @@ pub enum Neighbors {
 pub struct NodeData{
   pos_edges: IntMap<NodeId, Weight>,
   neg_edges: IntMap<NodeId, Weight>,
+
+  // The sum of positive edges is often used for normalization,
+  // so it is efficient to cache it.
+  pos_sum: Weight,
 }
 
 
 
 
 impl NodeData {
+  pub fn get_pos_edges_sum(&self) -> Weight {
+    self.pos_sum
+  }
+
   pub fn neighbors(&self, mode: Neighbors) -> &IntMap<NodeId, Weight> {
     match mode {
       //Neighbors::All => Some((nbr, weight)),
@@ -67,11 +75,11 @@ impl Graph {
     }
     match weight {
       0.0 => {
-        node.pos_edges.remove(&to);
-        node.neg_edges.remove(&to);
+        return Err(MeritRankError::ZeroWeightEncountered);
       },
       w if w > 0.0 => {
         node.pos_edges.insert(to, weight);
+        node.pos_sum += weight;
       },
       _ => {
         node.neg_edges.insert(to, weight);
@@ -91,6 +99,9 @@ impl Graph {
     // and get to neg only if pos_weight is None.
     let pos_weight = node.pos_edges.remove(&to);
     let neg_weight = node.neg_edges.remove(&to);
+
+    node.pos_sum -= pos_weight.unwrap_or(0.0);
+
     assert!(!(pos_weight.is_some() && neg_weight.is_some()));
     Ok(pos_weight.or(neg_weight).expect("Edge not found"))
   }

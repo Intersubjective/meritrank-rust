@@ -1,6 +1,7 @@
 /// Errors that can occur in the MeritRank implementation.
 #[derive(Debug, Clone)]
 pub enum MeritRankError {
+  ZeroWeightEncountered,
   NodeDoesNotExist,
   SelfReferenceNotAllowed,
   RandomChoiceError,
@@ -20,6 +21,7 @@ use std::fmt::{Display, Formatter, Result};
 impl Display for MeritRankError {
   fn fmt(&self, f: &mut Formatter<'_>) -> Result {
     match self {
+      MeritRankError::ZeroWeightEncountered   => write!(f, "Edge with zero weights are not allowed"),
       MeritRankError::NodeDoesNotExist        => write!(f, "Node does not exist"),
       MeritRankError::SelfReferenceNotAllowed => write!(f, "Self-reference is not allowed"),
       MeritRankError::RandomChoiceError       => write!(f, "Random choice error"),

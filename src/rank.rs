@@ -226,12 +226,7 @@ impl MeritRank {
         assert!(weight >= 0.0);
 
         let step_recalc_probability = if OPTIMIZE_INVALIDATION && weight > EPSILON && self.graph.contains_node(src) {
-            let sum_of_weights: f64 = self.graph
-                    .get_node_data(src)
-                    .unwrap()
-                    .neighbors(Neighbors::Positive)
-                .values()
-                .sum();
+            let sum_of_weights: f64 = self.graph.get_node_data(src).unwrap().get_pos_edges_sum();
             weight / (sum_of_weights + weight)
         } else {
             0.0
