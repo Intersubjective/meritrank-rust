@@ -12,7 +12,7 @@ pub type WalkId = usize;
 /// Represents a storage container for walks in the MeritRank graph.
 #[derive(Clone)]
 pub struct WalkStorage {
-    visits: IntMap<NodeId, IntMap<WalkId, usize>>,
+    visits: Vec<IntMap<WalkId, usize>>,
     walks: Vec<RandomWalk>,
     unused_walks: VecDeque<WalkId>,
 }
@@ -27,7 +27,7 @@ impl WalkStorage {
     /// A new `WalkStorage` instance.
     pub fn new() -> Self {
         WalkStorage {
-            visits: IntMap::default(),
+            visits: Vec::new(),
             walks: Vec::new(),
             unused_walks: VecDeque::new(),
 
@@ -44,12 +44,12 @@ impl WalkStorage {
         self.walks.get_mut(uid)
     }
 
-    pub fn get_walks(&self) -> &IntMap<NodeId, IntMap<WalkId, usize>> {
+    pub fn get_walks(&self) -> &Vec<IntMap<WalkId, usize>> {
         &self.visits
     }
 
     pub fn get_visits_through_node(&self, node_id: NodeId) -> Option<&IntMap<WalkId, usize>> {
-        self.visits.get(&node_id)
+        self.visits.get(node_id)
     }
 
 
@@ -64,16 +64,22 @@ impl WalkStorage {
         }
     }
 
+
     pub fn add_walk_to_bookkeeping(&mut self, walk_id: WalkId, start_pos: usize) {
-         let walk = &self.walks[walk_id as usize];
-        for (pos, &node) in walk.get_nodes().iter().enumerate().skip(start_pos) {
-            // add the walk to the node
-            let walks_with_node = self.visits.entry(node).or_insert_with(IntMap::default);
-            if !walks_with_node.contains_key(&walk_id) {
-                walks_with_node.insert(walk_id, pos);
+        if let Some(walk) = self.walks.get(walk_id) {
+            for (pos, &node) in walk.get_nodes().iter().enumerate().skip(start_pos) {
+                if self.visits.len() < node+1 {
+                    self.visits.resize(node+1, IntMap::default());
+
+                }
+                self.visits[node]
+                    .entry(walk_id)
+                    .or_insert(pos);
             }
         }
     }
+
+
 
     pub fn print_walks(&self) {
         for walk in &self.walks{
@@ -105,7 +111,7 @@ impl WalkStorage {
     ///
     pub fn drop_walks_from_node(&mut self, node: NodeId) {
         // Check if there are any visits for the given node
-        if let Some(visits_for_node) = self.visits.get_mut(&node) {
+        if let Some(visits_for_node) = self.visits.get_mut(node) {
             // Identify the walks that start from the given node (i.e., position is 0)
             let walkids_to_remove: Vec<WalkId> = visits_for_node
                 .iter()
@@ -118,7 +124,7 @@ impl WalkStorage {
                 if let Some(walk_to_remove) = self.walks.get(walk_id) {
                     // Iterate over the nodes in the walk and remove the walk_id from their visits
                     for node in walk_to_remove.iter() {
-                        if let Some(visits) = self.visits.get_mut(node) {
+                        if let Some(visits) = self.visits.get_mut(*node) {
                             visits.remove(&walk_id);
                         }
                     }
@@ -126,8 +132,6 @@ impl WalkStorage {
                 self.unused_walks.push_back(walk_id);
                 self.walks.get_mut(walk_id).unwrap().clear();
             }
-            // Remove any empty entries from the visits HashMap
-            self.visits.retain(|_, visits_ref| !visits_ref.is_empty());
         }
 
 }
@@ -137,9 +141,9 @@ impl WalkStorage {
 
     pub fn assert_visits_consistency(&self)
     {
-        for (node, visits) in self.visits.iter(){
+        for (node, visits) in self.visits.iter().enumerate(){
             for (walkid,pos) in  visits.iter(){
-               assert_eq!(self.walks[*walkid].nodes[*pos], *node);
+               assert_eq!(self.walks[*walkid].nodes[*pos], node);
             }
 
         }
@@ -195,7 +199,7 @@ impl WalkStorage {
         let mut invalidated_walks_ids = vec![];
 
         // Check if there are any walks passing through the invalidated node
-        let walks= match self.visits.get(&invalidated_node) {
+        let walks= match self.visits.get(invalidated_node) {
             Some(walks) => walks,
             None => return invalidated_walks_ids,
         };
@@ -238,7 +242,7 @@ impl WalkStorage {
             .iter()
             .filter(|&node| !walk.contains(node))
         {
-            if let Some(affected_walks) = self.visits.get_mut(&affected_node) {
+            if let Some(affected_walks) = self.visits.get_mut(affected_node) {
                 if affected_walks.get(walk_id).is_some() {
                     // Remove the invalidated walk from affected nodes
                     affected_walks.remove(walk_id);

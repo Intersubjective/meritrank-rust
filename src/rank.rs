@@ -113,8 +113,8 @@ impl MeritRank {
                 let (peers, weights): (Vec<_>, Vec<_>) = neighbors.iter().unzip();
                 let next_step = Self::random_choice(&peers, &weights, &mut rng)
                     .ok_or(MeritRankError::RandomChoiceError)?;
-                segment.push(next_step);
-                node = next_step;
+                segment.push(*next_step);
+                node = *next_step;
             } else {
                 break;
             }
@@ -122,10 +122,18 @@ impl MeritRank {
         Ok(segment)
     }
 
-    fn random_choice<T: Copy>(values: &[T], weights: &[f64], rng: &mut impl Rng) -> Option<T> {
-        WeightedIndex::new(weights)
-            .ok()
-            .and_then(|dist| values.get(dist.sample(rng)).copied())
+
+
+    fn random_choice<'a, T>(values: &'a [T], weights: &[f64], rng: &mut impl Rng) -> Option<&'a T> {
+        if values.is_empty() || weights.is_empty() || values.len() != weights.len() {
+            return None;
+        }
+        // Idea: optimize by storing the WeightedIndex in the graph for each node?
+
+        match WeightedIndex::new(weights) {
+            Ok(dist) => values.get(dist.sample(rng)),
+            Err(_) => None,
+        }
     }
 
 
@@ -186,7 +194,8 @@ impl MeritRank {
         let ego = walk.first_node().ok_or(MeritRankError::InvalidWalkLength)?;
 
         let counter = self.personal_hits.entry(ego).or_insert_with(Counter::new);
-        let diff = SetUsize::from_iter(new_segment.iter().cloned()) - &SetUsize::from_iter(walk.get_nodes().iter().cloned());
+        let diff = SetUsize::from_iter(new_segment.iter().cloned())
+            - &SetUsize::from_iter(walk.get_nodes().iter().cloned());
         counter.increment_unique_counts(diff.iter());
 
         // Borrow mutable `walk` again for `extend`
@@ -226,7 +235,12 @@ impl MeritRank {
         assert!(weight >= 0.0);
 
         let step_recalc_probability = if OPTIMIZE_INVALIDATION && weight > EPSILON && self.graph.contains_node(src) {
-            let sum_of_weights: f64 = self.graph.get_node_data(src).unwrap().get_pos_edges_sum();
+            let sum_of_weights: f64 = self.graph
+                    .get_node_data(src)
+                    .unwrap()
+                    .neighbors(Neighbors::Positive)
+                .values()
+                .sum();
             weight / (sum_of_weights + weight)
         } else {
             0.0
@@ -357,21 +371,17 @@ fn revert_counters_for_walk_from_pos(
     let ego = walk.first_node().unwrap();
     let counter = personal_hits.entry(ego).or_insert_with(Counter::new);
 
-    let nodes_before_pos: SetUsize = walk.get_nodes()[..pos].iter().cloned().collect();
-    let nodes_to_remove: SetUsize = walk.get_nodes()[pos..]
-        .iter()
-        .cloned()
-        .filter(|&node| !nodes_before_pos.contains(node))
-        .collect();
+    let nodes = walk.get_nodes();
+    let mut nodes_to_skip: SetUsize = nodes[..pos].iter().copied().collect();
 
-    if !nodes_to_remove.is_empty() {
-        for node_to_remove in nodes_to_remove {
-            *counter.get_mut_count(&node_to_remove) -= 1.0;
+    for node_to_remove in &nodes[pos..] {
+        if nodes_to_skip.insert(*node_to_remove) {
+            *counter.get_mut_count(node_to_remove) -= 1.0;
         }
+    }
 
-        #[cfg(debug_assertions)]
-        for &c in counter.count_values() {
-            assert!(c >= 0.0);
-        }
+    #[cfg(debug_assertions)]
+    for &c in counter.count_values() {
+        assert!(c >= 0.0);
     }
 }
