@@ -10,8 +10,8 @@ pub mod walk_storage;
 
 pub use counter::{Counter, CounterIterator};
 pub use errors::MeritRankError;
-pub use graph::{Graph, NodeId, EdgeId, Weight};
+pub use graph::{Graph, NodeId, EdgeId, Weight, Neighbors};
 pub use random_walk::RandomWalk;
-pub use rank::{MeritRank, Neighbors};
+pub use rank::{MeritRank};
 pub use walk_storage::{WalkStorage, WalkId};
 pub use integer_hasher::IntMap;

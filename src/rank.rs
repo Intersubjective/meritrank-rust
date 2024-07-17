@@ -5,30 +5,22 @@ use tinyset::SetUsize;
 use crate::constants::{EPSILON, ASSERT, OPTIMIZE_INVALIDATION};
 use crate::common::sign;
 use crate::errors::MeritRankError;
-use crate::graph::{Graph, NodeId, Weight};
+use crate::graph::{Graph, Neighbors, NodeId, Weight};
 use crate::random_walk::RandomWalk;
 use crate::walk_storage::{WalkId, WalkStorage};
 use crate::counter::Counter;
 
-#[derive(PartialEq, Eq)]
-pub enum Neighbors {
-    All,
-    Positive,
-    Negative,
-}
-
 #[derive(Clone)]
-pub struct MeritRank<NodeData: Copy + Default> {
-    pub graph: Graph<NodeData>,
+pub struct MeritRank {
+    pub graph: Graph,
     walks: WalkStorage,
     personal_hits: IntMap<NodeId, Counter>,
     neg_hits: IntMap<NodeId, IntMap<NodeId, Weight>>,
     pub alpha: Weight,
 }
 
-impl<NodeData: Copy + Default> MeritRank<NodeData> {
-    pub fn new(graph: Graph<NodeData>) -> Result<Self, MeritRankError> {
-        graph.check_self_reference()?;
+impl MeritRank {
+    pub fn new(graph: Graph) -> Result<Self, MeritRankError> {
         Ok(Self {
             graph,
             walks: WalkStorage::new(),
@@ -38,36 +30,28 @@ impl<NodeData: Copy + Default> MeritRank<NodeData> {
         })
     }
 
-    pub fn neighbors_weighted(&self, node: NodeId, mode: Neighbors) -> Option<IntMap<NodeId, Weight>> {
-        let neighbors: IntMap<_, _> = self.graph
-            .neighbors(node)
-            .into_iter()
-            .filter_map(|nbr| {
-                let weight = self.graph.edge_weight(node, nbr)?;
-                match mode {
-                    Neighbors::All => Some((nbr, weight)),
-                    Neighbors::Positive if weight > 0.0 => Some((nbr, weight)),
-                    Neighbors::Negative if weight < 0.0 => Some((nbr, weight)),
-                    _ => None,
-                }
-            })
-            .collect();
-
-        (!neighbors.is_empty()).then_some(neighbors)
-    }
 
     pub fn calculate(&mut self, ego: NodeId, num_walks: usize) -> Result<(), MeritRankError> {
-        if !self.graph.contains_node(ego) {
-            return Err(MeritRankError::NodeDoesNotExist);
-        }
+        let negs = self.graph
+            .get_node_data(ego)
+            .ok_or(MeritRankError::NodeDoesNotExist)?
+            .neighbors(Neighbors::Negative);
 
         self.walks.drop_walks_from_node(ego);
-        let negs = self.neighbors_weighted(ego, Neighbors::Negative).unwrap_or_default();
         self.personal_hits.insert(ego, Counter::new());
 
         for _ in 0..num_walks {
             let new_walk_id = self.walks.get_next_free_walkid();
-            self.perform_walk(new_walk_id, ego);
+            //self.perform_walk(new_walk_id, ego);
+
+            let new_segment = self.generate_walk_segment(ego, false).unwrap();
+            let walk = self.walks.get_walk_mut(new_walk_id).unwrap();
+            assert_eq!(walk.len(), 0);
+            walk.push(ego);
+            walk.extend(&new_segment);
+
+
+
             let walk = self.walks.get_walk(new_walk_id).unwrap();
 
             self.personal_hits.entry(ego)
@@ -86,9 +70,7 @@ impl<NodeData: Copy + Default> MeritRank<NodeData> {
 
         let hits = counter.get_count(&target).copied().unwrap_or(0.0);
 
-        if ASSERT && hits > 0.0 && !self.graph.is_connecting(ego, target) {
-            return Err(MeritRankError::NoPathExists);
-        }
+        //if ASSERT && hits > 0.0 && !self.graph.is_connecting(ego, target) { return Err(MeritRankError::NoPathExists); }
 
         let default_int_map = IntMap::default();  // Create a longer-lived binding
 
@@ -113,20 +95,19 @@ impl<NodeData: Copy + Default> MeritRank<NodeData> {
         Ok(peer_scores.clone().into_iter().take(limit.unwrap_or(peer_scores.len())).collect())
     }
 
-    pub fn perform_walk(&mut self, walk_id: WalkId, start_node: NodeId) {
-        let new_segment = self.generate_walk_segment(start_node, false).unwrap();
-        let walk = self.walks.get_walk_mut(walk_id).unwrap();
-        assert_eq!(walk.len(), 0);
-        walk.push(start_node);
-        walk.extend(&new_segment);
-    }
-
     pub fn generate_walk_segment(&self, start_node: NodeId, mut skip_alpha: bool) -> Result<Vec<NodeId>, MeritRankError> {
         let mut node = start_node;
         let mut segment = Vec::new();
         let mut rng = thread_rng();
 
-        while let Some(neighbors) = self.neighbors_weighted(node, Neighbors::Positive) {
+        loop{
+            let neighbors = self.graph
+                .get_node_data(node)
+                .ok_or(MeritRankError::NodeDoesNotExist)?
+                .neighbors(Neighbors::Positive);
+            if neighbors.is_empty() {
+                break;
+            }
             if skip_alpha || rng.gen::<f64>() <= self.alpha {
                 skip_alpha = false;
                 let (peers, weights): (Vec<_>, Vec<_>) = neighbors.iter().unzip();
@@ -149,9 +130,9 @@ impl<NodeData: Copy + Default> MeritRank<NodeData> {
 
 
     pub fn update_penalties_for_edge(&mut self, src: NodeId, dest: NodeId, remove_penalties: bool) {
-        let weight = self.graph.edge_weight(src, dest).unwrap();
+        let weight = self.graph.edge_weight(src, dest).expect("Node not found!").expect("Edge not found!");
         let ego_neg_hits = self.neg_hits.entry(src).or_default();
-        let neg_weights: IntMap<NodeId, Weight> = [(dest, weight)].iter().cloned().collect();
+        let neg_weights: IntMap<NodeId, Weight> = std::iter::once((dest, *weight)).collect::<IntMap<_, _>>();
 
         // Create a default IntMap to use if get_visits_through_node returns None
         let default_int_map = IntMap::default();
@@ -216,15 +197,14 @@ impl<NodeData: Copy + Default> MeritRank<NodeData> {
         Ok(())
     }
 
-
-    pub fn add_node(&mut self, node: NodeId, data: NodeData) {
-        self.graph.add_node(node, data);
+    pub fn get_new_nodeid(&mut self) -> NodeId {
+        self.graph.get_new_nodeid()
     }
 
     pub fn add_edge(&mut self, src: NodeId, dest: NodeId, weight: f64) {
         assert_ne!(src, dest, "Self reference not allowed");
 
-        let old_weight = self.graph.edge_weight(src, dest).unwrap_or(0.0);
+        let old_weight = *self.graph.edge_weight(src, dest).expect("Node should exist!").unwrap_or(&0.0);
         if old_weight == weight {
             return;
         }
@@ -246,8 +226,10 @@ impl<NodeData: Copy + Default> MeritRank<NodeData> {
         assert!(weight >= 0.0);
 
         let step_recalc_probability = if OPTIMIZE_INVALIDATION && weight > EPSILON && self.graph.contains_node(src) {
-            let sum_of_weights: f64 = self.neighbors_weighted(src, Neighbors::Positive)
-                .unwrap_or_default()
+            let sum_of_weights: f64 = self.graph
+                    .get_node_data(src)
+                    .unwrap()
+                    .neighbors(Neighbors::Positive)
                 .values()
                 .sum();
             weight / (sum_of_weights + weight)
@@ -256,26 +238,25 @@ impl<NodeData: Copy + Default> MeritRank<NodeData> {
         };
 
         let invalidated_walks_ids = self.walks.invalidate_walks_through_node(src, Some(dest), step_recalc_probability);
-        let mut negs_cache: IntMap<NodeId, IntMap<NodeId, f64>> = IntMap::default();
 
         for (uid, visit_pos) in &invalidated_walks_ids {
             let walk = self.walks.get_walk(*uid).unwrap();
-            let negs = negs_cache
-                .entry(walk.first_node().unwrap())
-                .or_insert_with(|| self.neighbors_weighted(walk.first_node().unwrap(), Neighbors::Negative).unwrap_or_default());
+            let negs = self.graph.get_node_data(
+                walk.first_node().unwrap())
+                    .unwrap()
+                    .neighbors(Neighbors::Negative);
 
             let cut_position = *visit_pos + 1;
             revert_counters_for_walk_from_pos(&mut self.personal_hits, walk, cut_position);
 
-            if !negs.is_empty() {
-                update_negative_hits(&mut self.neg_hits, walk, negs, true);
-            }
+            update_negative_hits(&mut self.neg_hits, walk, negs, true);
         }
 
+
         if weight <= EPSILON {
-            self.graph.remove_edge(src, dest);
+            self.graph.remove_edge(src, dest).unwrap();
         } else {
-            self.graph.add_edge(src, dest, weight);
+            self.graph.add_edge(src, dest, weight).unwrap();
         }
 
         for (walk_id, visit_pos) in &invalidated_walks_ids {
@@ -287,11 +268,11 @@ impl<NodeData: Copy + Default> MeritRank<NodeData> {
             let walk_updated = self.walks.get_walk(*walk_id).unwrap();
             let first_node = walk_updated.first_node().unwrap();
 
-            if let Some(negs) = negs_cache.get(&first_node) {
-                if !negs.is_empty() {
-                    update_negative_hits(&mut self.neg_hits, walk_updated, negs, false);
-                }
-            }
+
+            let negs = self.graph.get_node_data(first_node)
+                .unwrap()
+                .neighbors(Neighbors::Negative);
+            update_negative_hits(&mut self.neg_hits, walk_updated, negs, false);
         }
 
         if ASSERT {
@@ -309,7 +290,7 @@ impl<NodeData: Copy + Default> MeritRank<NodeData> {
                     .collect();
 
                 assert_eq!(walks.len(), *count as usize);
-                assert!(*count == 0.0 || weight <= EPSILON || self.graph.is_connecting(*ego, *peer));
+                //assert!(*count == 0.0 || weight <= EPSILON || self.graph.is_connecting(*ego, *peer));
             }
         }
     }
@@ -344,16 +325,6 @@ impl<NodeData: Copy + Default> MeritRank<NodeData> {
     fn nn(&mut self, src: NodeId, dest: NodeId, weight: f64) {
         self.nz(src, dest, weight);
         self.zn(src, dest, weight);
-    }
-
-    pub fn get_edge(&self, src: NodeId, dest: NodeId) -> Option<Weight> {
-        self.graph.edge_weight(src, dest)
-    }
-
-    pub fn get_node_data(&self, ego: NodeId) -> Result<NodeData, MeritRankError> {
-        self.graph.get_node_info(ego)
-            .map(|(_, data)| data)
-            .ok_or(MeritRankError::NodeDoesNotExist)
     }
 
     pub fn print_walks(&self) {

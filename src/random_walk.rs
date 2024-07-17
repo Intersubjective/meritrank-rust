@@ -294,6 +294,7 @@ impl RandomWalk {
     let mut negs = neg_weights.clone();
     let mut accumulated_penalty = 0.0;
 
+    // TODO: optimize by removing cloning
     for &step in self.nodes.iter().rev() {
       if let Some(penalty) = negs.remove(&step) {
         accumulated_penalty += penalty;

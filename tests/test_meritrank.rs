@@ -16,7 +16,7 @@ mod tests {
   // lets write test for new(graph: MyGraph) -> Result<Self, MeritRankError>
   #[test]
   fn test_new() {
-    let graph = Graph::<()>::new();
+    let graph = Graph::new();
     let result = MeritRank::new(graph);
     assert!(result.is_ok());
   }
@@ -24,7 +24,7 @@ mod tests {
   // lets write test for get_personal_hits(&self) -> &HashMap<NodeId, Counter>
   #[test]
   fn test_get_personal_hits() {
-    let graph = Graph::<()>::new();
+    let graph = Graph::new();
     let merit_rank = MeritRank::new(graph).unwrap();
     let result = merit_rank.get_personal_hits();
     assert!(result.is_empty());
@@ -33,18 +33,18 @@ mod tests {
 
   #[test]
   fn test_basic_chain_graph() {
-    let mut rank_ref = MeritRank::new(Graph::<()>::new()).unwrap();
-    rank_ref.add_node(0, ());
+    let mut rank_ref = MeritRank::new(Graph::new()).unwrap();
+    rank_ref.get_new_nodeid();
     let walk_count = 10000;
 
-    let mut rank = MeritRank::new(Graph::<()>::new()).unwrap();
-    rank.add_node(0, ());
+    let mut rank = MeritRank::new(Graph::new()).unwrap();
+    rank.get_new_nodeid();
     rank.calculate(0, walk_count).unwrap();
-    for n in 1..8
+    for n in 1..9
     {
-      rank_ref.add_node(n, ());
+      rank_ref.get_new_nodeid();
       rank_ref.add_edge(n-1, n, 1.0);
-      rank.add_node(n, ());
+      rank.get_new_nodeid();
       rank.add_edge(n-1, n, 1.0);
 
     }
@@ -62,18 +62,18 @@ mod tests {
 
   #[test]
   fn test_clone_basic_chain_graph() {
-    let mut rank_ref = MeritRank::new(Graph::<()>::new()).unwrap();
-    rank_ref.add_node(0, ());
+    let mut rank_ref = MeritRank::new(Graph::new()).unwrap();
+    rank_ref.get_new_nodeid();
     let walk_count = 10000;
 
-    let mut rank = MeritRank::new(Graph::<()>::new()).unwrap();
-    rank.add_node(0, ());
+    let mut rank = MeritRank::new(Graph::new()).unwrap();
+    rank.get_new_nodeid();
     rank.calculate(0, walk_count).unwrap();
-    for n in 1..8
+    for n in 1..9
     {
-      rank_ref.add_node(n, ());
+      rank_ref.get_new_nodeid();
       rank_ref.add_edge(n-1, n, 1.0);
-      rank.add_node(n, ());
+      rank.get_new_nodeid();
       rank.add_edge(n-1, n, 1.0);
 
     }
@@ -95,10 +95,10 @@ mod tests {
 
 
     let walk_count = 10000;
-    let mut ref_rank = MeritRank::new(Graph::<()>::new()).unwrap();
-    ref_rank.add_node(0, ());
-    ref_rank.add_node(1, ());
-    ref_rank.add_node(2, ());
+    let mut ref_rank = MeritRank::new(Graph::new()).unwrap();
+    ref_rank.get_new_nodeid();
+    ref_rank.get_new_nodeid();
+    ref_rank.get_new_nodeid();
     ref_rank.add_edge(0, 1, -1.0);
     ref_rank.add_edge(0, 2, 1.0);
     ref_rank.add_edge(1, 2, 1.0);
@@ -107,10 +107,10 @@ mod tests {
     ref_rank.add_edge(2, 0, 1.0);
     ref_rank.calculate(0, walk_count).unwrap();
 
-    let mut rank = MeritRank::new(Graph::<()>::new()).unwrap();
-    rank.add_node(0, ());
-    rank.add_node(1, ());
-    rank.add_node(2, ());
+    let mut rank = MeritRank::new(Graph::new()).unwrap();
+    rank.get_new_nodeid();
+    rank.get_new_nodeid();
+    rank.get_new_nodeid();
     rank.add_edge(0, 1, -1.0);
     rank.add_edge(0, 2, 1.0);
     rank.add_edge(1, 2, 1.0);
@@ -137,19 +137,19 @@ mod tests {
 
 
     let walk_count = 10000;
-    let mut ref_rank = MeritRank::new(Graph::<()>::new()).unwrap();
-    ref_rank.add_node(0, ());
-    ref_rank.add_node(1, ());
-    ref_rank.add_node(2, ());
+    let mut ref_rank = MeritRank::new(Graph::new()).unwrap();
+    ref_rank.get_new_nodeid();
+    ref_rank.get_new_nodeid();
+    ref_rank.get_new_nodeid();
     ref_rank.add_edge(0, 2, 1.0);
     ref_rank.add_edge(1, 0, 1.0);
     ref_rank.add_edge(2, 1, 1.0);
     ref_rank.calculate(0, walk_count).unwrap();
 
-    let mut rank = MeritRank::new(Graph::<()>::new()).unwrap();
-    rank.add_node(0, ());
-    rank.add_node(1, ());
-    rank.add_node(2, ());
+    let mut rank = MeritRank::new(Graph::new()).unwrap();
+    rank.get_new_nodeid();
+    rank.get_new_nodeid();
+    rank.get_new_nodeid();
     rank.add_edge(0, 1, -1.0);
     rank.add_edge(0, 2, 1.0);
     rank.add_edge(1, 0, 1.0);
