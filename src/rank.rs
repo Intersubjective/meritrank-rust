@@ -1,6 +1,7 @@
-use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 use integer_hasher::IntMap;
+
+//Tried to cache the sets in the walks: did not provide any performance improvement.
 use tinyset::SetUsize;
 use crate::constants::{EPSILON, ASSERT, OPTIMIZE_INVALIDATION};
 use crate::common::sign;
@@ -32,17 +33,11 @@ impl MeritRank {
 
 
     pub fn calculate(&mut self, ego: NodeId, num_walks: usize) -> Result<(), MeritRankError> {
-        let negs = self.graph
-            .get_node_data(ego)
-            .ok_or(MeritRankError::NodeDoesNotExist)?
-            .neighbors(Neighbors::Negative);
-
         self.walks.drop_walks_from_node(ego);
         self.personal_hits.insert(ego, Counter::new());
 
         for _ in 0..num_walks {
             let new_walk_id = self.walks.get_next_free_walkid();
-            //self.perform_walk(new_walk_id, ego);
 
             let new_segment = self.generate_walk_segment(ego, false).unwrap();
             let walk = self.walks.get_walk_mut(new_walk_id).unwrap();
@@ -50,12 +45,15 @@ impl MeritRank {
             walk.push(ego);
             walk.extend(&new_segment);
 
-
-
             let walk = self.walks.get_walk(new_walk_id).unwrap();
 
             self.personal_hits.entry(ego)
                 .and_modify(|counter| counter.increment_unique_counts(walk.iter().cloned()));
+
+            let negs = self.graph
+                .get_node_data(ego)
+                .ok_or(MeritRankError::NodeDoesNotExist)?
+                .neighbors(Neighbors::Negative);
 
             update_negative_hits(&mut self.neg_hits, walk, &negs, false);
             self.walks.add_walk_to_bookkeeping(new_walk_id, 0);
@@ -95,45 +93,28 @@ impl MeritRank {
         Ok(peer_scores.clone().into_iter().take(limit.unwrap_or(peer_scores.len())).collect())
     }
 
-    pub fn generate_walk_segment(&self, start_node: NodeId, mut skip_alpha: bool) -> Result<Vec<NodeId>, MeritRankError> {
+    pub fn generate_walk_segment(&mut self, start_node: NodeId, mut skip_alpha: bool) -> Result<Vec<NodeId>, MeritRankError> {
         let mut node = start_node;
         let mut segment = Vec::new();
         let mut rng = thread_rng();
 
         loop{
-            let neighbors = self.graph
-                .get_node_data(node)
-                .ok_or(MeritRankError::NodeDoesNotExist)?
+            let mut node_data =self.graph.get_node_data_mut(node).unwrap();
+            let neighbors = node_data
                 .neighbors(Neighbors::Positive);
             if neighbors.is_empty() {
                 break;
             }
             if skip_alpha || rng.gen::<f64>() <= self.alpha {
                 skip_alpha = false;
-                let (peers, weights): (Vec<_>, Vec<_>) = neighbors.iter().unzip();
-                let next_step = Self::random_choice(&peers, &weights, &mut rng)
-                    .ok_or(MeritRankError::RandomChoiceError)?;
-                segment.push(*next_step);
-                node = *next_step;
+                let next_step = node_data.random_neighbor().ok_or(MeritRankError::RandomChoiceError)?;
+                segment.push(next_step);
+                node = next_step;
             } else {
                 break;
             }
         }
         Ok(segment)
-    }
-
-
-
-    fn random_choice<'a, T>(values: &'a [T], weights: &[f64], rng: &mut impl Rng) -> Option<&'a T> {
-        if values.is_empty() || weights.is_empty() || values.len() != weights.len() {
-            return None;
-        }
-        // Idea: optimize by storing the WeightedIndex in the graph for each node?
-
-        match WeightedIndex::new(weights) {
-            Ok(dist) => values.get(dist.sample(rng)),
-            Err(_) => None,
-        }
     }
 
 
