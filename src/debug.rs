@@ -13,9 +13,8 @@ impl fmt::Debug for WalkStorage {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     // Implement the formatting logic for WalkStorage
     // Here you can format the storage contents as desired
-    let sorted_walks: std::collections::BTreeMap<_, _> = self.get_walks().iter().collect();
 
-    write!(f, "WalkStorage {{ walks: {:?} }}", sorted_walks)
+    write!(f, "WalkStorage {{ walks: {:?} }}", self.get_walks())
   }
 }
 

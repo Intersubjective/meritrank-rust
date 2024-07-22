@@ -1,8 +1,10 @@
 #[allow(unused_imports)]
 #[cfg(test)]
 mod tests {
+  use std::collections::HashMap;
   use super::*;
-  use indexmap::indexmap;
+  use indexmap::{indexmap, IndexMap};
+  use integer_hasher::IntMap;
   use meritrank::graph::{NodeId, EdgeId};
   use meritrank::random_walk::RandomWalk;
   use meritrank::walk_storage::{decide_skip_invalidation, decide_skip_invalidation_on_edge_addition, decide_skip_invalidation_on_edge_deletion, WalkStorage};
@@ -33,32 +35,28 @@ mod tests {
     let walk_storage_str = format!("{:?}", walk_storage);
     let expected_visits_str = format!(
       "WalkStorage {{ walks: {:?} }}",
-      indexmap! {
-        2 => indexmap! {
-          walkid3 =>  0,
+      vec![
+        IndexMap::default(),
+        IndexMap::default(),
+        indexmap! {
+            walkid3 => 0,
         },
-        3 => indexmap! {
-          walkid3 => 1,
+        indexmap! {
+            walkid3 => 1,
         },
-        4 => indexmap! {
-          walkid3 => 2,
+        indexmap! {
+            walkid3 => 2,
         },
-      }
+        IndexMap::default(),
+    ]
     );
 
     assert_eq!(walk_storage_str, expected_visits_str);
 
-    assert_eq!(walk_storage.get_walks().len(), 3);
-    assert_eq!(
-      walk_storage
-        .get_walks()
-        .get(&1)
-        .map(|m| format!("{:?}", m)),
-      None.map(|()| "".to_string())
-    );
-    assert_eq!(walk_storage.get_walks()[&2].len(), 1);
-    assert_eq!(walk_storage.get_walks()[&3].len(), 1);
-    assert_eq!(walk_storage.get_walks()[&4].len(), 1);
+    assert_eq!(walk_storage.get_walks().len(), 6);
+    assert_eq!(walk_storage.get_walks()[2].len(), 1);
+    assert_eq!(walk_storage.get_walks()[3].len(), 1);
+    assert_eq!(walk_storage.get_walks()[4].len(), 1);
 
     // Make sure that the walks are reused
     assert_eq!(walk_storage.get_next_free_walkid(), 0);

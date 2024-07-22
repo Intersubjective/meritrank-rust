@@ -7,26 +7,29 @@
 //   println!("Invalidation optimization enabled");
 // }
 
-use meritrank::{MeritRank, Graph};
+use meritrank::{MeritRank, Graph, NodeId};
 
 fn main() {
   println!("Hello, world!");
 
   // create graph
-  let mut graph = Graph::<()>::new();
+  let mut graph = Graph::new();
 
-  // add nodes
-  graph.add_node(1, ());
-  graph.add_node(2, ());
-  graph.add_node(3, ());
-  graph.add_node(4, ());
 
-  graph.add_edge(1, 2, 0.98);
-  graph.add_edge(2, 3, 1.0);
-  graph.add_edge(3, 4, 1.0);
+
+  let mut nodes: Vec<NodeId> = Vec::new();
+
+  for n in 0..5{
+    nodes.push(graph.get_new_nodeid());
+
+  }
+
+  graph.add_edge(nodes[1], nodes[2], 0.98);
+  graph.add_edge(nodes[2], nodes[3], 1.0);
+  graph.add_edge(nodes[3], nodes[4], 1.0);
 
   // create merit rank
-  let mut newrank = match MeritRank::<()>::new(graph) {
+  let mut newrank = match MeritRank::new(graph) {
     Ok(g) => {
       println!("Graph created");
       g
@@ -48,16 +51,16 @@ fn main() {
 
   println!("Node scores: {:?}", node_scores);
 
-  newrank.add_node(5, ());
+  nodes.push(newrank.get_new_nodeid());
 
   println!("Adding edges 2 -> 4");
-  newrank.add_edge(2, 4, 1.0);
+  newrank.add_edge(nodes[2], nodes[4], 1.0);
   println!("Adding edges 3 -> 4");
-  newrank.add_edge(3, 4, -1.0);
+  newrank.add_edge(nodes[3], nodes[4], -1.0);
   println!("Adding edges 4 -> 5");
-  newrank.add_edge(4, 5, 1.0);
+  newrank.add_edge(nodes[4], nodes[5], 1.0);
   println!("Adding edges 3 -> 5");
-  newrank.add_edge(3, 5, -1.0);
+  newrank.add_edge(nodes[3], nodes[5], -1.0);
 
   // calculate merit rank
   let ratings = newrank

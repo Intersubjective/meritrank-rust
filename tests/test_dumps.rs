@@ -108,11 +108,11 @@ mod tests {
       let rank2: f64 = record[11].trim().parse()?;
 
       // Create the complete graph
-      let mut complete_graph = Graph::<()>::new();
+      let mut complete_graph = Graph::new();
       let incremental_node_ids: Vec<NodeId> = vec![0, 1, 2];
 
       for node_id in incremental_node_ids {
-        complete_graph.add_node(node_id, ());
+        complete_graph.get_new_nodeid();
       }
 
       complete_graph.add_edge(0, 1, w0_1);
@@ -207,11 +207,11 @@ mod tests {
       let rank3: f64 = record[18].trim().parse()?;
 
       // Create the complete graph
-      let mut complete_graph = Graph::<()>::new();
+      let mut complete_graph = Graph::new();
       let node_ids: Vec<NodeId> = vec![0, 1, 2, 3];
 
       for node_id in &node_ids {
-        complete_graph.add_node(*node_id, ());
+        complete_graph.get_new_nodeid();
       }
 
       complete_graph.add_edge(0, 1, w0_1);
@@ -273,7 +273,7 @@ mod tests {
     let reader = BufReader::new(File::open(file_path)?);
     let mut csv_reader = ReaderBuilder::new().from_reader(reader);
 
-    let mut meritrank_opt : Option<MeritRank<()>> = None;
+    let mut meritrank_opt : Option<MeritRank> = None;
 
     let records_to_skip = 0;
     for (index, result) in csv_reader.records().enumerate() {
@@ -300,10 +300,10 @@ mod tests {
         // then recalculate merit rank for updated graph
         meritrank.add_edge(source, destination, weight);
       } else {
-        let mut graph = Graph::<()>::new();
-        graph.add_node(0, ());
-        graph.add_node(1, ());
-        graph.add_node(2, ());
+        let mut graph = Graph::new();
+        graph.get_new_nodeid();
+        graph.get_new_nodeid();
+        graph.get_new_nodeid();
 
         let weights: Vec<f64> = record
           .iter()
@@ -374,7 +374,7 @@ mod tests {
     let reader = BufReader::new(decoder);
     let mut csv_reader = ReaderBuilder::new().from_reader(reader);
 
-    let mut meritrank_opt: Option<MeritRank<()>> = None;
+    let mut meritrank_opt: Option<MeritRank> = None;
 
     for result in csv_reader.records() {
       let record = result?;
@@ -388,11 +388,11 @@ mod tests {
         // then recalculate merit rank for updated graph
         meritrank.add_edge(source, destination, weight);
       } else {
-        let mut graph = Graph::<()>::new();
+        let mut graph = Graph::new();
         let node_ids: Vec<NodeId> = vec![0, 1, 2, 3];
 
         for &node_id in &node_ids {
-          graph.add_node(node_id, ());
+          graph.get_new_nodeid();
         }
 
         let weights: Vec<f64> = record
