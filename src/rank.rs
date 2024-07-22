@@ -99,7 +99,7 @@ impl MeritRank {
         let mut rng = thread_rng();
 
         loop{
-            let mut node_data =self.graph.get_node_data_mut(node).unwrap();
+            let node_data = self.graph.get_node_data_mut(node).unwrap();
             let neighbors = node_data
                 .neighbors(Neighbors::Positive);
             if neighbors.is_empty() {
@@ -271,7 +271,7 @@ impl MeritRank {
         }
     }
 
-    fn assert_counters_consistency_after_edge_addition(&self, weight: f64) {
+    fn assert_counters_consistency_after_edge_addition(&self, _weight: f64) {
         for (ego, hits) in &self.personal_hits {
             for (peer, count) in hits {
                 let visits = self.walks.get_visits_through_node(*peer).unwrap();
@@ -286,7 +286,7 @@ impl MeritRank {
     }
 
     fn zn(&mut self, src: NodeId, dest: NodeId, weight: f64) {
-        self.graph.add_edge(src, dest, weight);
+        let _ = self.graph.add_edge(src, dest, weight);
         self.update_penalties_for_edge(src, dest, false);
     }
 
@@ -305,7 +305,7 @@ impl MeritRank {
 
     fn nz(&mut self, src: NodeId, dest: NodeId, _weight: f64) {
         self.update_penalties_for_edge(src, dest, true);
-        self.graph.remove_edge(src, dest);
+        let _ = self.graph.remove_edge(src, dest);
     }
     fn np(&mut self, src: NodeId, dest: NodeId, weight: f64) {
         self.nz(src, dest, weight);

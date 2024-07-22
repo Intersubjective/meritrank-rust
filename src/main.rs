@@ -19,14 +19,14 @@ fn main() {
 
   let mut nodes: Vec<NodeId> = Vec::new();
 
-  for n in 0..5{
+  for _ in 0..5 {
     nodes.push(graph.get_new_nodeid());
 
   }
 
-  graph.add_edge(nodes[1], nodes[2], 0.98);
-  graph.add_edge(nodes[2], nodes[3], 1.0);
-  graph.add_edge(nodes[3], nodes[4], 1.0);
+  let _ = graph.add_edge(nodes[1], nodes[2], 0.98).unwrap();
+  let _ = graph.add_edge(nodes[2], nodes[3], 1.00).unwrap();
+  let _ = graph.add_edge(nodes[3], nodes[4], 1.00).unwrap();
 
   // create merit rank
   let mut newrank = match MeritRank::new(graph) {

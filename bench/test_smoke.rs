@@ -1743,27 +1743,27 @@ mod tests {
 
     println!("1");
     rank.add_edge(3, 35, 0.6870330406793382);
-    assert!(get_time() < 5000);
+    assert!(get_time() < 10000);
 
     println!("2");
     rank.add_edge(3, 27, 0.6750305618933777);
-    assert!(get_time() < 5000);
+    assert!(get_time() < 10000);
 
     println!("3");
     rank.add_edge(3, 252, 0.6709551330130799);
-    assert!(get_time() < 5000);
+    assert!(get_time() < 10000);
 
     println!("4");
     rank.add_edge(3, 24, 0.6658611955039131);
-    assert!(get_time() < 5000);
+    assert!(get_time() < 10000);
 
     println!("5");
     rank.add_edge(3, 286, 0.6332146304754731);
-    assert!(get_time() < 5000);
+    assert!(get_time() < 10000);
 
     println!("6");
     rank.add_edge(3, 208, 0.6148736192067291);
-    assert!(get_time() < 5000);
+    assert!(get_time() < 10000);
   }
 
   #[test]

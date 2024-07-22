@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-use indexmap::IndexMap;
-use integer_hasher::{BuildIntHasher, IntMap};
+use integer_hasher::IntMap;
 
 use log::error;
 use rand::distributions::{Distribution, WeightedIndex};
