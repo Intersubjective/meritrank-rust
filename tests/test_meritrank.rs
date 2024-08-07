@@ -13,19 +13,11 @@ mod tests {
 
   use std::collections::HashMap;
 
-  // lets write test for new(graph: MyGraph) -> Result<Self, MeritRankError>
-  #[test]
-  fn test_new() {
-    let graph = Graph::new();
-    let result = MeritRank::new(graph);
-    assert!(result.is_ok());
-  }
-
   // lets write test for get_personal_hits(&self) -> &HashMap<NodeId, Counter>
   #[test]
   fn test_get_personal_hits() {
     let graph = Graph::new();
-    let merit_rank = MeritRank::new(graph).unwrap();
+    let merit_rank = MeritRank::new(graph);
     let result = merit_rank.get_personal_hits();
     assert!(result.is_empty());
   }
@@ -33,11 +25,11 @@ mod tests {
 
   #[test]
   fn test_basic_chain_graph() {
-    let mut rank_ref = MeritRank::new(Graph::new()).unwrap();
+    let mut rank_ref = MeritRank::new(Graph::new());
     rank_ref.get_new_nodeid();
     let walk_count = 10000;
 
-    let mut rank = MeritRank::new(Graph::new()).unwrap();
+    let mut rank = MeritRank::new(Graph::new());
     rank.get_new_nodeid();
     rank.calculate(0, walk_count).unwrap();
     for n in 1..9
@@ -62,11 +54,11 @@ mod tests {
 
   #[test]
   fn test_clone_basic_chain_graph() {
-    let mut rank_ref = MeritRank::new(Graph::new()).unwrap();
+    let mut rank_ref = MeritRank::new(Graph::new());
     rank_ref.get_new_nodeid();
     let walk_count = 10000;
 
-    let mut rank = MeritRank::new(Graph::new()).unwrap();
+    let mut rank = MeritRank::new(Graph::new());
     rank.get_new_nodeid();
     rank.calculate(0, walk_count).unwrap();
     for n in 1..9
@@ -95,7 +87,7 @@ mod tests {
 
 
     let walk_count = 10000;
-    let mut ref_rank = MeritRank::new(Graph::new()).unwrap();
+    let mut ref_rank = MeritRank::new(Graph::new());
     ref_rank.get_new_nodeid();
     ref_rank.get_new_nodeid();
     ref_rank.get_new_nodeid();
@@ -107,7 +99,7 @@ mod tests {
     ref_rank.add_edge(2, 0, 1.0);
     ref_rank.calculate(0, walk_count).unwrap();
 
-    let mut rank = MeritRank::new(Graph::new()).unwrap();
+    let mut rank = MeritRank::new(Graph::new());
     rank.get_new_nodeid();
     rank.get_new_nodeid();
     rank.get_new_nodeid();
@@ -137,7 +129,7 @@ mod tests {
 
 
     let walk_count = 10000;
-    let mut ref_rank = MeritRank::new(Graph::new()).unwrap();
+    let mut ref_rank = MeritRank::new(Graph::new());
     ref_rank.get_new_nodeid();
     ref_rank.get_new_nodeid();
     ref_rank.get_new_nodeid();
@@ -146,7 +138,7 @@ mod tests {
     ref_rank.add_edge(2, 1, 1.0);
     ref_rank.calculate(0, walk_count).unwrap();
 
-    let mut rank = MeritRank::new(Graph::new()).unwrap();
+    let mut rank = MeritRank::new(Graph::new());
     rank.get_new_nodeid();
     rank.get_new_nodeid();
     rank.get_new_nodeid();

@@ -122,7 +122,7 @@ mod tests {
       let _ = complete_graph.add_edge(2, 0, w2_0);
       let _ = complete_graph.add_edge(2, 1, w2_1);
 
-      let mut meritrank = MeritRank::new(complete_graph).unwrap();
+      let mut meritrank = MeritRank::new(complete_graph);
 
       // calculate merit rank
       // ACHTUNG! To pass, this test requires at least 10,000 walks!
@@ -227,7 +227,7 @@ mod tests {
       let _ = complete_graph.add_edge(3, 1, w3_1);
       let _ = complete_graph.add_edge(3, 2, w3_2);
 
-      let mut meritrank = MeritRank::new(complete_graph).unwrap();
+      let mut meritrank = MeritRank::new(complete_graph);
 
       // calculate merit rank
       meritrank.calculate(0, 10000)?;
@@ -320,7 +320,7 @@ mod tests {
         let _ = graph.add_edge(2, 0, weights[4]);
         let _ = graph.add_edge(2, 1, weights[5]);
 
-        meritrank_opt = Some(MeritRank::new(graph)?);
+        meritrank_opt = Some(MeritRank::new(graph));
         meritrank_opt.as_mut().unwrap().calculate(0, 20000)?;
       }
 
@@ -414,7 +414,7 @@ mod tests {
           let _ = graph.add_edge(src, dest, weights[i]);
         }
 
-        meritrank_opt = Some(MeritRank::new(graph)?);
+        meritrank_opt = Some(MeritRank::new(graph));
         meritrank_opt.as_mut().unwrap().calculate(0, 500)?;
       }
 

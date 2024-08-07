@@ -29,13 +29,7 @@ fn main() {
   let _ = graph.add_edge(nodes[3], nodes[4], 1.00).unwrap();
 
   // create merit rank
-  let mut newrank = match MeritRank::new(graph) {
-    Ok(g) => {
-      println!("Graph created");
-      g
-    }
-    Err(e) => panic!("MeritRank Error: {}", e),
-  };
+  let mut newrank = MeritRank::new(graph);
 
   // calculate merit rank
   match newrank.calculate(1, 100) {

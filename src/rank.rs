@@ -21,14 +21,14 @@ pub struct MeritRank {
 }
 
 impl MeritRank {
-    pub fn new(graph: Graph) -> Result<Self, MeritRankError> {
-        Ok(Self {
+    pub fn new(graph: Graph) -> Self {
+        Self {
             graph,
             walks: WalkStorage::new(),
             personal_hits: IntMap::default(),
             neg_hits: IntMap::default(),
             alpha: 0.85,
-        })
+        }
     }
 
 

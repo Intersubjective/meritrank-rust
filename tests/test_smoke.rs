@@ -5,7 +5,7 @@ mod tests {
 
   #[test]
   fn smoke_perf() {
-    let mut rank = MeritRank::new(Graph::new()).unwrap();
+    let mut rank = MeritRank::new(Graph::new());
 
     let numwalks = 200;
     rank.get_new_nodeid();
@@ -1769,7 +1769,7 @@ mod tests {
 
   #[test]
   fn smoke_perf_with_zero() {
-    let mut rank = MeritRank::new(Graph::new()).unwrap();
+    let mut rank = MeritRank::new(Graph::new());
 
     let numwalks = 100;
 
