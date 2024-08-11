@@ -9,17 +9,10 @@ pub type NodeId = usize;
 pub type Weight = f64;
 pub type EdgeId = (NodeId, NodeId);
 
-#[derive(PartialEq, Eq)]
-pub enum Neighbors {
-  //All,
-  Positive,
-  Negative,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct NodeData{
-  pos_edges: IntMap<NodeId, Weight>,
-  neg_edges: IntMap<NodeId, Weight>,
+  pub pos_edges: IntMap<NodeId, Weight>,
+  pub neg_edges: IntMap<NodeId, Weight>,
 
   // The sum of positive edges is often used for normalization,
   // so it is efficient to cache it.
@@ -40,30 +33,19 @@ impl NodeData {
       let (k, _)=  self.pos_edges.iter().nth(cache.sample(&mut thread_rng())).unwrap();
       return Some(*k);
     }
-    let neighbors = self.neighbors(Neighbors::Positive);
-    if neighbors.is_empty(){
+    if self.pos_edges.is_empty(){
       return None;
     }
 
-    let wi = WeightedIndex::new(neighbors.values()).unwrap();
+    let wi = WeightedIndex::new(self.pos_edges.values()).unwrap();
     let (k, _) = self.pos_edges.iter().nth(wi.sample(&mut thread_rng())).unwrap();
     Some(*k)
-  }
-
-
-  pub fn neighbors(&self, mode: Neighbors) -> &IntMap<NodeId, Weight> {
-    match mode {
-      //Neighbors::All => Some((nbr, weight)),
-      Neighbors::Positive => &self.pos_edges,
-      Neighbors::Negative => &self.neg_edges,
-      //_ => None,
-    }
   }
 }
 
 #[derive(Debug, Clone)]
 pub struct Graph {
-  nodes: Vec<NodeData>,
+  pub nodes: Vec<NodeData>,
 }
 
 impl Graph {

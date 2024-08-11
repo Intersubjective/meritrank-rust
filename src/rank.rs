@@ -6,7 +6,7 @@ use tinyset::SetUsize;
 use crate::constants::{EPSILON, ASSERT, OPTIMIZE_INVALIDATION};
 use crate::common::sign;
 use crate::errors::MeritRankError;
-use crate::graph::{Graph, Neighbors, NodeId, Weight};
+use crate::graph::{Graph, NodeId, Weight};
 use crate::random_walk::RandomWalk;
 use crate::walk_storage::{WalkId, WalkStorage};
 use crate::counter::Counter;
@@ -50,10 +50,10 @@ impl MeritRank {
             self.personal_hits.entry(ego)
                 .and_modify(|counter| counter.increment_unique_counts(walk.iter().cloned()));
 
-            let negs = self.graph
+            let negs = &self.graph
                 .get_node_data(ego)
                 .ok_or(MeritRankError::NodeDoesNotExist)?
-                .neighbors(Neighbors::Negative);
+                .neg_edges;
 
             update_negative_hits(&mut self.neg_hits, walk, &negs, false);
             self.walks.add_walk_to_bookkeeping(new_walk_id, 0);
@@ -100,9 +100,7 @@ impl MeritRank {
 
         loop{
             let node_data = self.graph.get_node_data_mut(node).unwrap();
-            let neighbors = node_data
-                .neighbors(Neighbors::Positive);
-            if neighbors.is_empty() {
+            if node_data.pos_edges.is_empty() {
                 break;
             }
             if skip_alpha || rng.gen::<f64>() <= self.alpha {
@@ -219,7 +217,7 @@ impl MeritRank {
             let sum_of_weights: f64 = self.graph
                     .get_node_data(src)
                     .unwrap()
-                    .neighbors(Neighbors::Positive)
+                    .pos_edges
                 .values()
                 .sum();
             weight / (sum_of_weights + weight)
@@ -231,10 +229,10 @@ impl MeritRank {
 
         for (uid, visit_pos) in &invalidated_walks_ids {
             let walk = self.walks.get_walk(*uid).unwrap();
-            let negs = self.graph.get_node_data(
+            let negs = &self.graph.get_node_data(
                 walk.first_node().unwrap())
                     .unwrap()
-                    .neighbors(Neighbors::Negative);
+                    .neg_edges;
 
             let cut_position = *visit_pos + 1;
             revert_counters_for_walk_from_pos(&mut self.personal_hits, walk, cut_position);
@@ -259,9 +257,9 @@ impl MeritRank {
             let first_node = walk_updated.first_node().unwrap();
 
 
-            let negs = self.graph.get_node_data(first_node)
+            let negs = &self.graph.get_node_data(first_node)
                 .unwrap()
-                .neighbors(Neighbors::Negative);
+                .neg_edges;
             update_negative_hits(&mut self.neg_hits, walk_updated, negs, false);
         }
 
