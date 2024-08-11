@@ -115,12 +115,12 @@ mod tests {
         complete_graph.get_new_nodeid();
       }
 
-      let _ = complete_graph.add_edge(0, 1, w0_1);
-      let _ = complete_graph.add_edge(0, 2, w0_2);
-      let _ = complete_graph.add_edge(1, 0, w1_0);
-      let _ = complete_graph.add_edge(1, 2, w1_2);
-      let _ = complete_graph.add_edge(2, 0, w2_0);
-      let _ = complete_graph.add_edge(2, 1, w2_1);
+      let _ = complete_graph.set_edge(0, 1, w0_1);
+      let _ = complete_graph.set_edge(0, 2, w0_2);
+      let _ = complete_graph.set_edge(1, 0, w1_0);
+      let _ = complete_graph.set_edge(1, 2, w1_2);
+      let _ = complete_graph.set_edge(2, 0, w2_0);
+      let _ = complete_graph.set_edge(2, 1, w2_1);
 
       let mut meritrank = MeritRank::new(complete_graph);
 
@@ -214,18 +214,18 @@ mod tests {
         complete_graph.get_new_nodeid();
       }
 
-      let _ = complete_graph.add_edge(0, 1, w0_1);
-      let _ = complete_graph.add_edge(0, 2, w0_2);
-      let _ = complete_graph.add_edge(0, 3, w0_3);
-      let _ = complete_graph.add_edge(1, 0, w1_0);
-      let _ = complete_graph.add_edge(1, 2, w1_2);
-      let _ = complete_graph.add_edge(1, 3, w1_3);
-      let _ = complete_graph.add_edge(2, 0, w2_0);
-      let _ = complete_graph.add_edge(2, 1, w2_1);
-      let _ = complete_graph.add_edge(2, 3, w2_3);
-      let _ = complete_graph.add_edge(3, 0, w3_0);
-      let _ = complete_graph.add_edge(3, 1, w3_1);
-      let _ = complete_graph.add_edge(3, 2, w3_2);
+      let _ = complete_graph.set_edge(0, 1, w0_1);
+      let _ = complete_graph.set_edge(0, 2, w0_2);
+      let _ = complete_graph.set_edge(0, 3, w0_3);
+      let _ = complete_graph.set_edge(1, 0, w1_0);
+      let _ = complete_graph.set_edge(1, 2, w1_2);
+      let _ = complete_graph.set_edge(1, 3, w1_3);
+      let _ = complete_graph.set_edge(2, 0, w2_0);
+      let _ = complete_graph.set_edge(2, 1, w2_1);
+      let _ = complete_graph.set_edge(2, 3, w2_3);
+      let _ = complete_graph.set_edge(3, 0, w3_0);
+      let _ = complete_graph.set_edge(3, 1, w3_1);
+      let _ = complete_graph.set_edge(3, 2, w3_2);
 
       let mut meritrank = MeritRank::new(complete_graph);
 
@@ -298,7 +298,7 @@ mod tests {
         let weight: f64 = record[2].trim().parse()?;
 
         // then recalculate merit rank for updated graph
-        meritrank.add_edge(source, destination, weight);
+        meritrank.set_edge(source, destination, weight);
       } else {
         let mut graph = Graph::new();
         graph.get_new_nodeid();
@@ -313,12 +313,12 @@ mod tests {
           .collect::<Result<Vec<_>, _>>()?
           .try_into()?;
 
-        let _ = graph.add_edge(0, 1, weights[0]);
-        let _ = graph.add_edge(0, 2, weights[1]);
-        let _ = graph.add_edge(1, 0, weights[2]);
-        let _ = graph.add_edge(1, 2, weights[3]);
-        let _ = graph.add_edge(2, 0, weights[4]);
-        let _ = graph.add_edge(2, 1, weights[5]);
+        let _ = graph.set_edge(0, 1, weights[0]);
+        let _ = graph.set_edge(0, 2, weights[1]);
+        let _ = graph.set_edge(1, 0, weights[2]);
+        let _ = graph.set_edge(1, 2, weights[3]);
+        let _ = graph.set_edge(2, 0, weights[4]);
+        let _ = graph.set_edge(2, 1, weights[5]);
 
         meritrank_opt = Some(MeritRank::new(graph));
         meritrank_opt.as_mut().unwrap().calculate(0, 20000)?;
@@ -386,7 +386,7 @@ mod tests {
         let weight: f64 = record[2].trim().parse()?;
 
         // then recalculate merit rank for updated graph
-        meritrank.add_edge(source, destination, weight);
+        meritrank.set_edge(source, destination, weight);
       } else {
         let mut graph = Graph::new();
         let node_ids: Vec<NodeId> = vec![0, 1, 2, 3];
@@ -411,7 +411,7 @@ mod tests {
         ];
 
         for (i, &(src, dest)) in edges.iter().enumerate() {
-          let _ = graph.add_edge(src, dest, weights[i]);
+          let _ = graph.set_edge(src, dest, weights[i]);
         }
 
         meritrank_opt = Some(MeritRank::new(graph));

@@ -191,7 +191,7 @@ impl MeritRank {
         self.graph.get_new_nodeid()
     }
 
-    pub fn add_edge(&mut self, src: NodeId, dest: NodeId, weight: f64) {
+    pub fn set_edge(&mut self, src: NodeId, dest: NodeId, weight: f64) {
         assert_ne!(src, dest, "Self reference not allowed");
 
         let old_weight = *self.graph.edge_weight(src, dest).expect("Node should exist!").unwrap_or(&0.0);
@@ -246,7 +246,7 @@ impl MeritRank {
         if weight <= EPSILON {
             self.graph.remove_edge(src, dest).unwrap();
         } else {
-            self.graph.add_edge(src, dest, weight).unwrap();
+            self.graph.set_edge(src, dest, weight).unwrap();
         }
 
         for (walk_id, visit_pos) in &invalidated_walks_ids {
@@ -286,7 +286,7 @@ impl MeritRank {
     }
 
     fn zn(&mut self, src: NodeId, dest: NodeId, weight: f64) {
-        let _ = self.graph.add_edge(src, dest, weight);
+        let _ = self.graph.set_edge(src, dest, weight);
         self.update_penalties_for_edge(src, dest, false);
     }
 

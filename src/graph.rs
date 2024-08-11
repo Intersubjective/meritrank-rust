@@ -83,7 +83,7 @@ impl Graph {
     self.nodes.get(node_id).is_some()
   }
 
-  pub fn add_edge(&mut self, from: NodeId, to: NodeId, weight: Weight)->Result<(), MeritRankError> {
+  pub fn set_edge(&mut self, from: NodeId, to: NodeId, weight: Weight)->Result<(), MeritRankError> {
     if !self.contains_node(to){
       return Err(MeritRankError::NodeNotFound);
     }

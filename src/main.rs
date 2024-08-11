@@ -24,9 +24,9 @@ fn main() {
 
   }
 
-  let _ = graph.add_edge(nodes[1], nodes[2], 0.98).unwrap();
-  let _ = graph.add_edge(nodes[2], nodes[3], 1.00).unwrap();
-  let _ = graph.add_edge(nodes[3], nodes[4], 1.00).unwrap();
+  let _ = graph.set_edge(nodes[1], nodes[2], 0.98).unwrap();
+  let _ = graph.set_edge(nodes[2], nodes[3], 1.00).unwrap();
+  let _ = graph.set_edge(nodes[3], nodes[4], 1.00).unwrap();
 
   // create merit rank
   let mut newrank = MeritRank::new(graph);
@@ -48,13 +48,13 @@ fn main() {
   nodes.push(newrank.get_new_nodeid());
 
   println!("Adding edges 2 -> 4");
-  newrank.add_edge(nodes[2], nodes[4], 1.0);
+  newrank.set_edge(nodes[2], nodes[4], 1.0);
   println!("Adding edges 3 -> 4");
-  newrank.add_edge(nodes[3], nodes[4], -1.0);
+  newrank.set_edge(nodes[3], nodes[4], -1.0);
   println!("Adding edges 4 -> 5");
-  newrank.add_edge(nodes[4], nodes[5], 1.0);
+  newrank.set_edge(nodes[4], nodes[5], 1.0);
   println!("Adding edges 3 -> 5");
-  newrank.add_edge(nodes[3], nodes[5], -1.0);
+  newrank.set_edge(nodes[3], nodes[5], -1.0);
 
   // calculate merit rank
   let ratings = newrank
