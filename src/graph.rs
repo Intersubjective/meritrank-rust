@@ -16,17 +16,13 @@ pub struct NodeData{
 
   // The sum of positive edges is often used for normalization,
   // so it is efficient to cache it.
-  pos_sum: Weight,
+  pub pos_sum: Weight,
   pos_distr_cache: Option<WeightedIndex<Weight>>,
 }
 
 
 
 impl NodeData {
-  pub fn get_pos_edges_sum(&self) -> Weight {
-    self.pos_sum
-  }
-
   // Return a random neighbor, based on the weight on the edge
   pub fn random_neighbor(&mut self) -> Option<NodeId>{
     if let Some(cache) = &self.pos_distr_cache {
@@ -110,7 +106,14 @@ impl Graph {
     if pos_weight.is_some(){
       node.pos_distr_cache = None;
     }
-    node.pos_sum -= pos_weight.unwrap_or(0.0);
+
+    //  We have to recalculate the sum because floating-point
+    //  arithmetic is not perfectly associative.
+    node.pos_sum = 0.0;
+    for edge in node.pos_edges.iter() {
+      node.pos_sum += *edge.1;
+    }
+
     Ok(pos_weight.or(neg_weight).expect("Edge not found"))
   }
 
