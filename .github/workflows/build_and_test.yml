@@ -28,6 +28,6 @@ jobs:
     - name: Run tests
       run: |
         export MEM_KB=`/usr/bin/time -f "%M" cargo test smoke_memory --release --quiet 2>&1 1>/dev/null`
-        if [ $MEM_KB -gt 500000 ]; then
+        if [ $MEM_KB -gt 300000 ]; then
           exit 1
         fi
