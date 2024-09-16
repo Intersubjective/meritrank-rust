@@ -18,3 +18,16 @@ jobs:
     - name: Run tests
       run: |
         cargo test
+  memory_consumption:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build
+      run: |
+        cargo build --release
+    - name: Run tests
+      run: |
+        export MEM_KB=`/usr/bin/time -f "%M" cargo test smoke_memory --release --quiet 2>&1 1>/dev/null`
+        if [ $MEM_KB -gt 300 ]; then
+          exit 1
+        fi
