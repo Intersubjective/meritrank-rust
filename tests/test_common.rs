@@ -38,7 +38,7 @@ mod tests {
   fn test_decide_skip_invalidation() {
     let walk = RandomWalk::from_nodes(vec![1, 2, 3]);
     let edge: EdgeId = (2, 3);
-    let step_recalc_probability = 0.5;
+    let step_recalc_probability = Some(0.5);
     let rng_seed = 1342; // Set the seed for the random number generator
 
     // Create a deterministic random number generator
@@ -46,7 +46,7 @@ mod tests {
 
     // Test skipping invalidation on edge deletion
     let (may_skip, new_pos) =
-        decide_skip_invalidation(&walk, 2, edge, 0.0, Some(&mut rng));
+        decide_skip_invalidation(&walk, 2, edge, None, Some(&mut rng));
     assert!(may_skip);
     assert_eq!(new_pos, 2);
 

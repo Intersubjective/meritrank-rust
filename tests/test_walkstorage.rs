@@ -22,13 +22,13 @@ mod tests {
     let walkid2 = walk_storage.get_next_free_walkid();
     let walkid3 = walk_storage.get_next_free_walkid();
 
-    walk_storage.get_walk_mut(walkid1).unwrap().extend(walk1.get_nodes());
-    walk_storage.get_walk_mut(walkid2).unwrap().extend(walk2.get_nodes());
-    walk_storage.get_walk_mut(walkid3).unwrap().extend(walk3.get_nodes());
+    walk_storage.get_walk_mut(walkid1).unwrap().extend(&walk1);
+    walk_storage.get_walk_mut(walkid2).unwrap().extend(&walk2);
+    walk_storage.get_walk_mut(walkid3).unwrap().extend(&walk3);
 
-    walk_storage.add_walk_to_bookkeeping(walkid1, 0);
-    walk_storage.add_walk_to_bookkeeping(walkid2, 0);
-    walk_storage.add_walk_to_bookkeeping(walkid3, 0);
+    walk_storage.update_walk_bookkeeping(walkid1, 0);
+    walk_storage.update_walk_bookkeeping(walkid2, 0);
+    walk_storage.update_walk_bookkeeping(walkid3, 0);
 
     walk_storage.drop_walks_from_node(1);
 
