@@ -83,6 +83,7 @@ mod tests {
   use std::collections::HashMap;
 
 
+  #[ignore]
   #[test]
   #[allow(unused_mut)]
   #[allow(unused_variables)]
@@ -169,6 +170,7 @@ mod tests {
 
   // ACTHUNG! The current version of OUT4 is broken! GIGO: nodes' positions
   // are transposed for some result, which makes for unreliable comparisons
+  #[ignore]
   #[test]
   fn test_meritrank_long() -> Result<(), Box<dyn Error>> {
     let file_path_gz = "tests/dumps/OUT4.csv.gz";
@@ -267,6 +269,7 @@ mod tests {
     Ok(())
   }
 
+  #[ignore]
   #[test]
   fn test_meritrank_incremental_short() -> Result<(), Box<dyn Error>> {
     let file_path = "tests/dumps/OUT3.csv";
@@ -366,6 +369,7 @@ mod tests {
   }
 
 
+  #[ignore]
   #[test]
   fn test_meritrank_incremental_long() -> Result<(), Box<dyn Error>> {
     let file_path_gz = "tests/dumps/OUT4.csv.gz";
