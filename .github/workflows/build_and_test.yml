@@ -24,6 +24,7 @@ jobs:
     - uses: actions/checkout@v4
     - name: Build
       run: |
+        export MERITRANK_NO_ASSERT=1
         cargo build --release
     - name: Run tests
       run: |
