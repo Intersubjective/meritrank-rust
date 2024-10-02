@@ -1,6 +1,7 @@
 use tinyset::SetUsize;
 use crate::graph::{NodeId};
 
+
 /// Represents a random walk through a graph.
 #[derive(Clone)]
 pub struct RandomWalk {
