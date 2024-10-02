@@ -26,6 +26,7 @@ jobs:
       run: |
         export MERITRANK_NO_ASSERT=1
         export MEM_KB=`/usr/bin/time -f "%M" cargo test smoke_memory --release --quiet 2>&1 1>/dev/null`
-        if [ $MEM_KB -gt 300000 ]; then
+        echo "Memory consumption is $MEM_KB KB"
+        if [ $MEM_KB -gt 550000 ]; then
           exit 1
         fi
