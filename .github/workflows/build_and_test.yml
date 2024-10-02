@@ -22,11 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Build
+    - name: Build and run the test
       run: |
-        MERITRANK_NO_ASSERT=1 cargo build --release
-    - name: Run tests
-      run: |
+        export MERITRANK_NO_ASSERT=1
         export MEM_KB=`/usr/bin/time -f "%M" cargo test smoke_memory --release --quiet 2>&1 1>/dev/null`
         if [ $MEM_KB -gt 300000 ]; then
           exit 1
