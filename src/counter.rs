@@ -29,13 +29,30 @@ impl Counter {
     }
   }
 
-  /// Updates the counter with unique values, incrementing their counts.
-  pub fn increment_unique_counts<I>(&mut self, items: I)
+  pub fn decrement_counts<I>(&mut self, items: I)
   where
-    I: IntoIterator<Item = NodeId>,
+      I: IntoIterator<Item = NodeId>,
   {
-    let unique_values: SetUsize = SetUsize::from_iter(items.into_iter());
+    for item in items {
+      *self.counter.entry(item).or_insert(0.0) -= 1.0;
+    }
+  }
+
+  /// Updates the counter with unique values, incrementing their counts.
+  pub fn increment_unique_counts<'a, I>(&mut self, items: I)
+  where
+    I: IntoIterator<Item = &'a NodeId>,
+  {
+    let unique_values: SetUsize = SetUsize::from_iter(items.into_iter().copied());
     self.increment_counts(unique_values);
+  }
+
+  pub fn decrement_unique_counts<'a, I>(&mut self, items: I)
+  where
+      I: IntoIterator<Item = &'a NodeId>,
+  {
+    let unique_values: SetUsize = SetUsize::from_iter(items.into_iter().copied());
+    self.decrement_counts(unique_values);
   }
 
   /// Returns the count value for the given node ID, if it exists.
