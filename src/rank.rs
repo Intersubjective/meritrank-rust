@@ -127,15 +127,21 @@ impl MeritRank {
             self.walks.split_and_remove_from_bookkeeping(walk_id, cut_position);
 
             let walk = self.walks.get_walk_mut(*walk_id).unwrap();
+
+            let mut skip_continuation = false;
             //#[cfg(optimize_invalidation)]
             if OPTIMIZE_INVALIDATION {
                 if deletion_mode {
                     self.graph.extend_walk_in_case_of_edge_deletion(walk);
                 } else if random::<f64>() < self.alpha {
                     walk.push(dest, new_weight > 0.0);
+                } else{
+                    skip_continuation = true;
                 }
             }
-            self.graph.continue_walk(walk, self.alpha);
+            if !skip_continuation{
+                self.graph.continue_walk(walk, self.alpha);
+            }
 
             // Update counters associated with the updated walks
             self.pos_hits.entry(ego).or_default().increment_unique_counts(walk.positive_subsegment());

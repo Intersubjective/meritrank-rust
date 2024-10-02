@@ -64,19 +64,23 @@ impl RandomWalk {
         self.nodes.clear();
     }
 
-
     pub fn iter(&self) -> impl Iterator<Item=&NodeId> {
         self.nodes.iter()
     }
 
     pub fn push(&mut self, node_id: NodeId, step_is_positive: bool) {
         let index = self.nodes.len();
+        // Ensure the node_id is not the same as the last node in the walk:
+        // direct self-loops are forbidden and should never happen.
+        if let Some(prev) = self.nodes.last(){
+            assert_ne!(*prev, node_id);
+        }
         self.nodes.push(node_id);
 
         // Update `negative_segment_start` based on `step_is_positive`
         if !step_is_positive {
             assert!(self.negative_segment_start.is_none(), "Expected `negative_segment_start` to be `None`");
-            self.negative_segment_start =  Some(index);
+            self.negative_segment_start = Some(index);
         }
     }
 
@@ -84,14 +88,12 @@ impl RandomWalk {
         self.nodes.insert(0, node_id);
     }
 
-
     pub fn positive_subsegment(&self) -> impl Iterator<Item=&NodeId> {
         self.nodes.iter().take(self.negative_segment_start.unwrap_or(self.nodes.len()))
     }
     pub fn negative_subsegment(&self) -> impl Iterator<Item=&NodeId> {
         self.nodes.iter().skip(self.negative_segment_start.unwrap_or(self.nodes.len()))
     }
-
 
     pub fn extend(&mut self, new_segment: &RandomWalk) {
         assert!(!(self.negative_segment_start.is_some() && new_segment.negative_segment_start.is_some()));
