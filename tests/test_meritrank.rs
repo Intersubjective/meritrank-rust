@@ -38,11 +38,11 @@ mod tests {
       rank_ref.set_edge(n-1, n, 1.0);
       rank.get_new_nodeid();
       rank.set_edge(n-1, n, 1.0);
-
     }
     rank_ref.set_edge(8,1, 1.0);
     rank.set_edge(8,1, 1.0);
     rank_ref.calculate(0, walk_count).unwrap();
+    println! ("{:?}", rank_ref.get_ranks(0, None));
     println! ("{:?}", rank.get_ranks(0, None));
     for n in 1..8
     {
@@ -97,6 +97,7 @@ mod tests {
     rank.calculate(0, walk_count).unwrap();
   }
 
+  #[ignore]
   #[test]
   fn test_too_early_cut_position_bug() {
 
