@@ -24,8 +24,7 @@ jobs:
     - uses: actions/checkout@v4
     - name: Build
       run: |
-        export MERITRANK_NO_ASSERT=1
-        cargo build --release
+        MERITRANK_NO_ASSERT=1 cargo build --release
     - name: Run tests
       run: |
         export MEM_KB=`/usr/bin/time -f "%M" cargo test smoke_memory --release --quiet 2>&1 1>/dev/null`
