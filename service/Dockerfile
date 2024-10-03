@@ -15,5 +15,5 @@ ENV MERITRANK_FILTER_NUM_HASHES=10
 ENV MERITRANK_FILTER_MIN_SIZE=32
 ENV MERITRANK_FILTER_MAX_SIZE=8192
 WORKDIR /srv
-ENTRYPOINT [ "/srv/meritrank-service" ]
-COPY --from=compile /usr/project/target/release/meritrank-service meritrank-service
+ENTRYPOINT [ "/srv/meritrank_service" ]
+COPY --from=compile /usr/project/target/release/meritrank_service meritrank_service
