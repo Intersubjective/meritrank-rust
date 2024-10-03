@@ -5,9 +5,9 @@ mod tests {
   use super::*;
   use indexmap::{indexmap, IndexMap};
   use integer_hasher::IntMap;
-  use meritrank::graph::{NodeId, EdgeId};
-  use meritrank::random_walk::RandomWalk;
-  use meritrank::walk_storage::{decide_skip_invalidation, decide_skip_invalidation_on_edge_addition, decide_skip_invalidation_on_edge_deletion, WalkStorage};
+  use meritrank_core::graph::{NodeId, EdgeId};
+  use meritrank_core::random_walk::RandomWalk;
+  use meritrank_core::walk_storage::{decide_skip_invalidation, decide_skip_invalidation_on_edge_addition, decide_skip_invalidation_on_edge_deletion, WalkStorage};
 
 
   #[test]

@@ -2,7 +2,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use meritrank::{NodeId, RandomWalk, WalkId, Weight};
+    use meritrank_core::{NodeId, RandomWalk, WalkId, Weight};
 
 
     use std::collections::HashMap;

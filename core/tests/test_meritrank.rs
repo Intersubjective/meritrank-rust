@@ -6,10 +6,10 @@
 mod tests {
   use super::*;
   use indexmap::indexmap;
-  use meritrank::graph::{NodeId, EdgeId};
-  use meritrank::random_walk::RandomWalk;
-  use meritrank::walk_storage::WalkStorage;
-  use meritrank::{MeritRank, Graph, assert_approx_eq};
+  use meritrank_core::graph::{NodeId, EdgeId};
+  use meritrank_core::random_walk::RandomWalk;
+  use meritrank_core::walk_storage::WalkStorage;
+  use meritrank_core::{MeritRank, Graph, assert_approx_eq};
 
   use std::collections::HashMap;
 

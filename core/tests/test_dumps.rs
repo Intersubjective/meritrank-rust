@@ -79,7 +79,7 @@ mod tests {
     Ok(())
   }
 
-  use meritrank::{MeritRank, Graph, NodeId, assert_approx_eq};
+  use meritrank_core::{MeritRank, Graph, NodeId, assert_approx_eq};
   use std::collections::HashMap;
 
 

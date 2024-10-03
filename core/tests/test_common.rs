@@ -2,11 +2,11 @@
 #[cfg(test)]
 mod tests {
   use super::*;
-  use meritrank::common::sign;
-  use meritrank::errors::MeritRankError;
-  use meritrank::graph::{NodeId, EdgeId, Weight};
-  use meritrank::random_walk::RandomWalk;
-  use meritrank::walk_storage::{decide_skip_invalidation, decide_skip_invalidation_on_edge_addition, decide_skip_invalidation_on_edge_deletion};
+  use meritrank_core::common::sign;
+  use meritrank_core::errors::MeritRankError;
+  use meritrank_core::graph::{NodeId, EdgeId, Weight};
+  use meritrank_core::random_walk::RandomWalk;
+  use meritrank_core::walk_storage::{decide_skip_invalidation, decide_skip_invalidation_on_edge_addition, decide_skip_invalidation_on_edge_deletion};
 
   use rand::rngs::StdRng;
   use rand::SeedableRng;
