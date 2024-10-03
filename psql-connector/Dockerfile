@@ -18,4 +18,4 @@ ENV MERITRANK_RECV_TIMEOUT_MSEC=10000
 
 COPY --from=compile /usr/project/psql-connector/target/release/pgmer2-pg16/usr/lib/postgresql16/pgmer2.so /usr/local/lib/postgresql/pgmer2.so
 COPY --from=compile /usr/project/psql-connector/extension /usr/local/share/postgresql/extension
-COPY 20_pgmer2.sh /docker-entrypoint-initdb.d/20_pgmer2.sh
+COPY psql-connector/20_pgmer2.sh /docker-entrypoint-initdb.d/20_pgmer2.sh
