@@ -29,6 +29,10 @@ jobs:
       run: |
         export VER=$(cargo metadata --format-version=1 | jq -r '.packages[] | select(.name=="meritrank_service") | .version')
         echo "VER=$VER"
+        if ! [[ "$VER" =~ ^[0-9\.]+$ ]]; then
+          echo "IGNORE DEV VERSION"
+          exit 1
+        fi
         if [ $(docker manifest inspect vbulavintsev/meritrank-service:v$VER >/dev/null 2>&1; echo $?) -eq 0 ]; then
           echo "ALREADY PUBLISHED"
           exit 1
@@ -91,6 +95,10 @@ jobs:
       run: |
         export VER=$(cargo metadata --format-version=1 | jq -r '.packages[] | select(.name=="pgmer2") | .version')
         echo "VER=$VER"
+        if ! [[ "$VER" =~ ^[0-9\.]+$ ]]; then
+          echo "IGNORE DEV VERSION"
+          exit 1
+        fi
         if [ $(docker manifest inspect vbulavintsev/postgres-tentura:v$VER >/dev/null 2>&1; echo $?) -eq 0 ]; then
           echo "ALREADY PUBLISHED"
           exit 1
