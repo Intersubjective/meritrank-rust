@@ -4,7 +4,9 @@ on:
 jobs:
   service_build_and_test:
     runs-on: ubuntu-latest
-    working-directory: ./service
+    defaults:
+      run:
+        working-directory: ./service
     steps:
     - uses: actions/checkout@v4
     - name: Build
@@ -17,7 +19,9 @@ jobs:
     needs: [ service_build_and_test ]
     if: success()
     runs-on: ubuntu-latest
-    working-directory: ./service
+    defaults:
+      run:
+        working-directory: ./service
     steps:
     - uses: actions/checkout@v4
     - name: Check version
@@ -41,7 +45,9 @@ jobs:
     needs: [ service_build_and_test ]
     if: success()
     runs-on: ubuntu-latest
-    working-directory: ./psql-connector
+    defaults:
+      run:
+        working-directory: ./psql-connector
     steps:
     - uses: actions/checkout@v4
     - name: Setup PostgreSQL 16
@@ -73,7 +79,9 @@ jobs:
     needs: [ connector_build_and_test ]
     if: success()
     runs-on: ubuntu-latest
-    working-directory: ./psql-connector
+    defaults:
+      run:
+        working-directory: ./psql-connector
     steps:
     - uses: actions/checkout@v4
     - name: Determine tag

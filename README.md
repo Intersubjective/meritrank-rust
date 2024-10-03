@@ -1,5 +1,4 @@
-## [MeritRank Core](core/README.md)
-
-## [MeritRank Service](service/README.md)
-
-## [MeritRank PSQL Connector](psql-connector/README.md)
+# MeritRank
+- [Core](core/README.md)
+- [Service](service/README.md)
+- [PSQL Connector](psql-connector/README.md)

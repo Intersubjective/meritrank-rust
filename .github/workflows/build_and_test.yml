@@ -8,7 +8,9 @@ on:
 jobs:
   core_build_and_test:
     runs-on: ubuntu-latest
-    working-directory: ./core
+    defaults:
+      run:
+        working-directory: ./core
     steps:
     - uses: actions/checkout@v4
     - name: Build
@@ -19,7 +21,9 @@ jobs:
         cargo test -- --skip smoke_memory
   core_memory_consumption:
     runs-on: ubuntu-latest
-    working-directory: ./core
+    defaults:
+      run:
+        working-directory: ./core
     steps:
     - uses: actions/checkout@v4
     - name: Build and run the test
@@ -32,7 +36,9 @@ jobs:
         fi
   service_build_and_test:
     runs-on: ubuntu-latest
-    working-directory: ./service
+    defaults:
+      run:
+        working-directory: ./service
     steps:
     - uses: actions/checkout@v4
     - name: Build
@@ -43,7 +49,9 @@ jobs:
         cargo test
   connector_build_and_test:
     runs-on: ubuntu-latest
-    working-directory: ./psql-connector
+    defaults:
+      run:
+        working-directory: ./psql-connector
     steps:
     - uses: actions/checkout@v4
     - name: Setup PostgreSQL 16
