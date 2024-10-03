@@ -1,15 +1,14 @@
 name: Build and test
-
 on:
   push:
-    branches: [ main, dev ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, dev ]
+    branches: [ main ]
   workflow_dispatch: 
-
 jobs:
-  build_and_test:
+  core_build_and_test:
     runs-on: ubuntu-latest
+    working-directory: ./core
     steps:
     - uses: actions/checkout@v4
     - name: Build
@@ -18,8 +17,9 @@ jobs:
     - name: Run tests
       run: |
         cargo test -- --skip smoke_memory
-  memory_consumption:
+  core_memory_consumption:
     runs-on: ubuntu-latest
+    working-directory: ./core
     steps:
     - uses: actions/checkout@v4
     - name: Build and run the test
@@ -30,3 +30,44 @@ jobs:
         if [ $MEM_KB -gt 550000 ]; then
           exit 1
         fi
+  service_build_and_test:
+    runs-on: ubuntu-latest
+    working-directory: ./service
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build
+      run: cargo build
+    - name: Run tests
+      run: |
+        export MERITRANK_NUM_WALK=50
+        cargo test
+  connector_build_and_test:
+    runs-on: ubuntu-latest
+    working-directory: ./psql-connector
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup PostgreSQL 16
+      run: |
+        sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+        sudo apt-get update
+        sudo apt-get install -y postgresql-16 postgresql-server-dev-16
+    - name: Prepare env
+      run: |
+        sudo su - root -c "echo \"export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10444\" >> /etc/environment"
+    - name: Build the connector
+      run: |
+        cargo install --locked cargo-pgrx --version 0.11.4
+        cargo pgrx init --pg16 pg_config
+        cargo build
+    - name: Build and run the service
+      working-directory: ../service
+      run: |
+        cargo build --release
+        export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10444
+        export MERITRANK_NUM_WALK=500
+        cargo run --release >/dev/null 2>&1 &
+    - name: Do the tests
+      run: |
+        export RUST_TEST_THREADS=1
+        cargo pgrx test --runas postgres --pgdata /var/lib/postgresql/pgrx

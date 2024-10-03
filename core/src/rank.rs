@@ -4,7 +4,7 @@ use integer_hasher::IntMap;
 use crate::constants::{EPSILON, ASSERT, OPTIMIZE_INVALIDATION};
 use crate::errors::MeritRankError;
 use crate::graph::{Graph, NodeId, Weight};
-use crate::walk_storage::{WalkStorage};
+use crate::walk_storage::WalkStorage;
 use crate::counter::Counter;
 
 #[derive(Clone)]

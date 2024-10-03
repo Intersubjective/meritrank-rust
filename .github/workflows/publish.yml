@@ -1,0 +1,95 @@
+name: Publish
+on:
+  workflow_dispatch: 
+jobs:
+  service_build_and_test:
+    runs-on: ubuntu-latest
+    working-directory: ./service
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build
+      run: cargo build
+    - name: Run tests
+      run: |
+        export MERITRANK_NUM_WALK=50
+        cargo test
+  service_docker_build:
+    needs: [ service_build_and_test ]
+    if: success()
+    runs-on: ubuntu-latest
+    working-directory: ./service
+    steps:
+    - uses: actions/checkout@v4
+    - name: Check version
+      shell: bash
+      run: |
+        export VER=$(cargo metadata --format-version=1 | jq -r '.packages[] | select(.name=="meritrank_service") | .version')
+        if [ $(docker manifest inspect vbulavintsev/meritrank-service:v$VER >/dev/null 2>&1; echo $?) -eq 0 ]; then
+          exit 1
+        fi
+        echo "TAG=v$VER" >> $GITHUB_ENV
+    - name: Build docker image
+      run: |
+        docker build -t vbulavintsev/meritrank-service:$TAG .
+    - name: Push docker image to Dockerhub
+      shell: bash
+      run: |
+        docker login -u vbulavintsev -p ${{ secrets.DOCKERHUB_TOKEN }}
+        echo "PUSH THE IMAGE"
+        # docker image push vbulavintsev/meritrank-service:$TAG
+  connector_build_and_test:
+    needs: [ service_build_and_test ]
+    if: success()
+    runs-on: ubuntu-latest
+    working-directory: ./psql-connector
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup PostgreSQL 16
+      run: |
+        sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+        sudo apt-get update
+        sudo apt-get install -y postgresql-16 postgresql-server-dev-16
+    - name: Prepare env
+      run: |
+        sudo su - root -c "echo \"export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10444\" >> /etc/environment"
+    - name: Build the connector
+      run: |
+        cargo install --locked cargo-pgrx --version 0.11.4
+        cargo pgrx init --pg16 pg_config
+        cargo build
+    - name: Build and run the service
+      working-directory: ../service
+      run: |
+        cargo build --release
+        export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10444
+        export MERITRANK_NUM_WALK=500
+        cargo run --release >/dev/null 2>&1 &
+    - name: Do the tests
+      run: |
+        export RUST_TEST_THREADS=1
+        cargo pgrx test --runas postgres --pgdata /var/lib/postgresql/pgrx
+  connector_docker_build:
+    needs: [ connector_build_and_test ]
+    if: success()
+    runs-on: ubuntu-latest
+    working-directory: ./psql-connector
+    steps:
+    - uses: actions/checkout@v4
+    - name: Determine tag
+      shell: bash
+      run: |
+        export VER=$(cargo metadata --format-version=1 | jq -r '.packages[] | select(.name=="pgmer2") | .version')
+        if [ $(docker manifest inspect vbulavintsev/postgres-tentura:v$VER >/dev/null 2>&1; echo $?) -eq 0 ]; then
+          exit 1
+        fi
+        echo "TAG=v$VER" >> $GITHUB_ENV
+    - name: Build docker image
+      run: |
+        docker build -t vbulavintsev/postgres-tentura:$TAG .
+    - name: Push docker image to Dockerhub
+      shell: bash
+      run: |
+        docker login -u vbulavintsev -p ${{ secrets.DOCKERHUB_TOKEN }}
+        echo "PUSH THE IMAGE"
+        # docker image push vbulavintsev/postgres-tentura:$TAG

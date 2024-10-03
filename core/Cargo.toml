@@ -1,20 +1,16 @@
 [package]
-name = "meritrank"
+name = "meritrank_core"
 version = "0.8.1"
 edition = "2021"
 description = "MeritRank algorithm library"
 license = "MIT"
-
-[[bin]]
-name = "meritrank"
-path = "src/main.rs"
 
 [[test]]
 name = "test_dumps"
 path = "tests/test_dumps.rs"
 
 [lib]
-name = "meritrank"
+name = "meritrank_core"
 path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 

@@ -3,7 +3,7 @@ use crate::graph::NodeId;
 use tinyset::SetUsize;
 use once_cell::sync::Lazy;
 
-type CounterValue = u32;
+type CounterValue = i32;
 
 /// A counter that keeps track of the counts for different nodes.
 #[derive(Clone)]
