@@ -65,7 +65,7 @@ jobs:
         cargo pgrx init --pg16 pg_config
         cargo build
     - name: Build and run the service
-      working-directory: ../service
+      working-directory: ./service
       run: |
         cargo build --release
         export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10444
