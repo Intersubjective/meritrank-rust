@@ -40,7 +40,7 @@ jobs:
         echo "TAG=v$VER" >> $GITHUB_ENV
     - name: Build docker image
       run: |
-        docker build -t vbulavintsev/meritrank-service:$TAG .
+        docker build -t vbulavintsev/meritrank-service:$TAG ..
     - name: Push docker image to Dockerhub
       shell: bash
       run: |
@@ -106,7 +106,7 @@ jobs:
         echo "TAG=v$VER" >> $GITHUB_ENV
     - name: Build docker image
       run: |
-        docker build -t vbulavintsev/postgres-tentura:$TAG .
+        docker build -t vbulavintsev/postgres-tentura:$TAG ..
     - name: Push docker image to Dockerhub
       shell: bash
       run: |

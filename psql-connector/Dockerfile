@@ -1,7 +1,7 @@
 FROM rust:1.75.0-alpine as compile
 
 WORKDIR /usr/project
-COPY .. .
+COPY . .
 WORKDIR /usr/project/psql-connector
 RUN apk add jq cmake make gcc clang15 musl-dev postgresql16 postgresql16-dev openssl-dev
 ENV RUSTFLAGS="-Ctarget-feature=-crt-static"
