@@ -63,8 +63,8 @@ impl MeritRank {
         let default_counter = Counter::default();
 
         let ego_neg_hits = self.neg_hits.get(&ego).unwrap_or(&default_counter);
-        let hits_penalized = hits - ego_neg_hits.get_count(&target);
-        Ok(hits_penalized as Weight / counter.total_count() as Weight)
+        let hits_penalized: Weight = hits as Weight - ego_neg_hits.get_count(&target) as Weight;
+        Ok(hits_penalized / counter.total_count() as Weight)
     }
 
     pub fn get_ranks(&self, ego: NodeId, limit: Option<usize>) -> Result<Vec<(NodeId, Weight)>, MeritRankError> {
