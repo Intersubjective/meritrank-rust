@@ -91,8 +91,7 @@ jobs:
       shell: bash
       run: |
         docker login -u vbulavintsev -p ${{ secrets.DOCKERHUB_TOKEN }}
-        echo "PUBLISH"
-        # docker image push vbulavintsev/meritrank-service:$TAG
+        docker image push vbulavintsev/meritrank-service:$TAG
   publish_connector:
     needs: [ test_core, test_service, test_connector ]
     if: success()
@@ -129,5 +128,4 @@ jobs:
       shell: bash
       run: |
         docker login -u vbulavintsev -p ${{ secrets.DOCKERHUB_TOKEN }}
-        echo "PUBLISH"
-        # docker image push vbulavintsev/postgres-tentura:$TAG
+        docker image push vbulavintsev/postgres-tentura:$TAG
