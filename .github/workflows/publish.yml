@@ -2,53 +2,28 @@ name: Publish
 on:
   workflow_dispatch: 
 jobs:
-  service_build_and_test:
+  test_core:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./core
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run tests
+      run: |
+        cargo test -- --skip smoke_memory
+  test_service:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./service
     steps:
     - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build
     - name: Run tests
       run: |
         export MERITRANK_NUM_WALK=50
         cargo test
-  service_docker_build:
-    needs: [ service_build_and_test ]
-    if: success()
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./service
-    steps:
-    - uses: actions/checkout@v4
-    - name: Check version
-      shell: bash
-      run: |
-        export VER=$(cargo metadata --format-version=1 | jq -r '.packages[] | select(.name=="meritrank_service") | .version')
-        echo "VER=$VER"
-        if ! [[ "$VER" =~ ^[0-9\.]+$ ]]; then
-          echo "IGNORE DEV VERSION"
-          exit 1
-        fi
-        if [ $(docker manifest inspect vbulavintsev/meritrank-service:v$VER >/dev/null 2>&1; echo $?) -eq 0 ]; then
-          echo "ALREADY PUBLISHED"
-          exit 1
-        fi
-        echo "TAG=v$VER" >> $GITHUB_ENV
-    - name: Build docker image
-      run: |
-        docker build -t vbulavintsev/meritrank-service:$TAG -f ./Dockerfile ..
-    - name: Push docker image to Dockerhub
-      shell: bash
-      run: |
-        docker login -u vbulavintsev -p ${{ secrets.DOCKERHUB_TOKEN }}
-        docker image push vbulavintsev/meritrank-service:$TAG
-  connector_build_and_test:
-    needs: [ service_build_and_test ]
-    if: success()
+  test_connector:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -80,8 +55,46 @@ jobs:
       run: |
         export RUST_TEST_THREADS=1
         cargo pgrx test --runas postgres --pgdata /var/lib/postgresql/pgrx
-  connector_docker_build:
-    needs: [ connector_build_and_test ]
+  publish_service:
+    needs: [ test_core, test_service, test_connector ]
+    if: success()
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./service
+    steps:
+    - uses: actions/checkout@v4
+    - name: Check version
+      id: check_version
+      shell: bash
+      run: |
+        export VER=$(cargo metadata --format-version=1 | jq -r '.packages[] | select(.name=="meritrank_service") | .version')
+        echo "VER=$VER"
+        if ! [[ "$VER" =~ ^[0-9\.]+$ ]]; then
+          echo "IGNORE DEV VERSION"
+          echo "STATUS=SKIP" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        if [ $(docker manifest inspect vbulavintsev/meritrank-service:v$VER >/dev/null 2>&1; echo $?) -eq 0 ]; then
+          echo "ALREADY PUBLISHED"
+          echo "STATUS=SKIP" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        echo "STATUS=OK" >> "$GITHUB_OUTPUT"
+        echo "TAG=v$VER" >> "$GITHUB_ENV"
+    - name: Build docker image
+      if: ${{ steps.check_version.outputs.STATUS == "OK" }}
+      run: |
+        docker build -t vbulavintsev/meritrank-service:$TAG -f ./Dockerfile ..
+    - name: Push docker image to Dockerhub
+      if: ${{ steps.check_version.outputs.STATUS == "OK" }}
+      shell: bash
+      run: |
+        docker login -u vbulavintsev -p ${{ secrets.DOCKERHUB_TOKEN }}
+        echo "PUBLISH"
+        # docker image push vbulavintsev/meritrank-service:$TAG
+  publish_connector:
+    needs: [ test_core, test_service, test_connector ]
     if: success()
     runs-on: ubuntu-latest
     defaults:
@@ -89,25 +102,32 @@ jobs:
         working-directory: ./psql-connector
     steps:
     - uses: actions/checkout@v4
-    - name: Determine tag
+    - name: Check version
+      id: check_version
       shell: bash
       run: |
         export VER=$(cargo metadata --format-version=1 | jq -r '.packages[] | select(.name=="pgmer2") | .version')
         echo "VER=$VER"
         if ! [[ "$VER" =~ ^[0-9\.]+$ ]]; then
           echo "IGNORE DEV VERSION"
-          exit 1
+          echo "STATUS=SKIP" >> "$GITHUB_OUTPUT"
+          exit 0
         fi
         if [ $(docker manifest inspect vbulavintsev/postgres-tentura:v$VER >/dev/null 2>&1; echo $?) -eq 0 ]; then
           echo "ALREADY PUBLISHED"
-          exit 1
+          echo "STATUS=SKIP" >> "$GITHUB_OUTPUT"
+          exit 0
         fi
-        echo "TAG=v$VER" >> $GITHUB_ENV
+        echo "STATUS=OK" >> "$GITHUB_OUTPUT"
+        echo "TAG=v$VER" >> "$GITHUB_ENV"
     - name: Build docker image
+      if: ${{ steps.check_version.outputs.STATUS == "OK" }}
       run: |
         docker build -t vbulavintsev/postgres-tentura:$TAG -f ./Dockerfile ..
     - name: Push docker image to Dockerhub
+      if: ${{ steps.check_version.outputs.STATUS == "OK" }}
       shell: bash
       run: |
         docker login -u vbulavintsev -p ${{ secrets.DOCKERHUB_TOKEN }}
-        docker image push vbulavintsev/postgres-tentura:$TAG
+        echo "PUBLISH"
+        # docker image push vbulavintsev/postgres-tentura:$TAG
