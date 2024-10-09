@@ -72,22 +72,22 @@ jobs:
         echo "VER=$VER"
         if ! [[ "$VER" =~ ^[0-9\.]+$ ]]; then
           echo "IGNORE DEV VERSION"
-          echo "STATUS=SKIP" >> "$GITHUB_OUTPUT"
+          echo "SKIP=1" >> "$GITHUB_OUTPUT"
           exit 0
         fi
         if [ $(docker manifest inspect vbulavintsev/meritrank-service:v$VER >/dev/null 2>&1; echo $?) -eq 0 ]; then
           echo "ALREADY PUBLISHED"
-          echo "STATUS=SKIP" >> "$GITHUB_OUTPUT"
+          echo "SKIP=1" >> "$GITHUB_OUTPUT"
           exit 0
         fi
-        echo "STATUS=OK" >> "$GITHUB_OUTPUT"
+        echo "SKIP=0"    >> "$GITHUB_OUTPUT"
         echo "TAG=v$VER" >> "$GITHUB_ENV"
     - name: Build docker image
-      if: ${{ steps.check_version.outputs.STATUS == "OK" }}
+      if: ${{ steps.check_version.outputs.SKIP }}
       run: |
         docker build -t vbulavintsev/meritrank-service:$TAG -f ./Dockerfile ..
     - name: Push docker image to Dockerhub
-      if: ${{ steps.check_version.outputs.STATUS == "OK" }}
+      if: ${{ steps.check_version.outputs.SKIP }}
       shell: bash
       run: |
         docker login -u vbulavintsev -p ${{ secrets.DOCKERHUB_TOKEN }}
@@ -110,22 +110,22 @@ jobs:
         echo "VER=$VER"
         if ! [[ "$VER" =~ ^[0-9\.]+$ ]]; then
           echo "IGNORE DEV VERSION"
-          echo "STATUS=SKIP" >> "$GITHUB_OUTPUT"
+          echo "SKIP=1" >> "$GITHUB_OUTPUT"
           exit 0
         fi
         if [ $(docker manifest inspect vbulavintsev/postgres-tentura:v$VER >/dev/null 2>&1; echo $?) -eq 0 ]; then
           echo "ALREADY PUBLISHED"
-          echo "STATUS=SKIP" >> "$GITHUB_OUTPUT"
+          echo "SKIP=1" >> "$GITHUB_OUTPUT"
           exit 0
         fi
-        echo "STATUS=OK" >> "$GITHUB_OUTPUT"
+        echo "SKIP=0" >> "$GITHUB_OUTPUT"
         echo "TAG=v$VER" >> "$GITHUB_ENV"
     - name: Build docker image
-      if: ${{ steps.check_version.outputs.STATUS == "OK" }}
+      if: ${{ steps.check_version.outputs.SKIP }}
       run: |
         docker build -t vbulavintsev/postgres-tentura:$TAG -f ./Dockerfile ..
     - name: Push docker image to Dockerhub
-      if: ${{ steps.check_version.outputs.STATUS == "OK" }}
+      if: ${{ steps.check_version.outputs.SKIP }}
       shell: bash
       run: |
         docker login -u vbulavintsev -p ${{ secrets.DOCKERHUB_TOKEN }}
