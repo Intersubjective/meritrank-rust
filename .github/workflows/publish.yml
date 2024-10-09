@@ -83,11 +83,11 @@ jobs:
         echo "SKIP=0"    >> "$GITHUB_OUTPUT"
         echo "TAG=v$VER" >> "$GITHUB_ENV"
     - name: Build docker image
-      if: ${{ ! steps.check_version.outputs.SKIP }}
+      if: ${{ steps.check_version.outputs.SKIP == 0 }}
       run: |
         docker build -t vbulavintsev/meritrank-service:$TAG -f ./Dockerfile ..
     - name: Push docker image to Dockerhub
-      if: ${{ ! steps.check_version.outputs.SKIP }}
+      if: ${{ steps.check_version.outputs.SKIP == 0 }}
       shell: bash
       run: |
         docker login -u vbulavintsev -p ${{ secrets.DOCKERHUB_TOKEN }}
@@ -121,11 +121,11 @@ jobs:
         echo "SKIP=0" >> "$GITHUB_OUTPUT"
         echo "TAG=v$VER" >> "$GITHUB_ENV"
     - name: Build docker image
-      if: ${{ ! steps.check_version.outputs.SKIP }}
+      if: ${{ steps.check_version.outputs.SKIP == 0 }}
       run: |
         docker build -t vbulavintsev/postgres-tentura:$TAG -f ./Dockerfile ..
     - name: Push docker image to Dockerhub
-      if: ${{ ! steps.check_version.outputs.SKIP }}
+      if: ${{ steps.check_version.outputs.SKIP == 0 }}
       shell: bash
       run: |
         docker login -u vbulavintsev -p ${{ secrets.DOCKERHUB_TOKEN }}
