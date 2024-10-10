@@ -91,7 +91,7 @@ jobs:
     - name: Build docker image
       run: |
         docker build -f ./Dockerfile ..
-  test_docker_connector:
+  test_docker_psql_connector:
     needs: [ test_core, test_memory_consumption, test_service, test_psql_connector ]
     if: success()
     runs-on: ubuntu-latest
