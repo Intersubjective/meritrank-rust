@@ -23,7 +23,7 @@ jobs:
       run: |
         export MERITRANK_NUM_WALK=50
         cargo test
-  test_connector:
+  test_psql_connector:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -56,7 +56,7 @@ jobs:
         export RUST_TEST_THREADS=1
         cargo pgrx test --runas postgres --pgdata /var/lib/postgresql/pgrx
   publish_service:
-    needs: [ test_core, test_service, test_connector ]
+    needs: [ test_core, test_service, test_psql_connector ]
     if: success()
     runs-on: ubuntu-latest
     defaults:
@@ -93,7 +93,7 @@ jobs:
         docker login -u vbulavintsev -p ${{ secrets.DOCKERHUB_TOKEN }}
         docker image push vbulavintsev/meritrank-service:$TAG
   publish_connector:
-    needs: [ test_core, test_service, test_connector ]
+    needs: [ test_core, test_service, test_psql_connector ]
     if: success()
     runs-on: ubuntu-latest
     defaults:

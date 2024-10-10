@@ -80,7 +80,7 @@ jobs:
         export RUST_TEST_THREADS=1
         cargo pgrx test --runas postgres --pgdata /var/lib/postgresql/pgrx
   test_docker_service:
-    needs: [ test_core, test_memory_consumption, test_service, test_connector ]
+    needs: [ test_core, test_memory_consumption, test_service, test_psql_connector ]
     if: success()
     runs-on: ubuntu-latest
     defaults:
@@ -92,7 +92,7 @@ jobs:
       run: |
         docker build -t vbulavintsev/meritrank-service:$TAG -f ./Dockerfile ..
   test_docker_connector:
-    needs: [ test_core, test_memory_consumption, test_service, test_connector ]
+    needs: [ test_core, test_memory_consumption, test_service, test_psql_connector ]
     if: success()
     runs-on: ubuntu-latest
     defaults:
