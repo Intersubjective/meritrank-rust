@@ -7,4 +7,5 @@ export PGUSER="$POSTGRES_USER"
 echo "Loading pgmer2 extension into $POSTGRES_DB"
 "${psql[@]}" --dbname="$POSTGRES_DB" <<-'EOSQL'
   CREATE EXTENSION IF NOT EXISTS pgmer2;
+  CREATE EXTENSION IF NOT EXISTS pgsodium;
 EOSQL

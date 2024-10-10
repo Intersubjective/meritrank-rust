@@ -6,7 +6,7 @@ on:
     branches: [ main ]
   workflow_dispatch: 
 jobs:
-  core_build_and_test:
+  test_core:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -19,7 +19,7 @@ jobs:
     - name: Run tests
       run: |
         cargo test -- --skip smoke_memory
-  core_memory_consumption:
+  test_memory_consumption:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -34,7 +34,7 @@ jobs:
         if [ $MEM_KB -gt 550000 ]; then
           exit 1
         fi
-  service_build_and_test:
+  test_service:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -47,7 +47,7 @@ jobs:
       run: |
         export MERITRANK_NUM_WALK=50
         cargo test
-  connector_build_and_test:
+  test_psql_connector:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -79,3 +79,27 @@ jobs:
       run: |
         export RUST_TEST_THREADS=1
         cargo pgrx test --runas postgres --pgdata /var/lib/postgresql/pgrx
+  test_docker_service:
+    needs: [ test_core, test_memory_consumption, test_service, test_psql_connector ]
+    if: success()
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./service
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build docker image
+      run: |
+        docker build -f ./Dockerfile ..
+  test_docker_psql_connector:
+    needs: [ test_core, test_memory_consumption, test_service, test_psql_connector ]
+    if: success()
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./psql-connector
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build docker image
+      run: |
+        docker build -f ./Dockerfile ..
