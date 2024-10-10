@@ -90,7 +90,7 @@ jobs:
     - uses: actions/checkout@v4
     - name: Build docker image
       run: |
-        docker build -t vbulavintsev/meritrank-service:$TAG -f ./Dockerfile ..
+        docker build -f ./Dockerfile ..
   test_docker_connector:
     needs: [ test_core, test_memory_consumption, test_service, test_psql_connector ]
     if: success()
@@ -102,4 +102,4 @@ jobs:
     - uses: actions/checkout@v4
     - name: Build docker image
       run: |
-        docker build -t vbulavintsev/postgres-tentura:$TAG -f ./Dockerfile ..
+        docker build -f ./Dockerfile ..
