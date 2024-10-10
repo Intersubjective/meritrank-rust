@@ -33,11 +33,11 @@ If you prefer not to read through all the steps and copy-paste commands, here’
 sudo apt install docker git && \
 git clone https://github.com/Intersubjective/meritrank-service-rust.git && \
 cd meritrank-service-rust && \
-docker build -t mr-service . && \
+docker build -t mr-service -f ./Dockerfile .. && \
 cd .. && \
 git clone https://github.com/Intersubjective/meritrank-psql-connector.git && \
 cd meritrank-psql-connector && \
-docker build -t mr-psql-connector . && \
+docker build -t mr-psql-connector -f ./Dockerfile .. && \
 docker network create my-network && \
 docker run --network my-network -p 10234:10234 -e MERITRANK_SERVICE_URL=tcp://0.0.0.0:10234 --detach --name container1 mr-service && \
 docker run --network my-network -e POSTGRES_PASSWORD=postgres -e MERITRANK_SERVICE_URL=tcp://container1:10234 --detach --name container2 -p 5432:5432 mr-psql-connector:latest
@@ -52,7 +52,7 @@ Before executing any commands, ensure that you have `git` and `docker` installed
 ```bash
 git clone https://github.com/Intersubjective/meritrank-service-rust.git
 cd meritrank-service-rust/
-docker build -t mr-service .
+docker build -t mr-service -f ./Dockerfile ..
 ```
 
 ### Clone `meritrank-psql-connector` and Build It
@@ -61,7 +61,7 @@ docker build -t mr-service .
 cd .. 
 git clone https://github.com/Intersubjective/meritrank-psql-connector.git
 cd meritrank-psql-connector/
-docker build -t mr-psql-connector .
+docker build -t mr-psql-connector -f ./Dockerfile ..
 ```
 
 ## Creating a Network
