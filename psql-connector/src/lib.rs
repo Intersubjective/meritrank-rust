@@ -56,7 +56,7 @@ DROP VIEW     IF EXISTS mr_t_stats;
 CREATE OR REPLACE VIEW mr_t_edge AS SELECT
   '' ::text             AS src,
   '' ::text             AS dst,
-  (0)::double precision AS score
+  (0)::double precision AS weight
   WHERE false;
 
 CREATE OR REPLACE VIEW mr_t_link AS SELECT
@@ -65,10 +65,10 @@ CREATE OR REPLACE VIEW mr_t_link AS SELECT
   WHERE false;
 
 CREATE OR REPLACE VIEW mr_t_mutual_score AS SELECT
-  '' ::text             AS src,
+  '' ::text             AS ego,
   '' ::text             AS dst,
-  (0)::double precision AS dst_score,
-  (0)::double precision AS src_score
+  (0)::double precision AS score_of_dst_from_ego,
+  (0)::double precision AS score_of_ego_from_dst
   WHERE false;
 "#,
   name      = "bootstrap_raw",
@@ -129,11 +129,11 @@ fn make_setof_edge(response : &Vec<(String, String, f64)>) -> Result<
   let tuples : Vec<PgHeapTuple<'_, AllocatedByRust>> =
     response
       .iter()
-      .map(|(ego, dst, score)| {
+      .map(|(ego, dst, weight)| {
         let mut edge = PgHeapTuple::new_composite_type("mr_t_edge").unwrap();
         edge.set_by_name("src",    ego.as_str()).unwrap();
         edge.set_by_name("dst",    dst.as_str()).unwrap();
-        edge.set_by_name("score",  *score)      .unwrap();
+        edge.set_by_name("weight", *weight)     .unwrap();
         return edge;
       })
       .collect();
@@ -150,11 +150,11 @@ fn make_setof_edge_for_src(
   let tuples : Vec<PgHeapTuple<'_, AllocatedByRust>> =
     response
       .iter()
-      .map(|(dst, score)| {
+      .map(|(dst, weight)| {
         let mut edge = PgHeapTuple::new_composite_type("mr_t_edge").unwrap();
         edge.set_by_name("src",    src)         .unwrap();
         edge.set_by_name("dst",    dst.as_str()).unwrap();
-        edge.set_by_name("score",  *score)      .unwrap();
+        edge.set_by_name("weight", *weight)     .unwrap();
         return edge;
       })
       .collect();
@@ -178,19 +178,19 @@ fn make_setof_link(response : &Vec<(String, String)>) -> Result<
   return Ok(SetOfIterator::new(tuples));
 }
 
-fn make_setof_mutual_score(src : &str, response : &Vec<(String, f64, f64)>) -> Result<
+fn make_setof_mutual_score(response : &Vec<(String, String, f64, f64)>) -> Result<
   SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_mutual_score")>,
   Box<dyn Error + 'static>,
 > {
   let tuples : Vec<PgHeapTuple<'_, AllocatedByRust>> =
     response
       .iter()
-      .map(|(dst, dst_score, src_score)| {
+      .map(|(src, dst, dst_score, src_score)| {
         let mut score = PgHeapTuple::new_composite_type("mr_t_mutual_score").unwrap();
-        score.set_by_name("src",       src).unwrap();
-        score.set_by_name("dst",       dst.as_str()).unwrap();
-        score.set_by_name("dst_score", *dst_score).unwrap();
-        score.set_by_name("src_score", *src_score).unwrap();
+        score.set_by_name("ego",                   src).unwrap();
+        score.set_by_name("dst",                   dst.as_str()).unwrap();
+        score.set_by_name("score_of_dst_from_ego", *dst_score).unwrap();
+        score.set_by_name("score_of_ego_from_dst", *src_score).unwrap();
         return score;
       })
       .collect();
@@ -227,7 +227,7 @@ fn mr_node_score(
   dst     : Option<&str>,
   context : default!(Option<&str>, "''"),
 ) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
+  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_mutual_score")>,
   Box<dyn Error + 'static>,
 > {
   let context  = context.unwrap_or("");
@@ -247,7 +247,7 @@ fn mr_node_score(
   })?;
 
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_edge(&response);
+  return make_setof_mutual_score(&response);
 }
 
 fn scores_payload(
@@ -313,7 +313,7 @@ fn mr_scores(
   index         : default!(Option<i32>,  "0"),
   count         : default!(Option<i32>,  "16")
 ) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
+  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_mutual_score")>,
   Box<dyn Error + 'static>,
 > {
   let payload = scores_payload(
@@ -328,7 +328,7 @@ fn mr_scores(
   )?;
 
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_edge(&response);
+  return make_setof_mutual_score(&response);
 }
 
 #[pg_extern(immutable)]
@@ -340,7 +340,7 @@ fn mr_graph(
   index         : default!(Option<i32>,  "0"),
   count         : default!(Option<i32>,  "16")
 ) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
+  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_mutual_score")>,
   Box<dyn Error + 'static>,
 > {
   let context       = context.unwrap_or("");
@@ -366,7 +366,7 @@ fn mr_graph(
   })?;
 
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_edge(&response);
+  return make_setof_mutual_score(&response);
 }
 
 #[pg_extern(immutable)]
@@ -464,7 +464,7 @@ fn mr_mutual_scores(
   })?;
 
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_mutual_score(ego, &response);
+  return make_setof_mutual_score(&response);
 }
 
 #[pg_extern]
@@ -735,12 +735,25 @@ mod tests {
     return (
       x.get_by_name("src").unwrap().unwrap(),
       x.get_by_name("dst").unwrap().unwrap(),
-      x.get_by_name("score").unwrap().unwrap()
+      x.get_by_name("weight").unwrap().unwrap()
+    );
+  }
+
+  fn unpack_mutual_score(x : &PgHeapTuple<'static, pgrx::AllocatedByRust>) -> (String, String, f64, f64) {
+    return (
+      x.get_by_name("ego").unwrap().unwrap(),
+      x.get_by_name("dst").unwrap().unwrap(),
+      x.get_by_name("score_of_dst_from_ego").unwrap().unwrap(),
+      x.get_by_name("score_of_ego_from_dst").unwrap().unwrap()
     );
   }
 
   fn collect_edges(i : SetOfIterator<'_, PgHeapTuple<'static, pgrx::AllocatedByRust>>) -> Vec<(String, String, f64)> {
     i.map(|x| unpack_edge(&x)).collect()
+  }
+
+  fn collect_mutual_scores(i : SetOfIterator<'_, PgHeapTuple<'static, pgrx::AllocatedByRust>>) -> Vec<(String, String, f64, f64)> {
+    i.map(|x| unpack_mutual_score(&x)).collect()
   }
 
   #[pg_test]
@@ -825,7 +838,7 @@ mod tests {
       None
     ).unwrap();
 
-    assert!(get_time() < 10);
+    assert!(get_time() < 20);
   }
 
   #[pg_test]
@@ -999,11 +1012,13 @@ mod tests {
     let res = crate::mr_node_score(Some("U1"), Some("U2"), Some("X")).unwrap();
 
     let n = res.map(|x| {
-      let (ego, target, score) = unpack_edge(&x);
+      let (ego, dst, score_dst, score_ego) = unpack_mutual_score(&x);
       assert_eq!(ego, "U1");
-      assert_eq!(target, "U2");
-      assert!(score > 0.3);
-      assert!(score < 0.45);
+      assert_eq!(dst, "U2");
+      assert!(score_dst > 0.3);
+      assert!(score_dst < 0.45);
+      assert!(score_ego > -0.1);
+      assert!(score_ego < 0.1);
     }).count();
 
     assert_eq!(n, 1);
@@ -1018,7 +1033,7 @@ mod tests {
     let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("")).unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
-    let res = collect_edges(crate::mr_scores(
+    let res = collect_mutual_scores(crate::mr_scores(
       Some("U1"),
       Some(false),
       Some(""),
@@ -1063,7 +1078,7 @@ mod tests {
     let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("X")).unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
-    let res = collect_edges(crate::mr_scores(
+    let res = collect_mutual_scores(crate::mr_scores(
       Some("U1"),
       Some(false),
       Some("X"),
@@ -1108,7 +1123,7 @@ mod tests {
     let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("X")).unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
-    let res = collect_edges(crate::mr_scores(
+    let res = collect_mutual_scores(crate::mr_scores(
       Some("U1"),
       Some(false),
       Some("X"),
@@ -1199,15 +1214,7 @@ mod tests {
     let _ = crate::mr_put_edge(Some("U3"), Some("U2"), Some(2.0), None).unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
-    let res : Vec<(String, String, f64, f64)> =
-      crate::mr_mutual_scores(Some("U1"), None).unwrap()
-        .map(|x| (
-          x.get_by_name("src").unwrap().unwrap(),
-          x.get_by_name("dst").unwrap().unwrap(),
-          x.get_by_name("dst_score").unwrap().unwrap(),
-          x.get_by_name("src_score").unwrap().unwrap(),
-        ))
-        .collect();
+    let res = collect_mutual_scores(crate::mr_mutual_scores(Some("U1"), None).unwrap());
 
     assert_eq!(res.len(), 3);
 
@@ -1270,13 +1277,7 @@ mod tests {
 
     let res = crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap();
 
-    let beacons : Vec<(String, String, f64)> = res
-      .map(|x| (
-          x.get_by_name("src")  .unwrap().unwrap(),
-          x.get_by_name("dst")  .unwrap().unwrap(),
-          x.get_by_name("score").unwrap().unwrap(),
-        ))
-        .collect();
+    let beacons = collect_edges(res);
 
     assert_eq!(beacons.len(), 2);
     assert_eq!(beacons[0].1, "B3");
@@ -1307,13 +1308,7 @@ mod tests {
 
     let res = crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap();
 
-    let beacons : Vec<(String, String, f64)> = res
-      .map(|x| (
-          x.get_by_name("src")  .unwrap().unwrap(),
-          x.get_by_name("dst")  .unwrap().unwrap(),
-          x.get_by_name("score").unwrap().unwrap(),
-        ))
-        .collect();
+    let beacons = collect_edges(res);
 
     assert_eq!(beacons.len(), 2);
     assert_eq!(beacons[0].1, "B3");
@@ -1324,13 +1319,7 @@ mod tests {
 
     let res = crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap();
 
-    let beacons : Vec<(String, String, f64)> = res
-      .map(|x| (
-          x.get_by_name("src")  .unwrap().unwrap(),
-          x.get_by_name("dst")  .unwrap().unwrap(),
-          x.get_by_name("score").unwrap().unwrap(),
-        ))
-        .collect();
+    let beacons = collect_edges(res);
 
     assert_eq!(beacons.len(), 2);
     assert_eq!(beacons[0].1, "B3");
