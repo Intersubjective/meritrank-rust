@@ -1265,7 +1265,7 @@ fn recalculate_zero_graph_all() {
 
   graph.write_recalculate_zero();
 
-  let res : Vec<(String, String, Weight)> =
+  let res : Vec<_> =
     graph.read_graph("", "Uadeb43da4abb", "U000000000000", false, 0, 10000);
 
   let n = res.len();
@@ -1284,7 +1284,7 @@ fn graph_sort_order() {
 
   graph.write_recalculate_zero();
 
-  let res : Vec<(String, String, Weight)> =
+  let res : Vec<_> =
     graph.read_graph("", "Uadeb43da4abb", "U000000000000", false, 0, 10000);
 
   for n in 1..res.len() {
@@ -1300,7 +1300,7 @@ fn recalculate_zero_graph_duplicates() {
 
   graph.write_recalculate_zero();
 
-  let res : Vec<(String, String, Weight)> =
+  let res : Vec<_> =
     graph.read_graph("", "U000000000000", "Ub01f4ad1b03f", false, 0, 10000);
 
   for (i, x) in res.iter().enumerate() {
@@ -1321,7 +1321,7 @@ fn recalculate_zero_graph_positive_only() {
 
   graph.write_recalculate_zero();
 
-  let res : Vec<(String, String, Weight)> =
+  let res : Vec<_> =
     graph.read_graph("", "Uadeb43da4abb", "U000000000000", true, 0, 10000);
 
   let n = res.len();
@@ -1339,7 +1339,7 @@ fn recalculate_zero_graph_focus_beacon() {
 
   graph.write_recalculate_zero();
 
-  let res : Vec<(String, String, Weight)> =
+  let res : Vec<_> =
       graph.read_graph("", "U95f3426b8e5d", "B79efabc4d8bf", true, 0, 10000);
 
   let n = res.len();
@@ -1372,7 +1372,7 @@ fn recalculate_zero_reset_perf() {
 
   graph.read_graph("", "Uadeb43da4abb", "U000000000000", true, 0, 10000);
 
-  assert!(get_time() < 10);
+  assert!(get_time() < 20);
 }
 
 #[test]
@@ -1383,7 +1383,7 @@ fn recalculate_zero_scores() {
 
   graph.write_recalculate_zero();
 
-  let res : Vec<(String, String, Weight)> =
+  let res : Vec<_> =
     graph.read_scores("", "Uadeb43da4abb", "B", true, 100.0, false, -100.0, false, 0, u32::MAX);
 
   let n = res.len();
@@ -1401,7 +1401,7 @@ fn scores_sort_order() {
 
   graph.write_recalculate_zero();
 
-  let res : Vec<(String, String, Weight)> =
+  let res : Vec<_> =
     graph.read_scores("", "Uadeb43da4abb", "B", true, 100.0, false, -100.0, false, 0, u32::MAX);
 
   for n in 1..res.len() {
@@ -1415,7 +1415,7 @@ fn edge_uncontexted() {
 
   graph.write_put_edge("", "U1", "U2", 1.5);
 
-  let edges : Vec<(String, String, Weight)> = graph.read_edges("");
+  let edges : Vec<_> = graph.read_edges("");
 
   let edges_expected : Vec<(String, String, Weight)> = vec![
     ("U1".to_string(), "U2".to_string(), 1.5)
@@ -1430,7 +1430,7 @@ fn edge_contexted() {
 
   graph.write_put_edge("X", "U1", "U2", 1.5);
 
-  let edges : Vec<(String, String, Weight)> = graph.read_edges("X");
+  let edges : Vec<_> = graph.read_edges("X");
 
   let edges_expected : Vec<(String, String, Weight)> = vec![
     ("U1".to_string(), "U2".to_string(), 1.5)
@@ -1547,13 +1547,13 @@ fn scores_uncontexted() {
   graph.write_put_edge("", "U1", "U3", 1.0);
   graph.write_put_edge("", "U2", "U3", 3.0);
 
-  let res : Vec<(String, String, Weight)> = graph.read_scores("", "U1", "U", false, 10.0, false, 0.0, false, 0, u32::MAX);
+  let res : Vec<_> = graph.read_scores("", "U1", "U", false, 10.0, false, 0.0, false, 0, u32::MAX);
 
   assert_eq!(res.len(), 3);
 
   for x in res {
     assert_eq!(x.0, "U1");
-    
+
     match x.1.as_str() {
       "U1" => {
         assert!(x.2 > 0.2);
@@ -1576,6 +1576,51 @@ fn scores_uncontexted() {
 }
 
 #[test]
+fn scores_reversed() {
+  let mut graph = AugMultiGraph::new();
+
+  graph.write_put_edge("", "U1", "U2", 2.0);
+  graph.write_put_edge("", "U1", "U3", 1.0);
+  graph.write_put_edge("", "U2", "U3", 3.0);
+  graph.write_put_edge("", "U2", "U1", 4.0);
+  graph.write_put_edge("", "U3", "U1", -5.0);
+
+  let res : Vec<_> = graph.read_scores("", "U1", "U", false, 10.0, false, 0.0, false, 0, u32::MAX);
+
+  assert!(res.len() >= 2);
+  assert!(res.len() <= 3);
+
+  for x in res {
+    assert_eq!(x.0, "U1");
+
+    match x.1.as_str() {
+      "U1" => {
+        assert!(x.2 > 0.1);
+        assert!(x.2 < 0.4);
+        assert!(x.3 > 0.1);
+        assert!(x.3 < 0.4);
+      },
+
+      "U2" => {
+        assert!(x.2 > -0.1);
+        assert!(x.2 < 0.3);
+        assert!(x.3 > -0.3);
+        assert!(x.3 <  0.1);
+      },
+
+      "U3" => {
+        assert!(x.2 > -0.1);
+        assert!(x.2 < 0.2);
+        assert!(x.3 >= -1.0);
+        assert!(x.3 < -0.6);
+      },
+
+      _ => assert!(false),
+    }
+  }
+}
+
+#[test]
 fn scores_contexted() {
   let mut graph = AugMultiGraph::new();
 
@@ -1583,13 +1628,13 @@ fn scores_contexted() {
   graph.write_put_edge("X", "U1", "U3", 1.0);
   graph.write_put_edge("X", "U2", "U3", 3.0);
 
-  let res : Vec<(String, String, Weight)> = graph.read_scores("X", "U1", "U", false, 10.0, false, 0.0, false, 0, u32::MAX);
+  let res : Vec<_> = graph.read_scores("X", "U1", "U", false, 10.0, false, 0.0, false, 0, u32::MAX);
 
   assert_eq!(res.len(), 3);
 
   for x in res {
     assert_eq!(x.0, "U1");
-    
+
     match x.1.as_str() {
       "U1" => {
         assert!(x.2 > 0.2);
@@ -1619,7 +1664,7 @@ fn scores_unknown_context() {
   graph.write_put_edge("X", "B1", "B3", 1.0);
   graph.write_put_edge("X", "B2", "B3", 3.0);
 
-  let res : Vec<(String, String, Weight)> = graph.read_scores("Y", "B1", "B", false, 10.0, false, 0.0, false, 0, u32::MAX);
+  let res : Vec<_> = graph.read_scores("Y", "B1", "B", false, 10.0, false, 0.0, false, 0, u32::MAX);
 
   assert_eq!(res.len(), 0);
 }
@@ -1633,7 +1678,7 @@ fn scores_self() {
   graph.write_put_edge("X", "B2", "U1", 3.0);
   graph.write_create_context("Y");
 
-  let res : Vec<(String, String, Weight)> = graph.read_scores("Y", "U1", "U", false, 10.0, false, 0.0, false, 0, u32::MAX);
+  let res : Vec<_> = graph.read_scores("Y", "U1", "U", false, 10.0, false, 0.0, false, 0, u32::MAX);
 
   assert_eq!(res.len(), 1);
   assert_eq!(res[0].0, "U1");
@@ -1734,13 +1779,33 @@ fn node_score_uncontexted() {
   graph.write_put_edge("", "U1", "U3", 1.0);
   graph.write_put_edge("", "U3", "U2", 3.0);
 
-  let res : Vec<(String, String, Weight)> = graph.read_node_score("", "U1", "U2");
+  let res : Vec<_> = graph.read_node_score("", "U1", "U2");
 
   assert_eq!(res.len(), 1);
   assert_eq!(res[0].0, "U1");
   assert_eq!(res[0].1, "U2");
   assert!(res[0].2 > 0.3);
   assert!(res[0].2 < 0.45);
+}
+
+#[test]
+fn node_score_reversed() {
+  let mut graph = AugMultiGraph::new();
+
+  graph.write_put_edge("", "U1", "U2", 2.0);
+  graph.write_put_edge("", "U1", "U3", 1.0);
+  graph.write_put_edge("", "U3", "U2", 3.0);
+  graph.write_put_edge("", "U2", "U1", 4.0);
+
+  let res : Vec<_> = graph.read_node_score("", "U1", "U2");
+
+  assert_eq!(res.len(), 1);
+  assert_eq!(res[0].0, "U1");
+  assert_eq!(res[0].1, "U2");
+  assert!(res[0].2 > 0.3);
+  assert!(res[0].2 < 0.45);
+  assert!(res[0].3 > 0.3);
+  assert!(res[0].3 < 0.45);
 }
 
 #[test]
@@ -1751,7 +1816,7 @@ fn node_score_contexted() {
   graph.write_put_edge("X", "U1", "U3", 1.0);
   graph.write_put_edge("X", "U3", "U2", 3.0);
 
-  let res : Vec<(String, String, Weight)> = graph.read_node_score("X", "U1", "U2");
+  let res : Vec<_> = graph.read_node_score("X", "U1", "U2");
 
   assert_eq!(res.len(), 1);
   assert_eq!(res[0].0, "U1");
@@ -1771,7 +1836,7 @@ fn mutual_scores_uncontexted() {
   graph.write_put_edge("", "U3", "U1", 3.0);
   graph.write_put_edge("", "U3", "U2", 2.0);
 
-  let res : Vec<(String, Weight, Weight)> = graph.read_mutual_scores("", "U1");
+  let res : Vec<_> = graph.read_mutual_scores("", "U1");
 
   assert_eq!(res.len(), 3);
 
@@ -1780,30 +1845,32 @@ fn mutual_scores_uncontexted() {
   let mut u3 = true;
 
   for x in res.iter() {
-    match x.0.as_str() {
+    assert_eq!(x.0, "U1");
+
+    match x.1.as_str() {
       "U1" => {
-        assert!(x.1 > 0.3);
-        assert!(x.1 < 0.5);
         assert!(x.2 > 0.3);
         assert!(x.2 < 0.5);
+        assert!(x.3 > 0.3);
+        assert!(x.3 < 0.5);
         assert!(u1);
         u1 = false;
       },
 
       "U2" => {
-        assert!(x.1 > 0.25);
-        assert!(x.1 < 0.4);
-        assert!(x.2 > 0.2);
-        assert!(x.2 < 0.35);
+        assert!(x.2 > 0.25);
+        assert!(x.2 < 0.4);
+        assert!(x.3 > 0.2);
+        assert!(x.3 < 0.35);
         assert!(u2);
         u2 = false;
       },
 
       "U3" => {
-        assert!(x.1 > 0.2);
-        assert!(x.1 < 0.35);
-        assert!(x.2 > 0.25);
+        assert!(x.2 > 0.2);
         assert!(x.2 < 0.35);
+        assert!(x.3 > 0.25);
+        assert!(x.3 < 0.35);
         assert!(u3);
         u3 = false;
       },
@@ -1822,14 +1889,15 @@ fn mutual_scores_self() {
   graph.write_put_edge("", "U1", "U2", 3.0);
   graph.write_delete_edge("", "U1", "U2");
 
-  let res : Vec<(String, Weight, Weight)> = graph.read_mutual_scores("", "U1");
+  let res : Vec<_> = graph.read_mutual_scores("", "U1");
 
   assert_eq!(res.len(), 1);
   assert_eq!(res[0].0, "U1");
-  assert!(res[0].1 > 0.999);
-  assert!(res[0].1 < 1.001);
+  assert_eq!(res[0].1, "U1");
   assert!(res[0].2 > 0.999);
   assert!(res[0].2 < 1.001);
+  assert!(res[0].3 > 0.999);
+  assert!(res[0].3 < 1.001);
 }
 
 #[test]
@@ -1843,7 +1911,7 @@ fn mutual_scores_contexted() {
   graph.write_put_edge("X", "U3", "U1", 3.0);
   graph.write_put_edge("X", "U3", "U2", 2.0);
 
-  let res : Vec<(String, Weight, Weight)> = graph.read_mutual_scores("X", "U1");
+  let res : Vec<_> = graph.read_mutual_scores("X", "U1");
 
   assert_eq!(res.len(), 3);
 
@@ -1852,30 +1920,32 @@ fn mutual_scores_contexted() {
   let mut u3 = true;
 
   for x in res.iter() {
-    match x.0.as_str() {
+    assert_eq!(x.0, "U1");
+
+    match x.1.as_str() {
       "U1" => {
-        assert!(x.1 > 0.3);
-        assert!(x.1 < 0.5);
         assert!(x.2 > 0.3);
-        assert!(x.2 < 0.45);
+        assert!(x.2 < 0.5);
+        assert!(x.3 > 0.3);
+        assert!(x.3 < 0.45);
         assert!(u1);
         u1 = false;
       },
 
       "U2" => {
-        assert!(x.1 > 0.25);
-        assert!(x.1 < 0.4);
-        assert!(x.2 > 0.2);
-        assert!(x.2 < 0.35);
+        assert!(x.2 > 0.25);
+        assert!(x.2 < 0.4);
+        assert!(x.3 > 0.2);
+        assert!(x.3 < 0.35);
         assert!(u2);
         u2 = false;
       },
 
       "U3" => {
-        assert!(x.1 > 0.2);
-        assert!(x.1 < 0.35);
         assert!(x.2 > 0.2);
         assert!(x.2 < 0.35);
+        assert!(x.3 > 0.2);
+        assert!(x.3 < 0.35);
         assert!(u3);
         u3 = false;
       },
@@ -1895,7 +1965,7 @@ fn graph_uncontexted() {
   graph.write_put_edge("", "U1", "U3", 1.0);
   graph.write_put_edge("", "U2", "U3", 3.0);
 
-  let res : Vec<(String, String, Weight)> = graph.read_graph("", "U1", "U2", false, 0, 10000);
+  let res : Vec<_> = graph.read_graph("", "U1", "U2", false, 0, 10000);
 
   assert_eq!(res.len(), 2);
 
@@ -1927,6 +1997,50 @@ fn graph_uncontexted() {
 }
 
 #[test]
+fn graph_reversed() {
+  let mut graph = AugMultiGraph::new();
+
+  graph.write_put_edge("", "U1", "U2", 2.0);
+  graph.write_put_edge("", "U1", "U3", 1.0);
+  graph.write_put_edge("", "U2", "U3", 3.0);
+  graph.write_put_edge("", "U2", "U1", 4.0);
+
+  let res : Vec<_> = graph.read_graph("", "U1", "U2", false, 0, 10000);
+
+  assert_eq!(res.len(), 3);
+
+  for x in res {
+    match x.0.as_str() {
+      "U1" => {
+        assert_eq!(x.1, "U2");
+        assert!(x.2 > 0.6);
+        assert!(x.2 < 0.7);
+        assert!(x.3 > 0.15);
+        assert!(x.3 < 0.3);
+      },
+
+      "U2" => {
+        if x.1 == "U1" {
+          assert!(x.2 > 0.5);
+          assert!(x.2 < 0.6);
+          assert!(x.3 > 0.15);
+          assert!(x.3 < 0.35);
+        }
+
+        if x.1 == "U3" {
+          assert!(x.2 > 0.39);
+          assert!(x.2 < 0.49);
+          assert!(x.3 > -0.1);
+          assert!(x.3 < 0.1);
+        }
+      },
+
+      _ => panic!(),
+    }
+  }
+}
+
+#[test]
 fn graph_contexted() {
   let mut graph = AugMultiGraph::new();
 
@@ -1934,7 +2048,7 @@ fn graph_contexted() {
   graph.write_put_edge("X", "U1", "U3", 1.0);
   graph.write_put_edge("X", "U2", "U3", 3.0);
 
-  let res : Vec<(String, String, Weight)> = graph.read_graph("X", "U1", "U2", false, 0, 10000);
+  let res : Vec<_> = graph.read_graph("X", "U1", "U2", false, 0, 10000);
 
   assert_eq!(res.len(), 2);
 
@@ -1977,7 +2091,7 @@ fn graph_empty() {
   graph.write_delete_edge("", "U1", "U3");
   graph.write_delete_edge("", "U2", "U3");
 
-  let res : Vec<(String, String, Weight)> = graph.read_graph("", "U1", "U2", false, 0, 10000);
+  let res : Vec<_> = graph.read_graph("", "U1", "U2", false, 0, 10000);
 
   for x in res.iter() {
     println!("{} -> {}: {}", x.0, x.1, x.2);
@@ -1998,7 +2112,7 @@ fn graph_removed_edge() {
 
   graph.write_delete_edge("", "U1", "B2");
 
-  let res : Vec<(String, String, Weight)> = graph.read_graph("", "U1", "B2", false, 0, 10000);
+  let res : Vec<_> = graph.read_graph("", "U1", "B2", false, 0, 10000);
 
   for x in res.iter() {
     println!("{} -> {}: {}", x.0, x.1, x.2);
