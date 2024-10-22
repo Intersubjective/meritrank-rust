@@ -13,6 +13,7 @@ use crate::log_info;
 use crate::log_trace;
 use crate::log_verbose;
 use crate::log_warning;
+use kmeans::{KMeans, KMeansConfig};
 
 pub use meritrank_core::Weight;
 
@@ -1079,9 +1080,11 @@ impl AugMultiGraph {
 
   pub fn read_mutual_scores(
     &mut self,
-    context: &str,
     ego: &str,
-  ) -> Vec<(String, String, Weight, Weight)> {
+    context: &str,
+    scores_num: usize,
+    clusters_num: usize,
+  ) -> Vec<(String, f64, f64)> {
     log_info!("CMD read_mutual_scores: `{}` `{}`", context, ego);
 
     if !self.contexts.contains_key(context) {
@@ -1096,23 +1099,40 @@ impl AugMultiGraph {
 
     let ego_id = self.find_or_add_node_by_name(ego);
     let ranks = self.get_ranks_or_recalculate(context, ego_id);
-    let mut v = Vec::<(String, String, Weight, Weight)>::new();
+    let mut scores = Vec::<(String, Weight, Weight)>::new();
 
-    v.reserve_exact(ranks.len());
+    // Reserve for only the top N scores
+    let num_scores = std::cmp::min(scores_num, ranks.len()); // Make sure we don't exceed available scores
+    scores.reserve_exact(num_scores);
 
-    for (node, score) in ranks {
-      let info = self.node_info_from_id(node).clone();
-      if score > 0.0 && info.kind == NodeKind::User {
-        v.push((
-          ego.to_string(),
-          info.name,
-          score,
-          self.get_score_or_recalculate(context, node, ego_id),
-        ));
+    for (node, score) in ranks.iter() {
+      let info = self.node_info_from_id(*node).clone();
+      if score > &0.0 && info.kind == NodeKind::User {
+        scores.push((info.name, *score, 0.0));
       }
     }
 
-    v
+    // Extract just the scores as a vector
+    let score_values: Vec<f64> = scores.iter().map(|(_, score, _)| *score).collect();
+
+    let kmeans: KMeans<_, 1> = KMeans::new(score_values.clone(), score_values.len(), 1); // 1-dimensional data
+    let result = kmeans.kmeans_lloyd(
+      clusters_num,
+      100, // Maximum number of iterations
+      KMeans::init_kmeanplusplus,
+      &KMeansConfig::default(),
+    );
+
+    // Map each score to its corresponding cluster/grade
+    let mut graded_scores = Vec::<(String, Weight, Weight)>::new();
+    graded_scores.reserve_exact(ranks.len());
+
+    for (i, (name, _, _)) in scores.into_iter().enumerate() {
+      let grade = result.assignments[i];
+      graded_scores.push((name, grade as f64, 0.0));
+    }
+
+    graded_scores
   }
 
   pub fn write_reset(&mut self) {
