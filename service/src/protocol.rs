@@ -61,7 +61,7 @@ pub fn decode_request(request: &[u8]) -> Result<Command, ()> {
     Err(e) => {
       log_error!("(request_decode) {}", e);
       Err(())
-    }
+    },
   }
 }
 
@@ -76,7 +76,7 @@ where
       Err(e) => {
         log_error!("(response_encode) {}", e);
         Err(())
-      }
+      },
     },
   }
 }

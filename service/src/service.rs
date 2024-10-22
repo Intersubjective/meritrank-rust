@@ -61,7 +61,7 @@ fn perform_command(data: &Data, command: Command) -> Result<Vec<u8>, ()> {
       Err(e) => {
         log_error!("(perform_command) {}", e);
         return Err(());
-      }
+      },
     };
 
     let mut ok = false;
@@ -72,62 +72,62 @@ fn perform_command(data: &Data, command: Command) -> Result<Vec<u8>, ()> {
           ok = true;
           graph.write_reset();
         }
-      }
+      },
       CMD_RECALCULATE_ZERO => {
         if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
           ok = true;
           graph.write_recalculate_zero();
         }
-      }
+      },
       CMD_DELETE_EDGE => {
         if let Ok((src, dst)) = rmp_serde::from_slice(command.payload.as_slice()) {
           ok = true;
           graph.write_delete_edge(command.context.as_str(), src, dst);
         }
-      }
+      },
       CMD_DELETE_NODE => {
         if let Ok(node) = rmp_serde::from_slice(command.payload.as_slice()) {
           ok = true;
           graph.write_delete_node(command.context.as_str(), node);
         }
-      }
+      },
       CMD_PUT_EDGE => {
         if let Ok((src, dst, amount)) = rmp_serde::from_slice(command.payload.as_slice()) {
           ok = true;
           graph.write_put_edge(command.context.as_str(), src, dst, amount);
         }
-      }
+      },
       CMD_CREATE_CONTEXT => {
         if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
           ok = true;
           graph.write_create_context(command.context.as_str());
         }
-      }
+      },
       CMD_WRITE_NEW_EDGES_FILTER => {
         if let Ok((src, filter)) = rmp_serde::from_slice(command.payload.as_slice()) {
           ok = true;
           let v: Vec<u8> = filter;
           graph.write_new_edges_filter(src, &v);
         }
-      }
+      },
       CMD_FETCH_NEW_EDGES => {
         if let Ok((src, prefix)) = rmp_serde::from_slice(command.payload.as_slice()) {
           ok = true;
           res = encode_response(&graph.write_fetch_new_edges(src, prefix));
         }
-      }
+      },
       _ => {
         log_error!("(perform_command) Unexpected command `{}`", command.id);
-      }
+      },
     };
     match data.graph_readable.lock() {
       Ok(ref mut x) => {
         x.copy_from(graph.deref_mut());
-      }
+      },
       Err(e) => {
         log_error!("(perform_command) {}", e);
         return Err(());
-      }
+      },
     };
 
     if ok {
@@ -162,19 +162,19 @@ fn perform_command(data: &Data, command: Command) -> Result<Vec<u8>, ()> {
       Err(e) => {
         log_error!("(perform_command) {}", e);
         return Err(());
-      }
+      },
     };
     match command.id.as_str() {
       CMD_NODE_LIST => {
         if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
           return encode_response(&graph.read_node_list());
         }
-      }
+      },
       CMD_NODE_SCORE => {
         if let Ok((ego, target)) = rmp_serde::from_slice(command.payload.as_slice()) {
           return encode_response(&graph.read_node_score(command.context.as_str(), ego, target));
         }
-      }
+      },
       CMD_SCORES => {
         if let Ok((ego, kind, hide_personal, lt, lte, gt, gte, index, count)) =
           rmp_serde::from_slice(command.payload.as_slice())
@@ -192,7 +192,7 @@ fn perform_command(data: &Data, command: Command) -> Result<Vec<u8>, ()> {
             count,
           ));
         }
-      }
+      },
       CMD_GRAPH => {
         if let Ok((ego, focus, positive_only, index, count)) =
           rmp_serde::from_slice(command.payload.as_slice())
@@ -206,31 +206,31 @@ fn perform_command(data: &Data, command: Command) -> Result<Vec<u8>, ()> {
             count,
           ));
         }
-      }
+      },
       CMD_CONNECTED => {
         if let Ok(node) = rmp_serde::from_slice(command.payload.as_slice()) {
           return encode_response(&graph.read_connected(command.context.as_str(), node));
         }
-      }
+      },
       CMD_EDGES => {
         if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
           return encode_response(&graph.read_edges(command.context.as_str()));
         }
-      }
+      },
       CMD_MUTUAL_SCORES => {
         if let Ok(ego) = rmp_serde::from_slice(command.payload.as_slice()) {
           return encode_response(&graph.read_mutual_scores(command.context.as_str(), ego));
         }
-      }
+      },
       CMD_READ_NEW_EDGES_FILTER => {
         if let Ok(src) = rmp_serde::from_slice(command.payload.as_slice()) {
           return encode_response(&graph.read_new_edges_filter(src));
         }
-      }
+      },
       _ => {
         log_error!("(perform_command) Unknown command: `{}`", command.id);
         return Err(());
-      }
+      },
     }
   }
 
@@ -291,11 +291,7 @@ fn decode_and_handle_request(data: &Data, request: &[u8]) -> Result<Vec<u8>, ()>
   let command = decode_request(request)?;
 
   if command.context.is_empty() {
-    log_trace!(
-      "decoded command `{}` in NULL with payload {:?}",
-      command.id,
-      command.payload
-    );
+    log_trace!("decoded command `{}` in NULL with payload {:?}", command.id, command.payload);
   } else {
     log_trace!(
       "decoded command `{}` in `{}` with payload {:?}",
@@ -341,10 +337,10 @@ fn worker_callback(data: &Data, aio: Aio, ctx: &Context, res: AioResult) {
 
   match res {
     AioResult::Send(Ok(_)) => match ctx.recv(&aio) {
-      Ok(_) => {}
+      Ok(_) => {},
       Err(error) => {
         log_error!("(worker_callback) RECV failed: {}", error);
-      }
+      },
     },
 
     AioResult::Recv(Ok(req)) => {
@@ -355,39 +351,34 @@ fn worker_callback(data: &Data, aio: Aio, ctx: &Context, res: AioResult) {
           Err(error) => {
             log_error!("(worker_callback) Unable to serialize error: {:?}", error);
             vec![]
-          }
+          },
         },
       };
       log_trace!("decode_and_handle_request - done");
       match ctx.send(&aio, msg.as_slice()) {
-        Ok(_) => {}
+        Ok(_) => {},
         Err(error) => {
           log_error!("(worker_callback) SEND failed: {:?}", error);
-        }
+        },
       };
-    }
+    },
 
-    AioResult::Sleep(_) => {}
+    AioResult::Sleep(_) => {},
 
     AioResult::Send(Err(error)) => {
       log_error!("(worker_callback) Async SEND failed: {:?}", error);
-    }
+    },
 
     AioResult::Recv(Err(error)) => {
       log_error!("(worker_callback) Async RECV failed: {:?}", error);
-    }
+    },
   };
 }
 
 pub fn main_async(threads: usize) -> Result<(), ()> {
   let threads = if threads < 1 { 1 } else { threads };
 
-  log_info!(
-    "Starting server {} at {}, {} threads",
-    VERSION,
-    *SERVICE_URL,
-    threads
-  );
+  log_info!("Starting server {} at {}, {} threads", VERSION, *SERVICE_URL, threads);
   log_info!("NUM_WALK={}", *NUM_WALK);
 
   let data = Arc::<Data>::new(Data {
@@ -410,7 +401,7 @@ pub fn main_async(threads: usize) -> Result<(), ()> {
     Err(e) => {
       log_error!("(main_async) {}", e);
       return Err(());
-    }
+    },
   };
 
   let workers: Vec<_> = match (0..threads)
@@ -431,15 +422,15 @@ pub fn main_async(threads: usize) -> Result<(), ()> {
     Err(e) => {
       log_error!("(main_async) {}", e);
       return Err(());
-    }
+    },
   };
 
   match s.listen(&SERVICE_URL) {
     Err(e) => {
       log_error!("(main_async) {}", e);
       return Err(());
-    }
-    _ => {}
+    },
+    _ => {},
   };
 
   for (a, c) in &workers {
@@ -447,8 +438,8 @@ pub fn main_async(threads: usize) -> Result<(), ()> {
       Err(e) => {
         log_error!("(main_async) {}", e);
         return Err(());
-      }
-      _ => {}
+      },
+      _ => {},
     };
   }
 

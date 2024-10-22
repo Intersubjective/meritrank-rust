@@ -229,7 +229,7 @@ impl AugMultiGraph {
           seen_nodes: Default::default(),
         };
         &self.dummy_info
-      }
+      },
     }
   }
 
@@ -271,9 +271,9 @@ impl AugMultiGraph {
               }
             }
           }
-        }
+        },
 
-        _ => {}
+        _ => {},
       }
     }
 
@@ -290,18 +290,13 @@ impl AugMultiGraph {
       None => {
         log_error!("(graph_from) No context: `{}`", context);
         &mut self.dummy_graph
-      }
+      },
     }
   }
 
   pub fn edge_weight(&mut self, context: &str, src: NodeId, dst: NodeId) -> Weight {
     log_trace!("edge_weight: `{}` {} {}", context, src, dst);
-    self
-      .graph_from(context)
-      .graph
-      .edge_weight(src, dst)
-      .unwrap_or(None)
-      .unwrap_or(0.0)
+    self.graph_from(context).graph.edge_weight(src, dst).unwrap_or(None).unwrap_or(0.0)
   }
 
   pub fn edge_weight_normalized(&mut self, context: &str, src: NodeId, dst: NodeId) -> Weight {
@@ -317,17 +312,12 @@ impl AugMultiGraph {
         } else {
           x.pos_sum
         }
-      }
+      },
 
       None => 1.0,
     };
 
-    graph
-      .graph
-      .edge_weight(src, dst)
-      .unwrap_or(None)
-      .unwrap_or(0.0)
-      / pos_sum
+    graph.graph.edge_weight(src, dst).unwrap_or(None).unwrap_or(0.0) / pos_sum
   }
 
   pub fn all_neighbors(&mut self, context: &str, node: NodeId) -> Vec<(NodeId, Weight)> {
@@ -336,7 +326,7 @@ impl AugMultiGraph {
     let mut v = vec![];
 
     match self.graph_from(context).graph.get_node_data(node) {
-      None => {}
+      None => {},
       Some(data) => {
         v.reserve_exact(data.pos_edges.len() + data.neg_edges.len());
 
@@ -347,7 +337,7 @@ impl AugMultiGraph {
         for x in &data.neg_edges {
           v.push((*x.0, *x.1));
         }
-      }
+      },
     }
 
     v
@@ -359,7 +349,7 @@ impl AugMultiGraph {
     let mut v = vec![];
 
     match self.graph_from(context).graph.get_node_data(node) {
-      None => {}
+      None => {},
       Some(data) => {
         v.reserve_exact(data.pos_edges.len() + data.neg_edges.len());
 
@@ -377,7 +367,7 @@ impl AugMultiGraph {
         for x in &data.neg_edges {
           v.push((*x.0, *x.1 / pos_sum));
         }
-      }
+      },
     }
 
     v
@@ -393,24 +383,24 @@ impl AugMultiGraph {
       Err(MeritRankError::NodeDoesNotExist) => {
         log_warning!("Node does not exist: {}", node_id);
         vec![]
-      }
+      },
       _ => {
         log_warning!("Recalculating node: {}", node_id);
         match graph.calculate(node_id, *NUM_WALK) {
           Err(e) => {
             log_error!("(get_ranks_or_recalculate) {}", e);
             return vec![];
-          }
-          _ => {}
+          },
+          _ => {},
         };
         match graph.get_ranks(node_id, None) {
           Ok(ranks) => ranks,
           Err(e) => {
             log_error!("(get_ranks_or_recalculate) {}", e);
             vec![]
-          }
+          },
         }
-      }
+      },
     }
   }
 
@@ -424,24 +414,24 @@ impl AugMultiGraph {
       Err(MeritRankError::NodeDoesNotExist) => {
         log_warning!("Node does not exist: {}, {}", src_id, dst_id);
         0.0
-      }
+      },
       _ => {
         log_warning!("Recalculating node {}", src_id);
         match graph.calculate(src_id, *NUM_WALK) {
           Err(e) => {
             log_error!("(get_score_or_recalculate) {}", e);
             return 0.0;
-          }
-          _ => {}
+          },
+          _ => {},
         };
         match graph.get_node_score(src_id, dst_id) {
           Ok(score) => score,
           Err(e) => {
             log_error!("(get_score_or_recalculate) {}", e);
             0.0
-          }
+          },
         }
-      }
+      },
     }
   }
 
@@ -491,13 +481,7 @@ impl AugMultiGraph {
       }
 
       for (enum_context, graph) in &mut self.contexts {
-        log_verbose!(
-          "Set user edge in `{}`: {} -> {} for {}",
-          enum_context,
-          src,
-          dst,
-          amount
-        );
+        log_verbose!("Set user edge in `{}`: {} -> {} for {}", enum_context, src, dst, amount);
         graph.set_edge(src, dst, amount);
       }
     } else if context.is_empty() {
@@ -511,13 +495,7 @@ impl AugMultiGraph {
       log_verbose!("Set edge in ``: {} -> {} for {}", src, dst, delta);
       self.graph_from("").set_edge(src, dst, delta);
 
-      log_verbose!(
-        "Set edge in `{}`: {} -> {} for {}",
-        context,
-        src,
-        dst,
-        amount
-      );
+      log_verbose!("Set edge in `{}`: {} -> {} for {}", context, src, dst, amount);
       self.graph_from(context).set_edge(src, dst, amount);
     }
   }
@@ -535,7 +513,7 @@ impl AugMultiGraph {
       }
       if infos[id].kind == NodeKind::User {
         match graph.calculate(id, num_walk) {
-          Ok(_) => {}
+          Ok(_) => {},
           Err(e) => log_error!("(recalculate_all) {}", e),
         };
       }
@@ -570,29 +548,31 @@ impl AugMultiGraph {
     context: &str,
     ego: &str,
     target: &str,
-  ) -> Vec<(String, String, f64)> {
+  ) -> Vec<(String, String, f64, f64)> {
     log_info!("CMD read_node_score: `{}` `{}` `{}`", context, ego, target);
 
     if !self.contexts.contains_key(context) {
       log_error!("(read_node_score) Context does not exist: `{}`", context);
-      return [(ego.to_string(), target.to_string(), 0.0)].to_vec();
+      return [(ego.to_string(), target.to_string(), 0.0, 0.0)].to_vec();
     }
 
     if !self.node_exists(ego) {
       log_error!("(read_node_score) Node does not exist: `{}`", ego);
-      return [(ego.to_string(), target.to_string(), 0.0)].to_vec();
+      return [(ego.to_string(), target.to_string(), 0.0, 0.0)].to_vec();
     }
 
     if !self.node_exists(target) {
       log_error!("(read_node_score) Node does not exist: `{}`", target);
-      return [(ego.to_string(), target.to_string(), 0.0)].to_vec();
+      return [(ego.to_string(), target.to_string(), 0.0, 0.0)].to_vec();
     }
 
     let ego_id = self.find_or_add_node_by_name(ego);
     let target_id = self.find_or_add_node_by_name(target);
-    let w = self.get_score_or_recalculate(context, ego_id, target_id);
+    let score_of_target_from_ego = self.get_score_or_recalculate(context, ego_id, target_id);
+    let score_of_ego_from_target = self.get_score_or_recalculate(context, target_id, ego_id);
 
-    [(ego.to_string(), target.to_string(), w)].to_vec()
+    [(ego.to_string(), target.to_string(), score_of_target_from_ego, score_of_ego_from_target)]
+      .to_vec()
   }
 
   pub fn read_scores(
@@ -607,7 +587,7 @@ impl AugMultiGraph {
     score_gte: bool,
     index: u32,
     count: u32,
-  ) -> Vec<(String, String, Weight)> {
+  ) -> Vec<(String, String, Weight, Weight)> {
     log_info!(
       "CMD read_scores: `{}` `{}` `{}` {} {} {} {} {} {} {}",
       context,
@@ -630,7 +610,7 @@ impl AugMultiGraph {
       _ => {
         log_error!("(read_scores) Invalid node kind string: `{}`", kind_str);
         return vec![];
-      }
+      },
     };
 
     if !self.contexts.contains_key(context) {
@@ -643,9 +623,9 @@ impl AugMultiGraph {
       return vec![];
     }
 
-    let node_id = self.find_or_add_node_by_name(ego);
+    let ego_id = self.find_or_add_node_by_name(ego);
 
-    let ranks = self.get_ranks_or_recalculate(context, node_id);
+    let ranks = self.get_ranks_or_recalculate(context, ego_id);
 
     let mut im: Vec<(NodeId, Weight)> = ranks
       .into_iter()
@@ -660,11 +640,7 @@ impl AugMultiGraph {
         {
           return true;
         }
-        match self
-          .graph_from(context)
-          .graph
-          .edge_weight(*target_id, node_id)
-        {
+        match self.graph_from(context).graph.edge_weight(*target_id, ego_id) {
           Ok(Some(_)) => false,
           _ => true,
         }
@@ -677,7 +653,7 @@ impl AugMultiGraph {
     let index = index as usize;
     let count = count as usize;
 
-    let mut page: Vec<(String, String, Weight)> = vec![];
+    let mut page: Vec<(String, String, Weight, Weight)> = vec![];
     page.reserve_exact(if count < im.len() { count } else { im.len() });
 
     for i in index..count {
@@ -688,6 +664,7 @@ impl AugMultiGraph {
         ego.to_string(),
         self.node_info_from_id(im[i].0).name.clone(),
         im[i].1,
+        self.get_score_or_recalculate(context, im[i].0, ego_id),
       ));
     }
 
@@ -700,13 +677,7 @@ impl AugMultiGraph {
   }
 
   pub fn write_put_edge(&mut self, context: &str, src: &str, dst: &str, amount: f64) {
-    log_info!(
-      "CMD write_put_edge: `{}` `{}` `{}` {}",
-      context,
-      src,
-      dst,
-      amount
-    );
+    log_info!("CMD write_put_edge: `{}` `{}` `{}` {}", context, src, dst, amount);
 
     let src_id = self.find_or_add_node_by_name(src);
     let dst_id = self.find_or_add_node_by_name(dst);
@@ -749,7 +720,7 @@ impl AugMultiGraph {
     positive_only: bool,
     index: u32,
     count: u32,
-  ) -> Vec<(String, String, Weight)> {
+  ) -> Vec<(String, String, Weight, Weight)> {
     log_info!(
       "CMD read_graph: `{}` `{}` `{}` {} {} {}",
       context,
@@ -824,11 +795,7 @@ impl AugMultiGraph {
 
           let focus_ngh_weight = focus_dst_weight
             * dst_ngh_weight
-            * if focus_dst_weight < 0.0 && dst_ngh_weight < 0.0 {
-              -1.0
-            } else {
-              1.0
-            };
+            * if focus_dst_weight < 0.0 && dst_ngh_weight < 0.0 { -1.0 } else { 1.0 };
 
           if !indices.contains_key(&ngh_id) {
             let index = im_graph.add_node(ngh_id);
@@ -894,23 +861,19 @@ impl AugMultiGraph {
 
                 neighbor = Some(Link::<NodeId, Weight> {
                   neighbor: *n,
-                  exact_distance: if w.abs() < EPSILON {
-                    1_000_000.0
-                  } else {
-                    1.0 / w
-                  },
+                  exact_distance: if w.abs() < EPSILON { 1_000_000.0 } else { 1.0 / w },
                   estimate: 0.0,
                 });
               }
-            }
+            },
           },
           Status::OUT_OF_MEMORY => {
             open.resize(open.len() * 2, Node::default());
             closed.resize(closed.len() * 2, Node::default());
-          }
+          },
           Status::SUCCESS => break,
           Status::FAIL => break,
-          Status::PROGRESS => {}
+          Status::PROGRESS => {},
         };
       }
 
@@ -919,18 +882,10 @@ impl AugMultiGraph {
       if status == Status::SUCCESS {
         log_trace!("path found");
       } else if status == Status::FAIL {
-        log_error!(
-          "(read_graph) Path does not exist from {} to {}",
-          ego_id,
-          focus_id
-        );
+        log_error!("(read_graph) Path does not exist from {} to {}", ego_id, focus_id);
         return vec![];
       } else {
-        log_error!(
-          "(read_graph) Unable to find a path from {} to {}",
-          ego_id,
-          focus_id
-        );
+        log_error!("(read_graph) Unable to find a path from {} to {}", ego_id, focus_id);
         return vec![];
       }
 
@@ -969,13 +924,8 @@ impl AugMultiGraph {
           log_trace!("ignore node {}", self.node_info_from_id(b).name);
           let c = ego_to_focus[k + 2];
           let b_c_weight = self.edge_weight_normalized(context, b, c);
-          let a_c_weight = a_b_weight
-            * b_c_weight
-            * if a_b_weight < 0.0 && b_c_weight < 0.0 {
-              -1.0
-            } else {
-              1.0
-            };
+          let a_c_weight =
+            a_b_weight * b_c_weight * if a_b_weight < 0.0 && b_c_weight < 0.0 { -1.0 } else { 1.0 };
           edges.push((a, c, a_c_weight));
         } else if a_kind == NodeKind::User {
           edges.push((a, b, a_b_weight));
@@ -1010,10 +960,8 @@ impl AugMultiGraph {
     log_trace!("remove self references");
 
     for (_, src_index) in indices.iter() {
-      let neighbors: Vec<_> = im_graph
-        .edges(*src_index)
-        .map(|edge| (edge.target(), edge.id()))
-        .collect();
+      let neighbors: Vec<_> =
+        im_graph.edges(*src_index).map(|edge| (edge.target(), edge.id())).collect();
 
       for (dst_index, edge_id) in neighbors {
         if *src_index == dst_index {
@@ -1066,6 +1014,7 @@ impl AugMultiGraph {
           self.node_info_from_id(src_id).name.clone(),
           self.node_info_from_id(dst_id).name.clone(),
           weight,
+          self.get_score_or_recalculate(context, dst_id, src_id),
         )
       })
       .collect()
@@ -1098,11 +1047,7 @@ impl AugMultiGraph {
   pub fn read_node_list(&self) -> Vec<(String,)> {
     log_info!("CMD read_node_list");
 
-    self
-      .node_infos
-      .iter()
-      .map(|info| (info.name.clone(),))
-      .collect()
+    self.node_infos.iter().map(|info| (info.name.clone(),)).collect()
   }
 
   pub fn read_edges(&mut self, context: &str) -> Vec<(String, String, Weight)> {
@@ -1132,7 +1077,11 @@ impl AugMultiGraph {
     v
   }
 
-  pub fn read_mutual_scores(&mut self, context: &str, ego: &str) -> Vec<(String, Weight, Weight)> {
+  pub fn read_mutual_scores(
+    &mut self,
+    context: &str,
+    ego: &str,
+  ) -> Vec<(String, String, Weight, Weight)> {
     log_info!("CMD read_mutual_scores: `{}` `{}`", context, ego);
 
     if !self.contexts.contains_key(context) {
@@ -1147,7 +1096,7 @@ impl AugMultiGraph {
 
     let ego_id = self.find_or_add_node_by_name(ego);
     let ranks = self.get_ranks_or_recalculate(context, ego_id);
-    let mut v = Vec::<(String, Weight, Weight)>::new();
+    let mut v = Vec::<(String, String, Weight, Weight)>::new();
 
     v.reserve_exact(ranks.len());
 
@@ -1155,6 +1104,7 @@ impl AugMultiGraph {
       let info = self.node_info_from_id(node).clone();
       if score > 0.0 && info.kind == NodeKind::User {
         v.push((
+          ego.to_string(),
           info.name,
           score,
           self.get_score_or_recalculate(context, node, ego_id),
@@ -1216,9 +1166,7 @@ impl AugMultiGraph {
     let src_id = self.find_or_add_node_by_name(src);
 
     if self.node_infos[src_id].seen_nodes.is_empty() {
-      self.node_infos[src_id]
-        .seen_nodes
-        .resize((*FILTER_MIN_SIZE + 7) / 8, 0);
+      self.node_infos[src_id].seen_nodes.resize((*FILTER_MIN_SIZE + 7) / 8, 0);
 
       log_verbose!(
         "Create the bloom filter with {} bytes for `{}`",
@@ -1256,10 +1204,7 @@ impl AugMultiGraph {
 
     let mut seen_nodes = vec![];
 
-    seen_nodes.resize(
-      std::cmp::min(self.node_infos[src_id].seen_nodes.len(), max_size),
-      0,
-    );
+    seen_nodes.resize(std::cmp::min(self.node_infos[src_id].seen_nodes.len(), max_size), 0);
 
     loop {
       let mut saturated = false;
@@ -1349,7 +1294,7 @@ impl AugMultiGraph {
 
     for id in users.iter() {
       match self.graph_from("").calculate(*id, *NUM_WALK) {
-        Ok(_) => {}
+        Ok(_) => {},
         Err(e) => log_error!("(reduced_graph) {}", e),
       };
     }
