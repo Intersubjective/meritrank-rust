@@ -1,10 +1,10 @@
-use std::collections::VecDeque;
 use rand::prelude::*;
+use std::collections::VecDeque;
 
 use integer_hasher::IntMap;
 
 use crate::constants::OPTIMIZE_INVALIDATION;
-use crate::graph::{NodeId, EdgeId, Weight};
+use crate::graph::{EdgeId, NodeId, Weight};
 use crate::random_walk::RandomWalk;
 
 pub type WalkId = usize;
@@ -23,17 +23,14 @@ impl WalkStorage {
             visits: Vec::new(),
             walks: Vec::new(),
             unused_walks: VecDeque::new(),
-
         }
     }
 
-    pub fn get_walk(&self, uid: WalkId) -> Option<&RandomWalk>
-    {
+    pub fn get_walk(&self, uid: WalkId) -> Option<&RandomWalk> {
         self.walks.get(uid)
     }
 
-    pub fn get_walk_mut(&mut self, uid: WalkId) -> Option<&mut RandomWalk>
-    {
+    pub fn get_walk_mut(&mut self, uid: WalkId) -> Option<&mut RandomWalk> {
         self.walks.get_mut(uid)
     }
 
@@ -44,7 +41,6 @@ impl WalkStorage {
     pub fn get_visits_through_node(&self, node_id: NodeId) -> Option<&IntMap<WalkId, usize>> {
         self.visits.get(node_id)
     }
-
 
     pub fn get_next_free_walkid(&mut self) -> WalkId {
         match self.unused_walks.pop_front() {
@@ -57,20 +53,16 @@ impl WalkStorage {
         }
     }
 
-
     pub fn update_walk_bookkeeping(&mut self, walk_id: WalkId, start_pos: usize) {
         if let Some(walk) = self.walks.get(walk_id) {
             for (pos, &node) in walk.get_nodes().iter().enumerate().skip(start_pos) {
                 if self.visits.len() < node + 1 {
                     self.visits.resize(node + 1, IntMap::default());
                 }
-                self.visits[node]
-                    .entry(walk_id)
-                    .or_insert(pos);
+                self.visits[node].entry(walk_id).or_insert(pos);
             }
         }
     }
-
 
     pub fn print_walks(&self) {
         for walk in &self.walks {
@@ -104,16 +96,13 @@ impl WalkStorage {
         }
     }
 
-
-    pub fn assert_visits_consistency(&self)
-    {
+    pub fn assert_visits_consistency(&self) {
         for (node, visits) in self.visits.iter().enumerate() {
             for (walkid, pos) in visits.iter() {
                 assert_eq!(self.walks[*walkid].nodes[*pos], node);
             }
         }
     }
-
 
     /// Returns a walk IDs and cut positions for the walks affected by introducing new outgoing
     /// edge at invalidated_node.
@@ -220,7 +209,6 @@ pub fn decide_skip_invalidation_on_edge_deletion(
         .unwrap_or((true, pos))
 }
 
-
 pub fn decide_skip_invalidation_on_edge_addition<R>(
     walk: &RandomWalk,
     pos: usize,
@@ -235,7 +223,10 @@ where
     let (invalidated_node, _dst_node) = edge;
 
     let mut thread_rng = thread_rng();
-    let rng = rnd.as_mut().map(|r| r as &mut dyn RngCore).unwrap_or(&mut thread_rng);
+    let rng = rnd
+        .as_mut()
+        .map(|r| r as &mut dyn RngCore)
+        .unwrap_or(&mut thread_rng);
 
     let mut new_pos = pos;
     let result = walk.get_nodes()[pos..]
@@ -245,12 +236,12 @@ where
             if node == invalidated_node {
                 new_pos = pos + i;
                 if rng.gen::<Weight>() < step_recalc_probability {
-                    Some(false)  // may_skip = false, exit early
+                    Some(false) // may_skip = false, exit early
                 } else {
-                    None  // continue searching
+                    None // continue searching
                 }
             } else {
-                None  // continue searching
+                None // continue searching
             }
         });
 

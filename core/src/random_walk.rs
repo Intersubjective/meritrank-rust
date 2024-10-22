@@ -1,6 +1,5 @@
+use crate::graph::NodeId;
 use tinyset::SetUsize;
-use crate::graph::{NodeId};
-
 
 /// Represents a random walk through a graph.
 #[derive(Clone)]
@@ -18,7 +17,10 @@ impl RandomWalk {
     }
 
     pub fn from_nodes(nodes: Vec<NodeId>) -> Self {
-        RandomWalk { nodes, negative_segment_start: None }
+        RandomWalk {
+            nodes,
+            negative_segment_start: None,
+        }
     }
 
     pub fn _add_node(&mut self, node_id: NodeId) {
@@ -39,7 +41,7 @@ impl RandomWalk {
 
     pub fn intersects_nodes<'a, I>(&self, nodes: I) -> bool
     where
-        I: IntoIterator<Item=&'a NodeId>,
+        I: IntoIterator<Item = &'a NodeId>,
     {
         let set: SetUsize = SetUsize::from_iter(self.nodes.iter().copied());
         nodes.into_iter().any(|&node| set.contains(node))
@@ -65,7 +67,7 @@ impl RandomWalk {
         self.nodes.clear();
     }
 
-    pub fn iter(&self) -> impl Iterator<Item=&NodeId> {
+    pub fn iter(&self) -> impl Iterator<Item = &NodeId> {
         self.nodes.iter()
     }
 
@@ -73,14 +75,17 @@ impl RandomWalk {
         let index = self.nodes.len();
         // Ensure the node_id is not the same as the last node in the walk:
         // direct self-loops are forbidden and should never happen.
-        if let Some(prev) = self.nodes.last(){
+        if let Some(prev) = self.nodes.last() {
             assert_ne!(*prev, node_id);
         }
         self.nodes.push(node_id);
 
         // Update `negative_segment_start` based on `step_is_positive`
         if !step_is_positive {
-            assert!(self.negative_segment_start.is_none(), "Expected `negative_segment_start` to be `None`");
+            assert!(
+                self.negative_segment_start.is_none(),
+                "Expected `negative_segment_start` to be `None`"
+            );
             self.negative_segment_start = Some(index);
         }
     }
@@ -89,15 +94,22 @@ impl RandomWalk {
         self.nodes.insert(0, node_id);
     }
 
-    pub fn positive_subsegment(&self) -> impl Iterator<Item=&NodeId> {
-        self.nodes.iter().take(self.negative_segment_start.unwrap_or(self.nodes.len()))
+    pub fn positive_subsegment(&self) -> impl Iterator<Item = &NodeId> {
+        self.nodes
+            .iter()
+            .take(self.negative_segment_start.unwrap_or(self.nodes.len()))
     }
-    pub fn negative_subsegment(&self) -> impl Iterator<Item=&NodeId> {
-        self.nodes.iter().skip(self.negative_segment_start.unwrap_or(self.nodes.len()))
+    pub fn negative_subsegment(&self) -> impl Iterator<Item = &NodeId> {
+        self.nodes
+            .iter()
+            .skip(self.negative_segment_start.unwrap_or(self.nodes.len()))
     }
 
     pub fn extend(&mut self, new_segment: &RandomWalk) {
-        assert!(!(self.negative_segment_start.is_some() && new_segment.negative_segment_start.is_some()));
+        assert!(
+            !(self.negative_segment_start.is_some()
+                && new_segment.negative_segment_start.is_some())
+        );
         if let Some(new_neg_start) = new_segment.negative_segment_start {
             self.negative_segment_start = Some(self.nodes.len() + new_neg_start);
         }
@@ -105,7 +117,8 @@ impl RandomWalk {
     }
 
     pub fn split_from(&mut self, at: usize) -> RandomWalk {
-        let new_segment_neg_start = self.negative_segment_start
+        let new_segment_neg_start = self
+            .negative_segment_start
             .filter(|&neg_start| at <= neg_start)
             .map(|neg_start| {
                 self.negative_segment_start = None;

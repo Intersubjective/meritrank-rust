@@ -1,7 +1,7 @@
-use integer_hasher::IntMap;
 use crate::graph::NodeId;
-use tinyset::SetUsize;
+use integer_hasher::IntMap;
 use once_cell::sync::Lazy;
+use tinyset::SetUsize;
 
 type CounterValue = i32;
 
@@ -91,7 +91,7 @@ impl Default for &Counter {
 
 /// Iterator over the entries of the `Counter`.
 pub struct CounterIterator<'a> {
-  inner: std::collections::hash_map::Iter<'a, NodeId, CounterValue>,
+    inner: std::collections::hash_map::Iter<'a, NodeId, CounterValue>,
 }
 
 impl<'a> Iterator for CounterIterator<'a> {

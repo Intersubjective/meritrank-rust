@@ -1,11 +1,11 @@
-use rand::prelude::*;
 use integer_hasher::IntMap;
+use rand::prelude::*;
 
-use crate::constants::{EPSILON, ASSERT, OPTIMIZE_INVALIDATION};
+use crate::constants::{ASSERT, EPSILON, OPTIMIZE_INVALIDATION};
+use crate::counter::Counter;
 use crate::errors::MeritRankError;
 use crate::graph::{Graph, NodeId, Weight};
 use crate::walk_storage::WalkStorage;
-use crate::counter::Counter;
 
 #[derive(Clone)]
 pub struct MeritRank {
@@ -27,7 +27,6 @@ impl MeritRank {
         }
     }
 
-
     pub fn calculate(&mut self, ego: NodeId, num_walks: usize) -> Result<(), MeritRankError> {
         self.walks.drop_walks_from_node(ego);
 
@@ -39,8 +38,14 @@ impl MeritRank {
 
             self.graph.continue_walk(walk, self.alpha);
 
-            self.pos_hits.entry(ego).or_default().increment_unique_counts(walk.positive_subsegment());
-            self.neg_hits.entry(ego).or_default().increment_unique_counts(walk.negative_subsegment());
+            self.pos_hits
+                .entry(ego)
+                .or_default()
+                .increment_unique_counts(walk.positive_subsegment());
+            self.neg_hits
+                .entry(ego)
+                .or_default()
+                .increment_unique_counts(walk.negative_subsegment());
 
             self.walks.update_walk_bookkeeping(new_walk_id, 0);
         }
@@ -53,7 +58,9 @@ impl MeritRank {
     }
 
     pub fn get_node_score(&self, ego: NodeId, target: NodeId) -> Result<Weight, MeritRankError> {
-        let counter = self.pos_hits.get(&ego)
+        let counter = self
+            .pos_hits
+            .get(&ego)
             .ok_or(MeritRankError::NodeIsNotCalculated)?;
 
         let hits = counter.get_count(&target);
@@ -67,28 +74,44 @@ impl MeritRank {
         Ok(hits_penalized / counter.total_count() as Weight)
     }
 
-    pub fn get_ranks(&self, ego: NodeId, limit: Option<usize>) -> Result<Vec<(NodeId, Weight)>, MeritRankError> {
-        let counter = self.pos_hits.get(&ego)
+    pub fn get_ranks(
+        &self,
+        ego: NodeId,
+        limit: Option<usize>,
+    ) -> Result<Vec<(NodeId, Weight)>, MeritRankError> {
+        let counter = self
+            .pos_hits
+            .get(&ego)
             .ok_or(MeritRankError::NodeIsNotCalculated)?;
 
-        let mut peer_scores: Vec<_> = counter.keys()
+        let mut peer_scores: Vec<_> = counter
+            .keys()
             .map(|&peer| self.get_node_score(ego, peer).map(|score| (peer, score)))
             .collect::<Result<_, _>>()?;
 
         peer_scores.sort_unstable_by(|(_, score1), (_, score2)| {
-            score2.partial_cmp(score1).unwrap_or(std::cmp::Ordering::Equal)
+            score2
+                .partial_cmp(score1)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        Ok(peer_scores.clone().into_iter().take(limit.unwrap_or(peer_scores.len())).collect())
+        Ok(peer_scores
+            .clone()
+            .into_iter()
+            .take(limit.unwrap_or(peer_scores.len()))
+            .collect())
     }
-
 
     pub fn get_new_nodeid(&mut self) -> NodeId {
         self.graph.get_new_nodeid()
     }
 
     pub fn set_edge(&mut self, src: NodeId, dest: NodeId, new_weight: f64) {
-        let old_weight = self.graph.edge_weight(src, dest).expect("Node should exist!").unwrap_or(0.0);
+        let old_weight = self
+            .graph
+            .edge_weight(src, dest)
+            .expect("Node should exist!")
+            .unwrap_or(0.0);
         if old_weight.abs() > EPSILON && new_weight.abs() > EPSILON {
             self.set_edge_(src, dest, 0.0);
         }
@@ -98,14 +121,20 @@ impl MeritRank {
     pub fn set_edge_(&mut self, src: NodeId, dest: NodeId, new_weight: f64) {
         assert_ne!(src, dest, "Self reference not allowed");
 
-        let old_weight = self.graph.edge_weight(src, dest).expect("Node should exist!").unwrap_or(0.0);
+        let old_weight = self
+            .graph
+            .edge_weight(src, dest)
+            .expect("Node should exist!")
+            .unwrap_or(0.0);
         if old_weight == new_weight {
             return;
         }
         let deletion_mode = new_weight.abs() <= EPSILON;
         let step_recalc_probability: Option<f64> =
-            (OPTIMIZE_INVALIDATION && !deletion_mode)
-                .then(|| new_weight.abs() / (self.graph.get_node_data(src).unwrap().abs_sum() + new_weight.abs()));
+            (OPTIMIZE_INVALIDATION && !deletion_mode).then(|| {
+                new_weight.abs()
+                    / (self.graph.get_node_data(src).unwrap().abs_sum() + new_weight.abs())
+            });
 
         if deletion_mode {
             self.graph.remove_edge(src, dest).unwrap();
@@ -113,18 +142,26 @@ impl MeritRank {
             self.graph.set_edge(src, dest, new_weight).unwrap();
         }
 
-        let affected_walkids = self.walks
-            .find_affected_walkids(src, Some(dest), step_recalc_probability);
+        let affected_walkids =
+            self.walks
+                .find_affected_walkids(src, Some(dest), step_recalc_probability);
 
         for (walk_id, visit_pos) in &affected_walkids {
             // Revert the counters associated with the affected walks, as if the walks never existed
             let walk = self.walks.get_walk(*walk_id).unwrap();
             let ego = walk.first_node().unwrap();
-            self.pos_hits.entry(ego).or_default().decrement_unique_counts(walk.positive_subsegment());
-            self.neg_hits.entry(ego).or_default().decrement_unique_counts(walk.negative_subsegment());
+            self.pos_hits
+                .entry(ego)
+                .or_default()
+                .decrement_unique_counts(walk.positive_subsegment());
+            self.neg_hits
+                .entry(ego)
+                .or_default()
+                .decrement_unique_counts(walk.negative_subsegment());
 
             let cut_position = visit_pos + 1;
-            self.walks.split_and_remove_from_bookkeeping(walk_id, cut_position);
+            self.walks
+                .split_and_remove_from_bookkeeping(walk_id, cut_position);
 
             let walk = self.walks.get_walk_mut(*walk_id).unwrap();
 
@@ -135,17 +172,23 @@ impl MeritRank {
                     self.graph.extend_walk_in_case_of_edge_deletion(walk);
                 } else if random::<f64>() < self.alpha {
                     walk.push(dest, new_weight > 0.0);
-                } else{
+                } else {
                     skip_continuation = true;
                 }
             }
-            if !skip_continuation{
+            if !skip_continuation {
                 self.graph.continue_walk(walk, self.alpha);
             }
 
             // Update counters associated with the updated walks
-            self.pos_hits.entry(ego).or_default().increment_unique_counts(walk.positive_subsegment());
-            self.neg_hits.entry(ego).or_default().increment_unique_counts(walk.negative_subsegment());
+            self.pos_hits
+                .entry(ego)
+                .or_default()
+                .increment_unique_counts(walk.positive_subsegment());
+            self.neg_hits
+                .entry(ego)
+                .or_default()
+                .increment_unique_counts(walk.negative_subsegment());
 
             self.walks.update_walk_bookkeeping(*walk_id, cut_position);
         }
@@ -160,11 +203,14 @@ impl MeritRank {
         for (ego, hits) in &self.pos_hits {
             for (peer, count) in hits {
                 let visits = self.walks.get_visits_through_node(*peer).unwrap();
-                let walks: Vec<_> = visits.iter()
+                let walks: Vec<_> = visits
+                    .iter()
                     .filter(|&(walkid, pos)| {
                         if let Some(walk) = self.walks.get_walk(*walkid) {
-                            walk.get_nodes().first() == Some(ego) &&
-                                walk.negative_segment_start.map_or(true, |seg_start| *pos < seg_start)
+                            walk.get_nodes().first() == Some(ego)
+                                && walk
+                                    .negative_segment_start
+                                    .map_or(true, |seg_start| *pos < seg_start)
                         } else {
                             false
                         }
@@ -178,11 +224,12 @@ impl MeritRank {
         for (ego, hits) in &self.neg_hits {
             for (peer, count) in hits {
                 let visits = self.walks.get_visits_through_node(*peer).unwrap();
-                let walks: Vec<_> = visits.iter()
+                let walks: Vec<_> = visits
+                    .iter()
                     .filter(|&(walkid, _)| {
                         if let Some(walk) = self.walks.get_walk(*walkid) {
-                            walk.get_nodes().first() == Some(ego) &&
-                                walk.negative_subsegment().any(|&x|x == *peer)
+                            walk.get_nodes().first() == Some(ego)
+                                && walk.negative_subsegment().any(|&x| x == *peer)
                         } else {
                             false
                         }

@@ -1,11 +1,11 @@
 use indexmap::IndexMap;
-use integer_hasher::{BuildIntHasher};
+use integer_hasher::BuildIntHasher;
 
+use crate::errors::MeritRankError;
+use crate::RandomWalk;
 use log::error;
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::{thread_rng, Rng};
-use crate::errors::MeritRankError;
-use crate::RandomWalk;
 
 type IntIndexMap<K, V> = IndexMap<K, V, BuildIntHasher<K>>;
 
@@ -90,7 +90,6 @@ impl NodeData {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct Graph {
     pub nodes: Vec<NodeData>,
@@ -98,9 +97,7 @@ pub struct Graph {
 
 impl Graph {
     pub fn new() -> Self {
-        Graph {
-            nodes: Vec::new(),
-        }
+        Graph { nodes: Vec::new() }
     }
     pub fn get_new_nodeid(&mut self) -> NodeId {
         self.nodes.push(NodeData::default());
@@ -113,8 +110,13 @@ impl Graph {
         self.nodes.get(node_id).is_some()
     }
 
-    pub fn set_edge(&mut self, from: NodeId, to: NodeId, weight: Weight) -> Result<(), MeritRankError> {
-        if !self.contains_node(from) || ! self.contains_node(to) {
+    pub fn set_edge(
+        &mut self,
+        from: NodeId,
+        to: NodeId,
+        weight: Weight,
+    ) -> Result<(), MeritRankError> {
+        if !self.contains_node(from) || !self.contains_node(to) {
             return Err(MeritRankError::NodeNotFound);
         }
         if from == to {
@@ -125,7 +127,10 @@ impl Graph {
             self.remove_edge(from, to).unwrap();
         }
 
-        let node = self.nodes.get_mut(from).ok_or(MeritRankError::NodeNotFound)?;
+        let node = self
+            .nodes
+            .get_mut(from)
+            .ok_or(MeritRankError::NodeNotFound)?;
         match weight {
             0.0 => {
                 return Err(MeritRankError::ZeroWeightEncountered);
@@ -154,7 +159,10 @@ impl Graph {
 
     /// Removes the edge between the two given nodes from the graph.
     pub fn remove_edge(&mut self, from: NodeId, to: NodeId) -> Result<Weight, MeritRankError> {
-        let node = self.nodes.get_mut(from).ok_or(MeritRankError::NodeNotFound)?;
+        let node = self
+            .nodes
+            .get_mut(from)
+            .ok_or(MeritRankError::NodeNotFound)?;
         // This is slightly inefficient. More efficient would be to only try removing pos,
         // and get to neg only if pos_weight is None. We keep it to check the invariant of
         // not having both pos and neg weights for an edge simultaneously.
@@ -195,7 +203,7 @@ impl Graph {
         if !self.contains_node(to) {
             return Err(MeritRankError::NodeNotFound);
         }
-        Ok(if let Some(weight) = node.pos_edges.get(&to){
+        Ok(if let Some(weight) = node.pos_edges.get(&to) {
             Some(*weight)
         } else if let Some(weight) = node.neg_edges.get(&to) {
             Some(-*weight)
@@ -204,10 +212,12 @@ impl Graph {
         })
     }
 
-    pub fn generate_walk_segment(&mut self,
-                                 start_node: NodeId,
-                                 alpha: f64,
-                                 positive_only: bool) -> RandomWalk {
+    pub fn generate_walk_segment(
+        &mut self,
+        start_node: NodeId,
+        alpha: f64,
+        positive_only: bool,
+    ) -> RandomWalk {
         let mut node = start_node;
         let mut segment = RandomWalk::new();
         let mut rng = thread_rng();
@@ -227,27 +237,24 @@ impl Graph {
             if rng.gen::<f64>() > alpha {
                 break;
             }
-            if let Some((next_step, step_is_positive)) = node_data
-                .random_neighbor(negative_continuation_mode || positive_only){
+            if let Some((next_step, step_is_positive)) =
+                node_data.random_neighbor(negative_continuation_mode || positive_only)
+            {
                 segment.push(next_step, step_is_positive);
                 if !step_is_positive {
                     assert!(!negative_continuation_mode);
                     negative_continuation_mode = true;
                 }
                 node = next_step;
-            }else{
+            } else {
                 // Dead-end encountered
-                break
+                break;
             }
         }
         segment
     }
 
-    pub fn continue_walk(
-        &mut self,
-        walk: &mut RandomWalk,
-        alpha: f64,
-    ) {
+    pub fn continue_walk(&mut self, walk: &mut RandomWalk, alpha: f64) {
         // If the original walk is already in "negative mode",
         // we should restrict segment generation to positive edges
         let positive_only = walk.negative_segment_start.is_some();
@@ -257,10 +264,7 @@ impl Graph {
         // Borrow mutable `walk` again for `extend`
         walk.extend(&new_segment);
     }
-    pub fn extend_walk_in_case_of_edge_deletion(
-        &mut self,
-        walk: &mut RandomWalk,
-    ) {
+    pub fn extend_walk_in_case_of_edge_deletion(&mut self, walk: &mut RandomWalk) {
         // Borrow mutable `walk` from `self.walks`
         // No force_first_step, so this is "edge deletion mode"
         //
@@ -273,12 +277,10 @@ impl Graph {
         let src_node = walk.last_node().unwrap();
         let node_data = self.get_node_data_mut(src_node).unwrap();
         let adding_to_negative_subsegment = walk.negative_segment_start.is_some();
-        if let Some((forced_step, step_is_positive)) = node_data
-            .random_neighbor(adding_to_negative_subsegment){
+        if let Some((forced_step, step_is_positive)) =
+            node_data.random_neighbor(adding_to_negative_subsegment)
+        {
             walk.push(forced_step, step_is_positive);
         }
     }
-
 }
-
-
