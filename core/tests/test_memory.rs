@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-  use meritrank_core::{MeritRank, Graph};
+  use meritrank_core::{Graph, MeritRank};
 
   #[test]
   fn smoke_memory() {

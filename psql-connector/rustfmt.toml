@@ -1,0 +1,24 @@
+indent_style = "block"
+tab_spaces = 2
+
+# Control imports formatting for groups and alignment
+imports_granularity = "preserve"
+group_imports = "StdExternalCrate"
+normalize_doc_attributes = true
+
+# Enforce alignment of enum variants and struct fields
+struct_field_align_threshold = 20
+
+# Style preferences for spacing and wrapping
+use_small_heuristics = "Max"
+wrap_comments = true
+comment_width = 80
+
+# Preserve formatting within long expressions and conditions
+format_strings = true
+match_block_trailing_comma = true
+fn_params_layout = "Tall"
+brace_style = "AlwaysNextLine"
+
+# Force consistent multi-line where necessary
+force_multiline_blocks = true

@@ -1,5 +1,5 @@
-use std::fmt;
 use crate::{RandomWalk, WalkStorage};
+use std::fmt;
 
 impl fmt::Debug for RandomWalk {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

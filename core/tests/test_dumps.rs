@@ -34,9 +34,6 @@
 // Approximately like this (here one letter represents one specific graph/state):
 // A -> B -> C -> D -> C -> B -> A
 
-
-
-
 #[cfg(test)]
 mod tests {
   use csv::{ReaderBuilder, StringRecord};
@@ -79,9 +76,8 @@ mod tests {
     Ok(())
   }
 
-  use meritrank_core::{MeritRank, Graph, NodeId, assert_approx_eq};
+  use meritrank_core::{assert_approx_eq, Graph, MeritRank, NodeId};
   use std::collections::HashMap;
-
 
   #[ignore]
   #[test]
@@ -131,37 +127,23 @@ mod tests {
       // meritrank.calculate(2, 1000)?;
       // meritrank.calculate(3, 1000);
 
-      let rating: HashMap<NodeId, f64> = meritrank.get_ranks(0, None).unwrap_or({
-        vec![
-          (0, 0.0),
-          (1, 0.0),
-          (2, 0.0),
-        ]
-      }).into_iter().collect();
+      let rating: HashMap<NodeId, f64> = meritrank
+        .get_ranks(0, None)
+        .unwrap_or({ vec![(0, 0.0), (1, 0.0), (2, 0.0)] })
+        .into_iter()
+        .collect();
 
       // check rating
       let r0 = rating.get(&0).unwrap_or(&0.0);
-      eprintln!(
-        "Rating for node 0: {}, from dump: {}",
-        r0,
-        rank0
-      );
+      eprintln!("Rating for node 0: {}, from dump: {}", r0, rank0);
       assert_approx_eq!(r0, rank0, 0.1);
 
       let r1 = rating.get(&1).unwrap_or(&0.0);
-      eprintln!(
-        "Rating for node 1: {}, from dump: {}",
-        r1,
-        rank1
-      );
+      eprintln!("Rating for node 1: {}, from dump: {}", r1, rank1);
       assert_approx_eq!(r1, rank1, 0.1);
 
       let r2 = rating.get(&2).unwrap_or(&0.0);
-      eprintln!(
-        "Rating for node 2: {}, from dump: {}",
-        r2,
-        rank2
-      );
+      eprintln!("Rating for node 2: {}, from dump: {}", r2, rank2);
       assert_approx_eq!(r2, rank2, 0.1);
     }
 
@@ -182,12 +164,13 @@ mod tests {
     let mut limit_entries = 100;
 
     // Read the graph state from the CSV file
-    for result in csv_reader.records(){
+    for result in csv_reader.records() {
       let record: StringRecord = result?;
 
-
-      limit_entries -=1;
-      if limit_entries == 0{break}
+      limit_entries -= 1;
+      if limit_entries == 0 {
+        break;
+      }
 
       let w0_1: f64 = record[3].trim().parse()?;
       let w0_2: f64 = record[4].trim().parse()?;
@@ -201,7 +184,6 @@ mod tests {
       let w3_0: f64 = record[12].trim().parse()?;
       let w3_1: f64 = record[13].trim().parse()?;
       let w3_2: f64 = record[14].trim().parse()?;
-
 
       let rank0: f64 = record[15].trim().parse()?;
       let rank1: f64 = record[16].trim().parse()?;
@@ -234,8 +216,7 @@ mod tests {
       // calculate merit rank
       meritrank.calculate(0, 10000)?;
 
-      let rating: Vec<(NodeId, f64)> =
-        meritrank.get_ranks(0, None).unwrap_or_default();
+      let rating: Vec<(NodeId, f64)> = meritrank.get_ranks(0, None).unwrap_or_default();
 
       // check rating
       eprintln!(
@@ -276,7 +257,7 @@ mod tests {
     let reader = BufReader::new(File::open(file_path)?);
     let mut csv_reader = ReaderBuilder::new().from_reader(reader);
 
-    let mut meritrank_opt : Option<MeritRank> = None;
+    let mut meritrank_opt: Option<MeritRank> = None;
 
     let records_to_skip = 0;
     for (index, result) in csv_reader.records().enumerate() {
@@ -285,13 +266,11 @@ mod tests {
       }
 
       let record = match result {
-        Ok(record) => {
-          record
-        }
+        Ok(record) => record,
         Err(e) => {
           eprintln!("Error when reading record: {}", e);
           return Ok(());
-        }
+        },
       };
       println!("{:?}", record);
 
@@ -341,33 +320,20 @@ mod tests {
 
       // check rating
       let r0 = rating.get(&0).unwrap_or(&0.0);
-      eprintln!(
-        "Rating for node 0: {}, from dump: {}",
-        r0,
-        rank0
-      );
+      eprintln!("Rating for node 0: {}, from dump: {}", r0, rank0);
       assert_approx_eq!(r0, rank0, 0.1);
 
       let r1 = rating.get(&1).unwrap_or(&0.0);
-      eprintln!(
-        "Rating for node 1: {}, from dump: {}",
-        r1,
-        rank1
-      );
+      eprintln!("Rating for node 1: {}, from dump: {}", r1, rank1);
       assert_approx_eq!(r1, rank1, 0.1);
 
       let r2 = rating.get(&2).unwrap_or(&0.0);
-      eprintln!(
-        "Rating for node 2: {}, from dump: {}",
-        r2,
-        rank2
-      );
+      eprintln!("Rating for node 2: {}, from dump: {}", r2, rank2);
       assert_approx_eq!(r2, rank2, 0.1);
     }
 
     Ok(())
   }
-
 
   #[ignore]
   #[test]
@@ -408,10 +374,18 @@ mod tests {
           .try_into()?;
 
         let edges = [
-          (0, 1), (0, 2), (0, 3),
-          (1, 0), (1, 2), (1, 3),
-          (2, 0), (2, 1), (2, 3),
-          (3, 0), (3, 1), (3, 2)
+          (0, 1),
+          (0, 2),
+          (0, 3),
+          (1, 0),
+          (1, 2),
+          (1, 3),
+          (2, 0),
+          (2, 1),
+          (2, 3),
+          (3, 0),
+          (3, 1),
+          (3, 2),
         ];
 
         for (i, &(src, dest)) in edges.iter().enumerate() {
@@ -432,7 +406,7 @@ mod tests {
         record[15].trim().parse()?,
         record[16].trim().parse()?,
         record[17].trim().parse()?,
-        record[18].trim().parse()?
+        record[18].trim().parse()?,
       ];
 
       for (i, &expected_rank) in expected_ranks.iter().enumerate() {
