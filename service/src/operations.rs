@@ -367,10 +367,12 @@ impl AugMultiGraph {
   }
 
   pub fn copy_from(&mut self, other : &AugMultiGraph) {
-    self.node_count = other.node_count;
-    self.node_infos = other.node_infos.clone();
-    self.node_ids   = other.node_ids.clone();
-    self.contexts   = other.contexts.clone();
+    self.node_count    = other.node_count;
+    self.node_infos    = other.node_infos.clone();
+    self.node_ids      = other.node_ids.clone();
+    self.contexts      = other.contexts.clone();
+    self.cached_scores = other.cached_scores.clone();
+    self.cached_walks  = other.cached_walks.clone();
   }
 
   pub fn reset(&mut self) {
