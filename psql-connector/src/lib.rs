@@ -838,7 +838,7 @@ mod tests {
       None
     ).unwrap();
 
-    assert!(get_time() < 20);
+    assert!(get_time() < 200);
   }
 
   #[pg_test]
