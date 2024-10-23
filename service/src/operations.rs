@@ -392,10 +392,12 @@ impl AugMultiGraph {
   pub fn reset(&mut self) {
     log_trace!("reset");
 
-    self.node_count   = 0;
-    self.node_infos   = Vec::new();
-    self.node_ids     = HashMap::new();
-    self.contexts     = HashMap::new();
+    self.node_count    = 0;
+    self.node_infos    = vec![];
+    self.node_ids      = HashMap::new();
+    self.contexts      = HashMap::new();
+    self.cached_scores = vec![];
+    self.cached_walks  = vec![];
   }
 
   pub fn node_exists(&self, node_name : &str) -> bool {
