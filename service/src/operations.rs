@@ -210,19 +210,16 @@ impl AugMultiGraph {
   ) {
     log_trace!("cache_score_add `{}` {} {} {}", context, ego, dst, score);
 
-    //  RUST!!!
-    if self.cached_scores.len() != 0 {
-      for i in self.cached_scores.len()-1..=0 {
-        if self.cached_scores[i].ego == ego && self.cached_scores[i].dst == dst && self.cached_scores[i].context == context {
-          self.cached_scores.remove(i);
-          self.cached_scores.push(CachedScore {
-            context : context.to_string(),
-            ego,
-            dst,
-            score,
-          });
-          return;
-        }
+    for (i, x) in self.cached_scores.iter().enumerate().rev() {
+      if x.ego == ego && x.dst == dst && x.context == context {
+        self.cached_scores.remove(i);
+        self.cached_scores.push(CachedScore {
+          context : context.to_string(),
+          ego,
+          dst,
+          score,
+        });
+        return;
       }
     }
 
@@ -247,14 +244,9 @@ impl AugMultiGraph {
   ) -> Option<Weight> {
     log_trace!("cache_score_get `{}` {} {}", context, ego, dst);
 
-    //  RUST!!!
-    if self.cached_scores.len() == 0 {
-      return None;
-    }
-
-    for i in self.cached_scores.len()-1..=0 {
-      if self.cached_scores[i].ego == ego && self.cached_scores[i].dst == dst && self.cached_scores[i].context == context {
-        let score = self.cached_scores[i].score;
+    for (i, x) in self.cached_scores.iter().enumerate().rev() {
+      if x.ego == ego && x.dst == dst && x.context == context {
+        let score = x.score;
         self.cached_scores.remove(i);
         self.cached_scores.push(CachedScore {
           context : context.to_string(),
@@ -276,17 +268,14 @@ impl AugMultiGraph {
   ) {
     log_trace!("cache_walk_add `{}` {}", context, ego);
 
-    //  RUST!!!
-    if self.cached_walks.len() != 0 {
-      for i in self.cached_walks.len()-1..=0 {
-        if self.cached_walks[i].ego == ego && self.cached_walks[i].context == context {
-          self.cached_walks.remove(i);
-          self.cached_walks.push(CachedWalk {
-            context : context.to_string(),
-            ego
-          });
-          return;
-        }
+    for (i, x) in self.cached_walks.iter().enumerate().rev() {
+      if x.ego == ego && x.context == context {
+        self.cached_walks.remove(i);
+        self.cached_walks.push(CachedWalk {
+          context : context.to_string(),
+          ego
+        });
+        return;
       }
     }
 
@@ -319,13 +308,8 @@ impl AugMultiGraph {
   ) -> bool {
     log_trace!("cache_walk_get");
 
-    //  RUST!!!
-    if self.cached_walks.len() == 0 {
-      return false;
-    }
-
-    for i in self.cached_walks.len()-1..=0 {
-      if self.cached_walks[i].ego == ego && self.cached_walks[i].context == context {
+    for (i, x) in self.cached_walks.iter().enumerate().rev() {
+      if x.ego == ego && x.context == context {
         self.cached_walks.remove(i);
         self.cached_walks.push(CachedWalk {
           context : context.to_string(),
