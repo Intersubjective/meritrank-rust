@@ -582,7 +582,7 @@ impl AugMultiGraph {
           self.cache_walk_add(context, ego_id);
         },
         Err(e) => {
-          log_error!("(fetch_all_scores {}", e);
+          log_error!("(fetch_all_scores) {}", e);
           return vec![];
         },
       }
@@ -1675,6 +1675,5 @@ impl AugMultiGraph {
         self.set_edge("", zero, *node_id, *amount);
       }
     }
-    self.recalculate_all(*NUM_WALK); // FIXME Ad hok PERF hack
   }
 }

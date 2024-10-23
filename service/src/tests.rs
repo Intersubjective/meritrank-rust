@@ -1670,6 +1670,32 @@ fn scores_unknown_context() {
 }
 
 #[test]
+fn scores_reset_smoke() {
+  let mut graph_read  = AugMultiGraph::new();
+  let mut graph_write = AugMultiGraph::new();
+
+  graph_write.write_put_edge("X", "U1", "U2", 2.0);
+  graph_write.write_put_edge("X", "U1", "U3", 1.0);
+  graph_write.write_put_edge("X", "U2", "U3", 3.0);
+
+  graph_read.copy_from(&graph_write);
+  let res : Vec<_> = graph_read.read_scores("X", "U1", "U", false, 10.0, false, 0.0, false, 0, 2147483647);
+
+  assert_eq!(res.len(), 3);
+
+  graph_write.reset();
+
+  graph_write.write_put_edge("X", "U1", "U2", 2.0);
+  graph_write.write_put_edge("X", "U1", "U3", 1.0);
+  graph_write.write_put_edge("X", "U2", "U3", 3.0);
+
+  graph_read.copy_from(&graph_write);
+  let res : Vec<_> = graph_read.read_scores("X", "U1", "U", false, 2147483647.0, false, -2147483648.0, false, 0, 2147483647);
+
+  assert_eq!(res.len(), 3);
+}
+
+#[test]
 fn scores_self() {
   let mut graph = AugMultiGraph::new();
 
