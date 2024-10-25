@@ -660,6 +660,41 @@ impl AugMultiGraph {
     }
   }
 
+  fn fetch_user_score_reversed(
+    &mut self,
+    context : &str,
+    dst_id  : NodeId,
+    ego_id  : NodeId
+  ) -> Weight {
+    log_trace!("fetch_user_score_reversed");
+
+    if self.node_info_from_id(ego_id).kind == NodeKind::User {
+      return self.fetch_score_reversed(context, dst_id, ego_id);
+    }
+
+    match self.graph_from(context).graph.get_node_data(ego_id) {
+      Some(x) => {
+        if x.pos_edges.len() + x.neg_edges.len() == 0 {
+          log_error!("(fetch_user_score_reversed) Non-user node has no owner");
+          0.0
+        } else {
+          if x.pos_edges.len() + x.neg_edges.len() != 1 {
+            log_error!("(fetch_user_score_reversed) Non-user node has too many edges");
+          }
+
+          let parent_id = if x.pos_edges.len() > 0 { x.pos_edges.keys()[0] } else { x.neg_edges.keys()[0] };
+
+          self.fetch_score_reversed(context, dst_id, parent_id)
+        }
+      },
+
+      None => {
+        log_error!("(fetch_user_score_reversed) Node does not exist");
+        0.0
+      },
+    }
+  }
+
   pub fn find_or_add_node_by_name(
     &mut self,
     node_name : &str
@@ -803,7 +838,7 @@ impl AugMultiGraph {
     let ego_id                   = self.find_or_add_node_by_name(ego);
     let target_id                = self.find_or_add_node_by_name(target);
     let score_of_target_from_ego = self.fetch_score(context, ego_id, target_id);
-    let score_of_ego_from_target = self.fetch_score_reversed(context, ego_id, target_id);
+    let score_of_ego_from_target = self.fetch_user_score_reversed(context, ego_id, target_id);
 
     [(
       ego.to_string(),
@@ -897,7 +932,7 @@ impl AugMultiGraph {
         ego.to_string(),
         self.node_info_from_id(im[i].0).name.clone(),
         im[i].1,
-        self.fetch_score_reversed(context, ego_id, im[i].0)
+        self.fetch_user_score_reversed(context, ego_id, im[i].0)
       ));
     }
 
@@ -1252,7 +1287,7 @@ impl AugMultiGraph {
         self.node_info_from_id(src_id).name.clone(),
         self.node_info_from_id(dst_id).name.clone(),
         weight,
-        self.fetch_score_reversed(context, src_id, dst_id)
+        self.fetch_user_score_reversed(context, src_id, dst_id)
       )})
       .collect()
   }
