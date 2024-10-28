@@ -7,6 +7,7 @@ use std::{
 use petgraph::{visit::EdgeRef, graph::{DiGraph, NodeIndex}};
 use simple_pagerank::Pagerank;
 use meritrank_core::{MeritRank, Graph, NodeId, constants::EPSILON};
+use rand::{rngs::ThreadRng, thread_rng, Rng};
 
 use crate::log_error;
 use crate::log_warning;
@@ -1435,7 +1436,7 @@ impl AugMultiGraph {
     }
 
     fn kmeans_plus_plus_initialization(
-        data: &[(usize, usize)], k: usize, rng: &mut Rng
+        data: &[(usize, usize)], k: usize, rng: &mut ThreadRng
     ) -> Vec<(f64, f64)> {
         let mut centroids = Vec::with_capacity(k);
         let mut distances: Vec<f64> = vec![f64::MAX; data.len()];
@@ -1505,7 +1506,7 @@ impl AugMultiGraph {
       }
     }
 
-    let cluster_count = 2; // Set the number of clusters (K)
+    let cluster_count = 1; // Set the number of clusters (K)
     let max_iterations = 100;
     let tolerance = 0.001;
     let clusters = Self::kmeans(&points, cluster_count, max_iterations, tolerance);
