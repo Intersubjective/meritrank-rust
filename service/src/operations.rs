@@ -1,12 +1,12 @@
 use std::{collections::HashMap, env::var, string::ToString, sync::atomic::Ordering};
 
-use kmeans::{KMeans, KMeansConfig};
 pub use meritrank_core::Weight;
 use meritrank_core::{constants::EPSILON, Graph, MeritRank, MeritRankError, NodeId};
 use petgraph::{
   graph::{DiGraph, NodeIndex},
   visit::EdgeRef,
 };
+use rand::{rngs::ThreadRng, thread_rng, Rng};
 use simple_pagerank::Pagerank;
 
 use crate::astar::*;
@@ -1078,13 +1078,131 @@ impl AugMultiGraph {
     v
   }
 
+  pub fn distance(a: &(usize, usize), b: &(usize, usize)) -> f64 {
+    let dx = (a.0 as isize - b.0 as isize) as f64;
+    let dy = (a.1 as isize - b.1 as isize) as f64;
+    dx * dx + dy * dy
+  }
+
+  fn kmeans_plus_plus_initialization(
+    data: &[(usize, usize)],
+    k: usize,
+    rng: &mut ThreadRng,
+  ) -> Vec<(f64, f64)> {
+    let mut centroids = Vec::with_capacity(k);
+    let mut distances: Vec<f64> = vec![f64::MAX; data.len()];
+
+    // Select the first centroid randomly
+    centroids.push((
+      data[rng.gen_range(0..data.len())].0 as f64,
+      data[rng.gen_range(0..data.len())].1 as f64,
+    ));
+
+    for _ in 1..k {
+      // Update the minimum distance for each point to the closest centroid
+      for (i, &point) in data.iter().enumerate() {
+        let dist = Self::distance(
+          &(point.0, point.1),
+          &(centroids.last().unwrap().0 as usize, centroids.last().unwrap().1 as usize),
+        );
+        distances[i] = distances[i].min(dist);
+      }
+
+      // Choose the next centroid based on weighted probability
+      let sum: f64 = distances.iter().sum();
+      let target = rng.gen_range(0.0..sum);
+      let mut cumulative_sum = 0.0;
+
+      for (i, &d) in distances.iter().enumerate() {
+        cumulative_sum += d;
+        if cumulative_sum >= target {
+          centroids.push((data[i].0 as f64, data[i].1 as f64));
+          break;
+        }
+      }
+    }
+    centroids
+  }
+
+  pub fn kmeans(
+    data: &[(usize, usize)], // Points to cluster, e.g., (peer_id, score)
+    k: usize,                // Number of clusters
+    max_iterations: usize,   // Maximum number of iterations
+    tolerance: f64,          // Convergence tolerance
+  ) -> Vec<usize> {
+    if data.is_empty() {
+      log::error!("Data points are empty");
+      return vec![];
+    }
+
+    let mut rng = thread_rng();
+    let mut centroids: Vec<(f64, f64)> = Self::kmeans_plus_plus_initialization(data, k, &mut rng);
+    let mut assignments = vec![0; data.len()];
+    let mut changed = true;
+
+    for _ in 0..max_iterations {
+      if !changed {
+        break;
+      }
+      changed = false;
+
+      // Assign each point to the closest centroid
+      for (i, &point) in data.iter().enumerate() {
+        let (closest, _) = centroids
+          .iter()
+          .enumerate()
+          .map(|(j, &centroid)| {
+            (j, Self::distance(&(point.0, point.1), &(centroid.0 as usize, centroid.1 as usize)))
+          })
+          .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+          .unwrap();
+
+        if assignments[i] != closest {
+          assignments[i] = closest;
+          changed = true;
+        }
+      }
+
+      // Update centroids based on assigned points
+      let mut new_centroids = vec![(0.0, 0.0); k];
+      let mut counts = vec![0; k];
+
+      for (i, &assignment) in assignments.iter().enumerate() {
+        new_centroids[assignment].0 += data[i].0 as f64;
+        new_centroids[assignment].1 += data[i].1 as f64;
+        counts[assignment] += 1;
+      }
+
+      let mut total_shift = 0.0;
+      for (i, centroid) in new_centroids.iter_mut().enumerate() {
+        if counts[i] > 0 {
+          let new_x = centroid.0 / counts[i] as f64;
+          let new_y = centroid.1 / counts[i] as f64;
+          total_shift += (new_x - centroids[i].0).powi(2) + (new_y - centroids[i].1).powi(2);
+          centroids[i] = (new_x, new_y);
+        } else {
+          *centroid = (
+            data[rng.gen_range(0..data.len())].0 as f64,
+            data[rng.gen_range(0..data.len())].1 as f64,
+          );
+        }
+      }
+
+      // Early stopping based on centroid movement
+      if total_shift < tolerance {
+        break;
+      }
+    }
+
+    assignments
+  }
+
   pub fn read_mutual_scores(
     &mut self,
-    ego: &str,
     context: &str,
-    scores_num: usize,
-    clusters_num: usize,
-  ) -> Vec<(String, f64, f64)> {
+    ego: &str,
+  ) -> Vec<(String, String, Weight, Weight, usize)> {
+    // Adding cluster index
     log_info!("CMD read_mutual_scores: `{}` `{}`", context, ego);
 
     if !self.contexts.contains_key(context) {
@@ -1098,41 +1216,49 @@ impl AugMultiGraph {
     }
 
     let ego_id = self.find_or_add_node_by_name(ego);
-    let ranks = self.get_ranks_or_recalculate(context, ego_id);
-    let mut scores = Vec::<(String, Weight, Weight)>::new();
+    let ranks = self.fetch_all_scores(context, ego_id);
+    let mut v = Vec::<(String, String, Weight, Weight)>::new(); //Vec::<(String, String, Weight, Weight)>::new();
 
-    // Reserve for only the top N scores
-    let num_scores = std::cmp::min(scores_num, ranks.len()); // Make sure we don't exceed available scores
-    scores.reserve_exact(num_scores);
+    v.reserve_exact(ranks.len());
 
-    for (node, score) in ranks.iter() {
-      let info = self.node_info_from_id(*node).clone();
-      if score > &0.0 {
-        scores.push((info.name, *score, 0.0));
+    // Collect (peer_id, score, reversed_score)
+    let mut points = Vec::<(usize, usize)>::new();
+    // let mut peers = Vec::<(String, String, Weight, Weight)>::new();
+
+    for (node, score) in ranks {
+      let info = self.node_info_from_id(node).clone();
+      if score > 0.0 {
+        // && info.kind == NodeKind::User
+        let reversed_score = self.fetch_score_reversed(context, ego_id, node);
+        v.push((ego.to_string(), info.name.clone(), score, reversed_score));
+        points.push((score as usize, reversed_score as usize));
       }
     }
 
-    // Extract just the scores as a vector
-    let score_values: Vec<f64> = scores.iter().map(|(_, score, _)| *score).collect();
+    // Apply k-means clustering to the points (score, reversed_score)
+    let cluster_count = 2; // Set the number of clusters (K)
+    let max_iterations = 100;
+    let tolerance = 0.001;
+    let clusters = Self::kmeans(&points, cluster_count, max_iterations, tolerance);
 
-    let kmeans: KMeans<_, 1> = KMeans::new(score_values.clone(), score_values.len(), 1); // 1-dimensional data
-    let result = kmeans.kmeans_lloyd(
-      clusters_num,
-      100, // Maximum number of iterations
-      KMeans::init_kmeanplusplus,
-      &KMeansConfig::default(),
+    // println!("Clusters: {:#?}", clusters.clone());
+    println!(
+      "Your scores are: {:#?}",
+      v.clone()
+        .into_iter()
+        .zip(clusters.clone().into_iter())
+        .map(|((ego, name, score, reversed), cluster)| (ego, name, score, reversed, cluster))
+        .collect::<Vec<_>>()
     );
 
-    // Map each score to its corresponding cluster/grade
-    let mut graded_scores = Vec::<(String, Weight, Weight)>::new();
-    graded_scores.reserve_exact(ranks.len());
+    // Return the result with cluster index appended
+    v.clone()
+      .into_iter()
+      .zip(clusters.into_iter())
+      .map(|((ego, name, score, reversed), cluster)| (ego, name, score, reversed, cluster))
+      .collect::<Vec<_>>()
 
-    for (i, (name, _, _)) in scores.into_iter().enumerate() {
-      let grade = result.assignments[i];
-      graded_scores.push((name, grade as f64, 0.0));
-    }
-
-    graded_scores
+    // v.clone()
   }
 
   pub fn write_reset(&mut self) {

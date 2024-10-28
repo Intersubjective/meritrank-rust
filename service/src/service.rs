@@ -219,10 +219,7 @@ fn perform_command(data: &Data, command: Command) -> Result<Vec<u8>, ()> {
       },
       CMD_MUTUAL_SCORES => {
         if let Ok(ego) = rmp_serde::from_slice(command.payload.as_slice()) {
-          let n: usize = 2;
-          let k: usize = 2;
-
-          return encode_response(&graph.read_mutual_scores(ego, command.context.as_str(), n, k));
+          return encode_response(&graph.read_mutual_scores(ego, command.context.as_str()));
         }
       },
       CMD_READ_NEW_EDGES_FILTER => {
