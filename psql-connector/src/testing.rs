@@ -1,10 +1,8 @@
-fn put_edge_(src: &str, dst: &str, weight: f64)
-{
+fn put_edge_(src: &str, dst: &str, weight: f64) {
   let _ = crate::mr_put_edge(Some(src), Some(dst), Some(weight), None).unwrap();
 }
 
-pub fn put_testing_edges()
-{
+pub fn put_testing_edges() {
   put_edge_("U0cd6bd2dde4f", "B7f628ad203b5", 1.0);
   put_edge_("U7c9ce0ac22b7", "U000000000000", 1.0);
   put_edge_("U9a2c85753a6d", "C070e739180d6", 9.0);

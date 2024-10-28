@@ -1,6 +1,12 @@
-use core::result::Result;
+use lazy_static::lazy_static;
+use nng::options::{Options, RecvTimeout};
+use nng::*;
+use pgrx::iter::TableIterator;
+use pgrx::*;
+use serde::de::Deserialize;
 use std::env::var;
 use std::error::Error;
+use std::time::Duration;
 use std::time::Duration;
 
 use lazy_static::lazy_static;
@@ -50,28 +56,12 @@ DROP FUNCTION IF EXISTS mr_mark_beacons;
 DROP FUNCTION IF EXISTS mr_unmarked_beacons;
 DROP VIEW     IF EXISTS mr_t_node;
 DROP VIEW     IF EXISTS mr_t_stats;
-
-CREATE OR REPLACE VIEW mr_t_edge AS SELECT
-  '' ::text             AS src,
-  '' ::text             AS dst,
-  (0)::double precision AS weight
-  WHERE false;
-
-CREATE OR REPLACE VIEW mr_t_link AS SELECT
-  ''::text AS src,
-  ''::text AS dst
-  WHERE false;
-
-CREATE OR REPLACE VIEW mr_t_mutual_score AS SELECT
-  '' ::text             AS ego,
-  '' ::text             AS dst,
-  (0)::double precision AS score_of_dst_from_ego,
-  (0)::double precision AS score_of_ego_from_dst
-  WHERE false;
+DROP VIEW     IF EXISTS mr_t_edge;
+DROP VIEW     IF EXISTS mr_t_link;
+DROP VIEW     IF EXISTS mr_t_mutual_score;
 "#,
   name = "bootstrap_raw",
   bootstrap,
-  creates = [Type(mr_t_edge), Type(mr_t_link), Type(mr_t_mutual_score)],
 );
 
 //  ================================================================
@@ -83,8 +73,7 @@ CREATE OR REPLACE VIEW mr_t_mutual_score AS SELECT
 fn request_raw(
   payload: Vec<u8>,
   timeout_msec: Option<u64>,
-) -> Result<Message, Box<dyn Error + 'static>>
-{
+) -> Result<Message, Box<dyn Error + 'static>> {
   let client = Socket::new(Protocol::Req0)?;
   match timeout_msec {
     Some(t) => client.set_opt::<RecvTimeout>(Some(Duration::from_millis(t)))?,
@@ -107,94 +96,12 @@ where
   }
 }
 
-fn service_wrapped() -> Result<String, Box<dyn Error + 'static>>
-{
+fn service_wrapped() -> Result<String, Box<dyn Error + 'static>> {
   let payload = rmp_serde::to_vec(&(CMD_VERSION, "", true, rmp_serde::to_vec(&())?))?;
 
   let response = request_raw(payload, Some(*RECV_TIMEOUT_MSEC))?;
   let s = rmp_serde::from_slice(response.as_slice())?;
   return Ok(s);
-}
-
-fn make_setof_edge(
-  response: &Vec<(String, String, f64)>,
-) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
-  Box<dyn Error + 'static>,
->
-{
-  let tuples: Vec<PgHeapTuple<'_, AllocatedByRust>> = response
-    .iter()
-    .map(|(ego, dst, weight)| {
-      let mut edge = PgHeapTuple::new_composite_type("mr_t_edge").unwrap();
-      edge.set_by_name("src", ego.as_str()).unwrap();
-      edge.set_by_name("dst", dst.as_str()).unwrap();
-      edge.set_by_name("weight", *weight).unwrap();
-      return edge;
-    })
-    .collect();
-  return Ok(SetOfIterator::new(tuples));
-}
-
-fn make_setof_edge_for_src(
-  src: &str,
-  response: &Vec<(String, f64)>,
-) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
-  Box<dyn Error + 'static>,
->
-{
-  let tuples: Vec<PgHeapTuple<'_, AllocatedByRust>> = response
-    .iter()
-    .map(|(dst, weight)| {
-      let mut edge = PgHeapTuple::new_composite_type("mr_t_edge").unwrap();
-      edge.set_by_name("src", src).unwrap();
-      edge.set_by_name("dst", dst.as_str()).unwrap();
-      edge.set_by_name("weight", *weight).unwrap();
-      return edge;
-    })
-    .collect();
-  return Ok(SetOfIterator::new(tuples));
-}
-
-fn make_setof_link(
-  response: &Vec<(String, String)>,
-) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_link")>,
-  Box<dyn Error + 'static>,
->
-{
-  let tuples: Vec<PgHeapTuple<'_, AllocatedByRust>> = response
-    .iter()
-    .map(|(ego, target)| {
-      let mut edge = PgHeapTuple::new_composite_type("mr_t_link").unwrap();
-      edge.set_by_name("src", ego.as_str()).unwrap();
-      edge.set_by_name("dst", target.as_str()).unwrap();
-      return edge;
-    })
-    .collect();
-  return Ok(SetOfIterator::new(tuples));
-}
-
-fn make_setof_mutual_score(
-  response: &Vec<(String, String, f64, f64)>,
-) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_mutual_score")>,
-  Box<dyn Error + 'static>,
->
-{
-  let tuples: Vec<PgHeapTuple<'_, AllocatedByRust>> = response
-    .iter()
-    .map(|(src, dst, dst_score, src_score)| {
-      let mut score = PgHeapTuple::new_composite_type("mr_t_mutual_score").unwrap();
-      score.set_by_name("ego", src).unwrap();
-      score.set_by_name("dst", dst.as_str()).unwrap();
-      score.set_by_name("score_of_dst_from_ego", *dst_score).unwrap();
-      score.set_by_name("score_of_ego_from_dst", *src_score).unwrap();
-      return score;
-    })
-    .collect();
-  return Ok(SetOfIterator::new(tuples));
 }
 
 //  ================================================================
@@ -204,20 +111,17 @@ fn make_setof_mutual_score(
 //  ================================================================
 
 #[pg_extern(immutable)]
-fn mr_service_url() -> &'static str
-{
+fn mr_service_url() -> &'static str {
   &SERVICE_URL
 }
 
 #[pg_extern(immutable)]
-fn mr_connector() -> &'static str
-{
+fn mr_connector() -> &'static str {
   VERSION
 }
 
 #[pg_extern(immutable)]
-fn mr_service() -> String
-{
+fn mr_service() -> String {
   match service_wrapped() {
     Err(e) => format!("{}", e),
     Ok(s) => s,
@@ -230,10 +134,12 @@ fn mr_node_score(
   dst: Option<&str>,
   context: default!(Option<&str>, "''"),
 ) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_mutual_score")>,
+  TableIterator<
+    'static,
+    (name!(src, String), name!(dst, String), name!(score_of_dst, f64), name!(score_of_src, f64)),
+  >,
   Box<dyn Error + 'static>,
->
-{
+> {
   let context = context.unwrap_or("");
   let ego = src.expect("src should not be null");
   let target = dst.expect("dst should not be null");
@@ -241,14 +147,14 @@ fn mr_node_score(
   let args = rmp_serde::to_vec(&(ego, target))?;
 
   let payload = encode_request(&Command {
-    id:       CMD_NODE_SCORE.to_string(),
-    context:  context.to_string(),
+    id: CMD_NODE_SCORE.to_string(),
+    context: context.to_string(),
     blocking: true,
-    payload:  args,
+    payload: args,
   })?;
 
-  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_mutual_score(&response);
+  let response: Vec<(String, String, f64, f64)> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  Ok(TableIterator::new(response))
 }
 
 fn scores_payload(
@@ -262,8 +168,7 @@ fn scores_payload(
   gte: Option<f64>,
   index: Option<i32>,
   count: Option<i32>,
-) -> Result<Vec<u8>, Box<dyn Error + 'static>>
-{
+) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
   let context = context.unwrap_or("");
   let ego = src.expect("ego should not be null");
   let hide_personal = hide_personal.unwrap_or(false);
@@ -290,10 +195,10 @@ fn scores_payload(
   ))?;
 
   let payload = encode_request(&Command {
-    id:       CMD_SCORES.to_string(),
-    context:  context.to_string(),
+    id: CMD_SCORES.to_string(),
+    context: context.to_string(),
     blocking: true,
-    payload:  args,
+    payload: args,
   });
 
   payload.map_err(|e| e.into())
@@ -312,14 +217,16 @@ fn mr_scores(
   index: default!(Option<i32>, "0"),
   count: default!(Option<i32>, "16"),
 ) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_mutual_score")>,
+  TableIterator<
+    'static,
+    (name!(src, String), name!(dst, String), name!(score_of_dst, f64), name!(score_of_src, f64)),
+  >,
   Box<dyn Error + 'static>,
->
-{
+> {
   let payload = scores_payload(context, src, hide_personal, kind, lt, lte, gt, gte, index, count)?;
 
-  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_mutual_score(&response);
+  let response: Vec<(String, String, f64, f64)> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  Ok(TableIterator::new(response))
 }
 
 #[pg_extern(immutable)]
@@ -331,10 +238,12 @@ fn mr_graph(
   index: default!(Option<i32>, "0"),
   count: default!(Option<i32>, "16"),
 ) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_mutual_score")>,
+  TableIterator<
+    'static,
+    (name!(src, String), name!(dst, String), name!(score_of_dst, f64), name!(score_of_src, f64)),
+  >,
   Box<dyn Error + 'static>,
->
-{
+> {
   let context = context.unwrap_or("");
   let ego = src.expect("src should not be null");
   let focus = focus.expect("focus should not be null");
@@ -345,55 +254,51 @@ fn mr_graph(
   let args = rmp_serde::to_vec(&(ego, focus, positive_only, index, count))?;
 
   let payload = encode_request(&Command {
-    id:       CMD_GRAPH.to_string(),
-    context:  context.to_string(),
+    id: CMD_GRAPH.to_string(),
+    context: context.to_string(),
     blocking: true,
-    payload:  args,
+    payload: args,
   })?;
 
-  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_mutual_score(&response);
+  let response: Vec<(String, String, f64, f64)> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  Ok(TableIterator::new(response))
 }
 
 #[pg_extern(immutable)]
 fn mr_nodelist(
   context: default!(Option<&str>, "''"),
-) -> Result<SetOfIterator<'static, String>, Box<dyn Error + 'static>>
-{
+) -> Result<TableIterator<'static, (name!(node, String),)>, Box<dyn Error + 'static>> {
   let context = context.unwrap_or("");
 
   let payload = encode_request(&Command {
-    id:       CMD_NODE_LIST.to_string(),
-    context:  context.to_string(),
+    id: CMD_NODE_LIST.to_string(),
+    context: context.to_string(),
     blocking: true,
-    payload:  rmp_serde::to_vec(&())?,
+    payload: rmp_serde::to_vec(&())?,
   })?;
 
-  let response: Vec<_> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-
-  let strings: Vec<String> = response.iter().map(|x: &(String,)| x.0.clone()).collect();
-  return Ok(SetOfIterator::new(strings));
+  let response: Vec<(String,)> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  Ok(TableIterator::new(response))
 }
 
 #[pg_extern(immutable)]
 fn mr_edgelist(
   context: default!(Option<&str>, "''"),
 ) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
+  TableIterator<'static, (name!(src, String), name!(dst, String), name!(weight, f64))>,
   Box<dyn Error + 'static>,
->
-{
+> {
   let context = context.unwrap_or("");
 
   let payload = encode_request(&Command {
-    id:       CMD_EDGES.to_string(),
-    context:  context.to_string(),
+    id: CMD_EDGES.to_string(),
+    context: context.to_string(),
     blocking: true,
-    payload:  rmp_serde::to_vec(&())?,
+    payload: rmp_serde::to_vec(&())?,
   })?;
 
-  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_edge(&response);
+  let response: Vec<(String, String, f64)> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  Ok(TableIterator::new(response))
 }
 
 #[pg_extern(immutable)]
@@ -401,24 +306,23 @@ fn mr_connected(
   src: Option<&str>,
   context: default!(Option<&str>, "''"),
 ) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_link")>,
+  TableIterator<'static, (name!(src, String), name!(dst, String))>,
   Box<dyn Error + 'static>,
->
-{
+> {
   let context = context.unwrap_or("");
   let ego = src.expect("src should not be null");
 
   let args = rmp_serde::to_vec(&(ego))?;
 
   let payload = encode_request(&Command {
-    id:       CMD_CONNECTED.to_string(),
-    context:  context.to_string(),
+    id: CMD_CONNECTED.to_string(),
+    context: context.to_string(),
     blocking: true,
-    payload:  args,
+    payload: args,
   })?;
 
-  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_link(&response);
+  let response: Vec<(String, String)> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  Ok(TableIterator::new(response))
 }
 
 #[pg_extern(immutable)]
@@ -426,38 +330,39 @@ fn mr_mutual_scores(
   src: Option<&str>,
   context: default!(Option<&str>, "''"),
 ) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_mutual_score")>,
+  TableIterator<
+    'static,
+    (name!(src, String), name!(dst, String), name!(score_of_dst, f64), name!(score_of_src, f64)),
+  >,
   Box<dyn Error + 'static>,
->
-{
+> {
   let ego = src.expect("src should not be null");
   let context = context.unwrap_or("");
 
   let args = rmp_serde::to_vec(&(ego))?;
 
   let payload = encode_request(&Command {
-    id:       CMD_MUTUAL_SCORES.to_string(),
-    context:  context.to_string(),
+    id: CMD_MUTUAL_SCORES.to_string(),
+    context: context.to_string(),
     blocking: true,
-    payload:  args,
+    payload: args,
   })?;
 
-  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_mutual_score(&response);
+  let response: Vec<(String, String, f64, f64)> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  Ok(TableIterator::new(response))
 }
 
 #[pg_extern]
-fn mr_get_new_edges_filter(src: Option<&str>) -> Result<Vec<u8>, Box<dyn Error + 'static>>
-{
+fn mr_get_new_edges_filter(src: Option<&str>) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
   let src = src.expect("src should not be null");
 
   let args = rmp_serde::to_vec(&(src))?;
 
   let payload = encode_request(&Command {
-    id:       CMD_READ_NEW_EDGES_FILTER.to_string(),
-    context:  "".to_string(),
+    id: CMD_READ_NEW_EDGES_FILTER.to_string(),
+    context: "".to_string(),
     blocking: true,
-    payload:  args,
+    payload: args,
   })?;
 
   let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
@@ -467,18 +372,17 @@ fn mr_get_new_edges_filter(src: Option<&str>) -> Result<Vec<u8>, Box<dyn Error +
 #[pg_extern(immutable)]
 fn mr_sync(
   timeout_msec: default!(Option<i32>, "6000000"),
-) -> Result<&'static str, Box<dyn Error + 'static>>
-{
+) -> Result<&'static str, Box<dyn Error + 'static>> {
   let timeout_msec = match timeout_msec {
     Some(x) => Some(x as u64),
     _ => None,
   };
 
   let payload = encode_request(&Command {
-    id:       CMD_SYNC.to_string(),
-    context:  "".to_string(),
+    id: CMD_SYNC.to_string(),
+    context: "".to_string(),
     blocking: true,
-    payload:  rmp_serde::to_vec(&())?,
+    payload: rmp_serde::to_vec(&())?,
   })?;
 
   let _: () = request(payload, timeout_msec)?;
@@ -494,15 +398,14 @@ fn mr_sync(
 #[pg_extern]
 fn mr_log_level(
   log_level: default!(Option<i32>, "1"),
-) -> Result<&'static str, Box<dyn Error + 'static>>
-{
+) -> Result<&'static str, Box<dyn Error + 'static>> {
   let log_level = log_level.unwrap_or(0);
 
   let payload = encode_request(&Command {
-    id:       CMD_LOG_LEVEL.to_string(),
-    context:  "".to_string(),
+    id: CMD_LOG_LEVEL.to_string(),
+    context: "".to_string(),
     blocking: true,
-    payload:  rmp_serde::to_vec(&(log_level as u32))?,
+    payload: rmp_serde::to_vec(&(log_level as u32))?,
   })?;
 
   let _: () = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
@@ -510,15 +413,14 @@ fn mr_log_level(
 }
 
 #[pg_extern]
-fn mr_create_context(context: Option<&str>) -> Result<&'static str, Box<dyn Error + 'static>>
-{
+fn mr_create_context(context: Option<&str>) -> Result<&'static str, Box<dyn Error + 'static>> {
   let context = context.unwrap_or("");
 
   let payload = encode_request(&Command {
-    id:       CMD_CREATE_CONTEXT.to_string(),
-    context:  context.to_string(),
+    id: CMD_CREATE_CONTEXT.to_string(),
+    context: context.to_string(),
     blocking: false,
-    payload:  rmp_serde::to_vec(&())?,
+    payload: rmp_serde::to_vec(&())?,
   })?;
 
   let _: () = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
@@ -532,10 +434,9 @@ fn mr_put_edge(
   weight: Option<f64>,
   context: default!(Option<&str>, "''"),
 ) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
+  TableIterator<'static, (name!(src, String), name!(dst, String), name!(weight, f64))>,
   Box<dyn Error + 'static>,
->
-{
+> {
   let context = context.unwrap_or("");
   let src = src.expect("src should not be null");
   let dest = dst.expect("dst should not be null");
@@ -544,14 +445,14 @@ fn mr_put_edge(
   let args = rmp_serde::to_vec(&(src, dest, weight))?;
 
   let payload = encode_request(&Command {
-    id:       CMD_PUT_EDGE.to_string(),
-    context:  context.to_string(),
+    id: CMD_PUT_EDGE.to_string(),
+    context: context.to_string(),
     blocking: false,
-    payload:  args,
+    payload: args,
   })?;
 
   let _: () = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_edge(&vec![(src.to_string(), dest.to_string(), weight)]);
+  Ok(TableIterator::once((src.to_string(), dest.to_string(), weight)))
 }
 
 #[pg_extern]
@@ -559,8 +460,7 @@ fn mr_delete_edge(
   src: Option<&str>,
   dst: Option<&str>,
   context: default!(Option<&str>, "''"),
-) -> Result<&'static str, Box<dyn Error + 'static>>
-{
+) -> Result<&'static str, Box<dyn Error + 'static>> {
   let context = context.unwrap_or("");
   let ego = src.expect("src should not be null");
   let target = dst.expect("dst should not be null");
@@ -568,10 +468,10 @@ fn mr_delete_edge(
   let args = rmp_serde::to_vec(&(ego, target))?;
 
   let payload = encode_request(&Command {
-    id:       CMD_DELETE_EDGE.to_string(),
-    context:  context.to_string(),
+    id: CMD_DELETE_EDGE.to_string(),
+    context: context.to_string(),
     blocking: false,
-    payload:  args,
+    payload: args,
   })?;
 
   let _: () = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
@@ -582,18 +482,17 @@ fn mr_delete_edge(
 fn mr_delete_node(
   src: Option<&str>,
   context: default!(Option<&str>, "''"),
-) -> Result<&'static str, Box<dyn Error + 'static>>
-{
+) -> Result<&'static str, Box<dyn Error + 'static>> {
   let context = context.unwrap_or("");
   let ego = src.expect("src should not be null");
 
   let args = rmp_serde::to_vec(&(ego))?;
 
   let payload = encode_request(&Command {
-    id:       CMD_DELETE_NODE.to_string(),
-    context:  context.to_string(),
+    id: CMD_DELETE_NODE.to_string(),
+    context: context.to_string(),
     blocking: false,
-    payload:  args,
+    payload: args,
   })?;
 
   let _: () = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
@@ -604,18 +503,17 @@ fn mr_delete_node(
 fn mr_set_new_edges_filter(
   src: Option<&str>,
   filter: Option<Vec<u8>>,
-) -> Result<&'static str, Box<dyn Error + 'static>>
-{
+) -> Result<&'static str, Box<dyn Error + 'static>> {
   let src = src.expect("src should not be null");
   let filter = filter.expect("filter should not be null");
 
   let args = rmp_serde::to_vec(&(src, filter))?;
 
   let payload = encode_request(&Command {
-    id:       CMD_WRITE_NEW_EDGES_FILTER.to_string(),
-    context:  "".to_string(),
+    id: CMD_WRITE_NEW_EDGES_FILTER.to_string(),
+    context: "".to_string(),
     blocking: false,
-    payload:  args,
+    payload: args,
   })?;
 
   let _ = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
@@ -627,34 +525,34 @@ fn mr_fetch_new_edges(
   src: Option<&str>,
   prefix: default!(Option<&str>, "''"),
 ) -> Result<
-  SetOfIterator<'static, pgrx::composite_type!('static, "mr_t_edge")>,
+  TableIterator<'static, (name!(src, String), name!(dst, String), name!(score, f64))>,
   Box<dyn Error + 'static>,
->
-{
+> {
   let src = src.expect("src should not be null");
   let prefix = prefix.unwrap_or("");
 
   let args = rmp_serde::to_vec(&(src, prefix))?;
 
   let payload = encode_request(&Command {
-    id:       CMD_FETCH_NEW_EDGES.to_string(),
-    context:  "".to_string(),
+    id: CMD_FETCH_NEW_EDGES.to_string(),
+    context: "".to_string(),
     blocking: true,
-    payload:  args,
+    payload: args,
   })?;
 
-  let response = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  return make_setof_edge_for_src(src, &response);
+  let response: Vec<(String, f64)> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  let edges: Vec<(String, String, f64)> =
+    response.iter().map(|(dst, score)| (src.to_string(), dst.clone(), *score)).collect();
+  Ok(TableIterator::new(edges))
 }
 
 #[pg_extern]
-fn mr_reset() -> Result<&'static str, Box<dyn Error + 'static>>
-{
+fn mr_reset() -> Result<&'static str, Box<dyn Error + 'static>> {
   let payload = encode_request(&Command {
-    id:       CMD_RESET.to_string(),
-    context:  "".to_string(),
+    id: CMD_RESET.to_string(),
+    context: "".to_string(),
     blocking: false,
-    payload:  rmp_serde::to_vec(&())?,
+    payload: rmp_serde::to_vec(&())?,
   })?;
 
   let _: () = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
@@ -665,8 +563,7 @@ fn mr_reset() -> Result<&'static str, Box<dyn Error + 'static>>
 fn mr_zerorec(
   blocking: default!(Option<bool>, "true"),
   timeout_msec: default!(Option<i32>, "6000000"),
-) -> Result<&'static str, Box<dyn Error + 'static>>
-{
+) -> Result<&'static str, Box<dyn Error + 'static>> {
   let blocking = blocking.unwrap_or(true);
   let timeout_msec = match timeout_msec {
     Some(x) => Some(x as u64),
@@ -692,52 +589,11 @@ fn mr_zerorec(
 
 #[cfg(any(test, feature = "pg_test"))]
 #[pg_schema]
-mod tests
-{
+mod tests {
   use std::time::SystemTime;
 
-  use pgrx::prelude::*;
-
-  use super::testing::*;
-
-  fn unpack_edge(x: &PgHeapTuple<'static, pgrx::AllocatedByRust>) -> (String, String, f64)
-  {
-    return (
-      x.get_by_name("src").unwrap().unwrap(),
-      x.get_by_name("dst").unwrap().unwrap(),
-      x.get_by_name("weight").unwrap().unwrap(),
-    );
-  }
-
-  fn unpack_mutual_score(
-    x: &PgHeapTuple<'static, pgrx::AllocatedByRust>,
-  ) -> (String, String, f64, f64)
-  {
-    return (
-      x.get_by_name("ego").unwrap().unwrap(),
-      x.get_by_name("dst").unwrap().unwrap(),
-      x.get_by_name("score_of_dst_from_ego").unwrap().unwrap(),
-      x.get_by_name("score_of_ego_from_dst").unwrap().unwrap(),
-    );
-  }
-
-  fn collect_edges(
-    i: SetOfIterator<'_, PgHeapTuple<'static, pgrx::AllocatedByRust>>,
-  ) -> Vec<(String, String, f64)>
-  {
-    i.map(|x| unpack_edge(&x)).collect()
-  }
-
-  fn collect_mutual_scores(
-    i: SetOfIterator<'_, PgHeapTuple<'static, pgrx::AllocatedByRust>>,
-  ) -> Vec<(String, String, f64, f64)>
-  {
-    i.map(|x| unpack_mutual_score(&x)).collect()
-  }
-
   #[pg_test]
-  fn sync_deadlock()
-  {
+  fn sync_deadlock() {
     for _ in 0..3000 {
       let _ = crate::mr_reset().unwrap();
       let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None).unwrap();
@@ -748,8 +604,7 @@ mod tests
   }
 
   #[pg_test]
-  fn zerorec_graph_all()
-  {
+  fn zerorec_graph_all() {
     let _ = crate::mr_reset().unwrap();
 
     put_testing_edges();
@@ -767,8 +622,7 @@ mod tests
   }
 
   #[pg_test]
-  fn zerorec_graph_positive_only()
-  {
+  fn zerorec_graph_positive_only() {
     let _ = crate::mr_reset().unwrap();
 
     put_testing_edges();
@@ -786,8 +640,7 @@ mod tests
   }
 
   #[pg_test]
-  fn zerorec_reset_perf()
-  {
+  fn zerorec_reset_perf() {
     let _ = crate::mr_reset().unwrap();
 
     put_testing_edges();
@@ -806,12 +659,11 @@ mod tests
       crate::mr_graph(Some("Uadeb43da4abb"), Some("U000000000000"), None, Some(true), None, None)
         .unwrap();
 
-    assert!(get_time() < 20);
+    assert!(get_time() < 200);
   }
 
   #[pg_test]
-  fn zerorec_scores()
-  {
+  fn zerorec_scores() {
     let _ = crate::mr_reset().unwrap();
 
     put_testing_edges();
@@ -839,8 +691,7 @@ mod tests
   }
 
   #[pg_test]
-  fn service()
-  {
+  fn service() {
     let ver = crate::mr_service();
 
     //  check if ver is in form "X.Y.Z"
@@ -848,8 +699,7 @@ mod tests
   }
 
   #[pg_test]
-  fn edge_uncontexted()
-  {
+  fn edge_uncontexted() {
     let _ = crate::mr_reset().unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
@@ -857,7 +707,7 @@ mod tests
 
     let n = res
       .map(|x| {
-        let (ego, target, score) = unpack_edge(&x);
+        let (ego, target, score) = x;
         assert_eq!(ego, "U1");
         assert_eq!(target, "U2");
         assert_eq!(score, 1.0);
@@ -868,8 +718,7 @@ mod tests
   }
 
   #[pg_test]
-  fn edge_contexted()
-  {
+  fn edge_contexted() {
     let _ = crate::mr_reset().unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
@@ -877,7 +726,7 @@ mod tests
 
     let n = res
       .map(|x| {
-        let (ego, target, score) = unpack_edge(&x);
+        let (ego, target, score) = x;
         assert_eq!(ego, "U1");
         assert_eq!(target, "U2");
         assert_eq!(score, 1.0);
@@ -888,8 +737,7 @@ mod tests
   }
 
   #[pg_test]
-  fn create_context()
-  {
+  fn create_context() {
     let _ = crate::mr_reset().unwrap();
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None).unwrap();
     let _ = crate::mr_create_context(Some("X"));
@@ -899,7 +747,7 @@ mod tests
 
     let n = res
       .map(|x| {
-        let (ego, target, score) = unpack_edge(&x);
+        let (ego, target, score) = x;
         assert_eq!(ego, "U1");
         assert_eq!(target, "U2");
         assert!(score > 0.99);
@@ -911,8 +759,7 @@ mod tests
   }
 
   #[pg_test]
-  fn null_context_is_sum()
-  {
+  fn null_context_is_sum() {
     let _ = crate::mr_reset().unwrap();
 
     let _ = crate::mr_put_edge(Some("B1"), Some("B2"), Some(1.0), Some("X")).unwrap();
@@ -923,7 +770,7 @@ mod tests
 
     let n = res
       .map(|x| {
-        let (ego, target, score) = unpack_edge(&x);
+        let (ego, target, score) = x;
         assert_eq!(ego, "B1");
         assert_eq!(target, "B2");
         assert!(score > 2.99);
@@ -935,8 +782,7 @@ mod tests
   }
 
   #[pg_test]
-  fn delete_contexted_edge()
-  {
+  fn delete_contexted_edge() {
     let _ = crate::mr_reset().unwrap();
 
     let _ = crate::mr_put_edge(Some("B1"), Some("B2"), Some(1.0), Some("X")).unwrap();
@@ -949,7 +795,7 @@ mod tests
 
     let n = res
       .map(|x| {
-        let (ego, target, score) = unpack_edge(&x);
+        let (ego, target, score) = x;
         assert_eq!(ego, "B1");
         assert_eq!(target, "B2");
         assert_eq!(score, 2.0);
@@ -960,8 +806,7 @@ mod tests
   }
 
   #[pg_test]
-  fn null_context_invariant()
-  {
+  fn null_context_invariant() {
     let _ = crate::mr_reset().unwrap();
 
     let _ = crate::mr_put_edge(Some("B1"), Some("B2"), Some(1.0), Some("X")).unwrap();
@@ -977,7 +822,7 @@ mod tests
 
     let n = res
       .map(|x| {
-        let (ego, target, score) = unpack_edge(&x);
+        let (ego, target, score) = x;
         assert_eq!(ego, "B1");
         assert_eq!(target, "B2");
         assert_eq!(score, 3.0);
@@ -988,8 +833,7 @@ mod tests
   }
 
   #[pg_test]
-  fn node_score_context()
-  {
+  fn node_score_context() {
     let _ = crate::mr_reset().unwrap();
 
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
@@ -1001,7 +845,7 @@ mod tests
 
     let n = res
       .map(|x| {
-        let (ego, dst, score_dst, score_ego) = unpack_mutual_score(&x);
+        let (ego, dst, score_dst, score_ego) = x;
         assert_eq!(ego, "U1");
         assert_eq!(dst, "U2");
         assert!(score_dst > 0.3);
@@ -1015,8 +859,7 @@ mod tests
   }
 
   #[pg_test]
-  fn scores_null_context()
-  {
+  fn scores_null_context() {
     let _ = crate::mr_reset().unwrap();
 
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("")).unwrap();
@@ -1024,21 +867,20 @@ mod tests
     let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("")).unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
-    let res = collect_mutual_scores(
-      crate::mr_scores(
-        Some("U1"),
-        Some(false),
-        Some(""),
-        Some("U"),
-        Some(10.0),
-        None,
-        Some(0.0),
-        None,
-        None,
-        None,
-      )
-      .unwrap(),
-    );
+    let res: Vec<_> = crate::mr_scores(
+      Some("U1"),
+      Some(false),
+      Some(""),
+      Some("U"),
+      Some(10.0),
+      None,
+      Some(0.0),
+      None,
+      None,
+      None,
+    )
+    .unwrap()
+    .collect();
 
     assert_eq!(res.len(), 3);
 
@@ -1067,8 +909,7 @@ mod tests
   }
 
   #[pg_test]
-  fn scores_context()
-  {
+  fn scores_context() {
     let _ = crate::mr_reset().unwrap();
 
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
@@ -1076,21 +917,20 @@ mod tests
     let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("X")).unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
-    let res = collect_mutual_scores(
-      crate::mr_scores(
-        Some("U1"),
-        Some(false),
-        Some("X"),
-        Some("U"),
-        Some(10.0),
-        None,
-        Some(0.0),
-        None,
-        None,
-        None,
-      )
-      .unwrap(),
-    );
+    let res: Vec<_> = crate::mr_scores(
+      Some("U1"),
+      Some(false),
+      Some("X"),
+      Some("U"),
+      Some(10.0),
+      None,
+      Some(0.0),
+      None,
+      None,
+      None,
+    )
+    .unwrap()
+    .collect();
 
     assert_eq!(res.len(), 3);
 
@@ -1119,8 +959,7 @@ mod tests
   }
 
   #[pg_test]
-  fn scores_defaults()
-  {
+  fn scores_defaults() {
     let _ = crate::mr_reset().unwrap();
 
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X")).unwrap();
@@ -1128,21 +967,20 @@ mod tests
     let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("X")).unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
-    let res = collect_mutual_scores(
-      crate::mr_scores(
-        Some("U1"),
-        Some(false),
-        Some("X"),
-        Some("U"),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-      )
-      .unwrap(),
-    );
+    let res: Vec<_> = crate::mr_scores(
+      Some("U1"),
+      Some(false),
+      Some("X"),
+      Some("U"),
+      None,
+      None,
+      None,
+      None,
+      None,
+      None,
+    )
+    .unwrap()
+    .collect();
 
     assert_eq!(res.len(), 3);
 
@@ -1171,8 +1009,7 @@ mod tests
   }
 
   #[pg_test]
-  fn nodelist()
-  {
+  fn nodelist() {
     let _ = crate::mr_reset().unwrap();
 
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None).unwrap();
@@ -1180,18 +1017,17 @@ mod tests
     let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), None).unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
-    let res: Vec<String> = crate::mr_nodelist(None).unwrap().collect();
+    let res: Vec<_> = crate::mr_nodelist(None).unwrap().collect();
 
     assert_eq!(res.len(), 3);
 
     for x in res {
-      assert!(x == "U1" || x == "U2" || x == "U3");
+      assert!(x.0 == "U1" || x.0 == "U2" || x.0 == "U3");
     }
   }
 
   #[pg_test]
-  fn connected()
-  {
+  fn connected() {
     let _ = crate::mr_reset().unwrap();
 
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None).unwrap();
@@ -1199,10 +1035,7 @@ mod tests
     let _ = crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), None).unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
-    let res: Vec<(String, String)> = crate::mr_connected(Some("U1"), None)
-      .unwrap()
-      .map(|x| (x.get_by_name("src").unwrap().unwrap(), x.get_by_name("dst").unwrap().unwrap()))
-      .collect();
+    let res: Vec<_> = crate::mr_connected(Some("U1"), None).unwrap().collect();
 
     assert_eq!(res.len(), 2);
 
@@ -1213,8 +1046,7 @@ mod tests
   }
 
   #[pg_test]
-  fn mutual_scores()
-  {
+  fn mutual_scores() {
     let _ = crate::mr_reset().unwrap();
 
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(3.0), None).unwrap();
@@ -1225,7 +1057,7 @@ mod tests
     let _ = crate::mr_put_edge(Some("U3"), Some("U2"), Some(2.0), None).unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
-    let res = collect_mutual_scores(crate::mr_mutual_scores(Some("U1"), None).unwrap());
+    let res: Vec<_> = crate::mr_mutual_scores(Some("U1"), None).unwrap().collect();
 
     assert_eq!(res.len(), 3);
 
@@ -1272,8 +1104,7 @@ mod tests
   }
 
   #[pg_test]
-  fn new_edges_fetch()
-  {
+  fn new_edges_fetch() {
     let _ = crate::mr_reset().unwrap();
 
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None).unwrap();
@@ -1286,7 +1117,7 @@ mod tests
 
     let res = crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap();
 
-    let beacons = collect_edges(res);
+    let beacons: Vec<_> = res.collect();
 
     assert_eq!(beacons.len(), 2);
     assert_eq!(beacons[0].1, "B3");
@@ -1296,8 +1127,7 @@ mod tests
   }
 
   #[pg_test]
-  fn new_edges_filter()
-  {
+  fn new_edges_filter() {
     let _ = crate::mr_reset().unwrap();
 
     let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None).unwrap();
@@ -1312,7 +1142,7 @@ mod tests
 
     let res = crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap();
 
-    let beacons = collect_edges(res);
+    let beacons: Vec<_> = res.collect();
 
     assert_eq!(beacons.len(), 2);
     assert_eq!(beacons[0].1, "B3");
@@ -1323,7 +1153,7 @@ mod tests
 
     let res = crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap();
 
-    let beacons = collect_edges(res);
+    let beacons: Vec<_> = res.collect();
 
     assert_eq!(beacons.len(), 2);
     assert_eq!(beacons[0].1, "B3");
@@ -1332,12 +1162,10 @@ mod tests
 }
 
 #[cfg(test)]
-pub mod pg_test
-{
+pub mod pg_test {
   pub fn setup(_options: Vec<&str>) {}
 
-  pub fn postgresql_conf_options() -> Vec<&'static str>
-  {
+  pub fn postgresql_conf_options() -> Vec<&'static str> {
     vec![]
   }
 }

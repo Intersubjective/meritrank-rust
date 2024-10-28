@@ -1,4 +1,18 @@
+use meritrank_core::{constants::EPSILON, Graph, MeritRank, NodeId};
+use petgraph::{
+  graph::{DiGraph, NodeIndex},
+  visit::EdgeRef,
+};
+use simple_pagerank::Pagerank;
 use std::{collections::HashMap, env::var, string::ToString, sync::atomic::Ordering};
+
+use crate::astar::*;
+use crate::log::*;
+use crate::log_error;
+use crate::log_info;
+use crate::log_trace;
+use crate::log_verbose;
+use crate::log_warning;
 
 pub use meritrank_core::Weight;
 use meritrank_core::{constants::EPSILON, Graph, MeritRank, MeritRankError, NodeId};
@@ -63,6 +77,18 @@ lazy_static::lazy_static! {
       .ok()
       .and_then(|s| s.parse::<usize>().ok())
       .unwrap_or(8192);
+
+  pub static ref SCORES_CACHE_SIZE : usize =
+    var("MERITRANK_SCORES_CACHE_SIZE")
+      .ok()
+      .and_then(|s| s.parse::<usize>().ok())
+      .unwrap_or(1024 * 10);
+
+  pub static ref WALKS_CACHE_SIZE : usize =
+    var("MERITRANK_WALKS_CACHE_SIZE")
+      .ok()
+      .and_then(|s| s.parse::<usize>().ok())
+      .unwrap_or(1024);
 }
 
 //  ================================================================
@@ -89,6 +115,20 @@ pub struct NodeInfo {
   pub seen_nodes: Vec<u64>,
 }
 
+#[derive(PartialEq, Clone, Default)]
+pub struct CachedScore {
+  pub context: String,
+  pub ego: NodeId,
+  pub dst: NodeId,
+  pub score: Weight,
+}
+
+#[derive(PartialEq, Eq, Clone, Default)]
+pub struct CachedWalk {
+  pub context: String,
+  pub ego: NodeId,
+}
+
 //  Augmented multi-context graph
 //
 #[derive(Clone)]
@@ -99,6 +139,8 @@ pub struct AugMultiGraph {
   pub dummy_graph: MeritRank,
   pub node_ids: HashMap<String, NodeId>,
   pub contexts: HashMap<String, MeritRank>,
+  pub cached_scores: Vec<CachedScore>,
+  pub cached_walks: Vec<CachedWalk>,
 }
 
 //  ================================================================
@@ -157,6 +199,97 @@ pub fn bloom_filter_contains(mask: &[u64], bits: &[u64]) -> bool {
 
 //  ================================================================
 //
+//    Caches
+//
+//  ================================================================
+
+impl AugMultiGraph {
+  pub fn cache_score_add(&mut self, context: &str, ego: NodeId, dst: NodeId, score: Weight) {
+    log_trace!("cache_score_add `{}` {} {} {}", context, ego, dst, score);
+
+    for (i, x) in self.cached_scores.iter().enumerate().rev() {
+      if x.ego == ego && x.dst == dst && x.context == context {
+        self.cached_scores.remove(i);
+        self.cached_scores.push(CachedScore { context: context.to_string(), ego, dst, score });
+        return;
+      }
+    }
+
+    if self.cached_scores.len() >= *SCORES_CACHE_SIZE {
+      log_trace!(
+        "drop score `{}`, {} -> {}",
+        self.cached_scores[0].context,
+        self.cached_scores[0].ego,
+        self.cached_scores[0].dst
+      );
+      self.cached_scores.remove(0);
+    }
+
+    self.cached_scores.push(CachedScore { context: context.to_string(), ego, dst, score });
+  }
+
+  pub fn cache_score_get(&mut self, context: &str, ego: NodeId, dst: NodeId) -> Option<Weight> {
+    log_trace!("cache_score_get `{}` {} {}", context, ego, dst);
+
+    for (i, x) in self.cached_scores.iter().enumerate().rev() {
+      if x.ego == ego && x.dst == dst && x.context == context {
+        let score = x.score;
+        self.cached_scores.remove(i);
+        self.cached_scores.push(CachedScore { context: context.to_string(), ego, dst, score });
+        return Some(score);
+      }
+    }
+
+    return None;
+  }
+
+  pub fn cache_walk_add(&mut self, context: &str, ego: NodeId) {
+    log_trace!("cache_walk_add `{}` {}", context, ego);
+
+    for (i, x) in self.cached_walks.iter().enumerate().rev() {
+      if x.ego == ego && x.context == context {
+        self.cached_walks.remove(i);
+        self.cached_walks.push(CachedWalk { context: context.to_string(), ego });
+        return;
+      }
+    }
+
+    if self.cached_walks.len() >= *WALKS_CACHE_SIZE {
+      log_trace!("drop walks `{}`, {}", self.cached_walks[0].context, self.cached_walks[0].ego);
+
+      //  HACK!!!
+      //  We "drop" the walks by recalculating the node with 0.
+      let drop_walk = self.cached_walks[0].clone(); // RUST!!!
+      match self.graph_from(drop_walk.context.as_str()).calculate(drop_walk.ego, 0) {
+        Ok(()) => {},
+        Err(e) => {
+          log_error!("(cache_walk_add) {}", e);
+        },
+      }
+
+      self.cached_walks.remove(0);
+    }
+
+    self.cached_walks.push(CachedWalk { context: context.to_string(), ego });
+  }
+
+  pub fn cache_walk_get(&mut self, context: &str, ego: NodeId) -> bool {
+    log_trace!("cache_walk_get");
+
+    for (i, x) in self.cached_walks.iter().enumerate().rev() {
+      if x.ego == ego && x.context == context {
+        self.cached_walks.remove(i);
+        self.cached_walks.push(CachedWalk { context: context.to_string(), ego });
+        return true;
+      }
+    }
+
+    return false;
+  }
+}
+
+//  ================================================================
+//
 //    Utils
 //
 //  ================================================================
@@ -193,6 +326,8 @@ impl AugMultiGraph {
       dummy_graph: MeritRank::new(Graph::new()),
       node_ids: HashMap::new(),
       contexts: HashMap::new(),
+      cached_scores: vec![],
+      cached_walks: vec![],
     }
   }
 
@@ -201,15 +336,19 @@ impl AugMultiGraph {
     self.node_infos = other.node_infos.clone();
     self.node_ids = other.node_ids.clone();
     self.contexts = other.contexts.clone();
+    self.cached_scores = other.cached_scores.clone();
+    self.cached_walks = other.cached_walks.clone();
   }
 
   pub fn reset(&mut self) {
     log_trace!("reset");
 
     self.node_count = 0;
-    self.node_infos = Vec::new();
+    self.node_infos = vec![];
     self.node_ids = HashMap::new();
     self.contexts = HashMap::new();
+    self.cached_scores = vec![];
+    self.cached_walks = vec![];
   }
 
   pub fn node_exists(&self, node_name: &str) -> bool {
@@ -374,64 +513,122 @@ impl AugMultiGraph {
     v
   }
 
-  fn get_ranks_or_recalculate(&mut self, context: &str, node_id: NodeId) -> Vec<(NodeId, Weight)> {
-    log_trace!("get_ranks_or_recalculate");
+  fn fetch_all_scores(&mut self, context: &str, ego_id: NodeId) -> Vec<(NodeId, Weight)> {
+    log_trace!("fetch_all_scores");
 
-    let graph = self.graph_from(context);
-
-    match graph.get_ranks(node_id, None) {
-      Ok(ranks) => ranks,
-      Err(MeritRankError::NodeDoesNotExist) => {
-        log_warning!("Node does not exist: {}", node_id);
-        vec![]
-      },
-      _ => {
-        log_warning!("Recalculating node: {}", node_id);
-        match graph.calculate(node_id, *NUM_WALK) {
-          Err(e) => {
-            log_error!("(get_ranks_or_recalculate) {}", e);
-            return vec![];
-          },
-          _ => {},
-        };
-        match graph.get_ranks(node_id, None) {
-          Ok(ranks) => ranks,
-          Err(e) => {
-            log_error!("(get_ranks_or_recalculate) {}", e);
-            vec![]
-          },
-        }
-      },
+    if self.cache_walk_get(context, ego_id) {
+      let graph = self.graph_from(context);
+      match graph.get_ranks(ego_id, None) {
+        Ok(scores) => {
+          for (dst_id, score) in &scores {
+            self.cache_score_add(context, ego_id, *dst_id, *score);
+          }
+          scores
+        },
+        Err(e) => {
+          log_error!("(fetch_all_scores) {}", e);
+          vec![]
+        },
+      }
+    } else {
+      match self.graph_from(context).calculate(ego_id, *NUM_WALK) {
+        Ok(()) => {
+          self.cache_walk_add(context, ego_id);
+        },
+        Err(e) => {
+          log_error!("(fetch_all_scores) {}", e);
+          return vec![];
+        },
+      }
+      match self.graph_from(context).get_ranks(ego_id, None) {
+        Ok(scores) => {
+          for (dst_id, score) in &scores {
+            self.cache_score_add(context, ego_id, *dst_id, *score);
+          }
+          scores
+        },
+        Err(e) => {
+          log_error!("(fetch_all_scores) {}", e);
+          vec![]
+        },
+      }
     }
   }
 
-  fn get_score_or_recalculate(&mut self, context: &str, src_id: NodeId, dst_id: NodeId) -> Weight {
-    log_trace!("get_score_or_recalculate");
+  fn fetch_score(&mut self, context: &str, ego_id: NodeId, dst_id: NodeId) -> Weight {
+    log_trace!("fetch_score");
 
-    let graph = self.graph_from(context);
+    if self.cache_walk_get(context, ego_id) {
+      let graph = self.graph_from(context);
+      match graph.get_node_score(ego_id, dst_id) {
+        Ok(score) => {
+          self.cache_score_add(context, ego_id, dst_id, score);
+          score
+        },
+        Err(e) => {
+          log_error!("(fetch_score) {}", e);
+          0.0
+        },
+      }
+    } else {
+      match self.graph_from(context).calculate(ego_id, *NUM_WALK) {
+        Ok(()) => {
+          self.cache_walk_add(context, ego_id);
+        },
+        Err(e) => {
+          log_error!("(fetch_score) {}", e);
+          return 0.0;
+        },
+      }
+      match self.graph_from(context).get_node_score(ego_id, dst_id) {
+        Ok(score) => {
+          self.cache_score_add(context, ego_id, dst_id, score);
+          score
+        },
+        Err(e) => {
+          log_error!("(fetch_score) {}", e);
+          0.0
+        },
+      }
+    }
+  }
 
-    match graph.get_node_score(src_id, dst_id) {
-      Ok(score) => score,
-      Err(MeritRankError::NodeDoesNotExist) => {
-        log_warning!("Node does not exist: {}, {}", src_id, dst_id);
-        0.0
-      },
-      _ => {
-        log_warning!("Recalculating node {}", src_id);
-        match graph.calculate(src_id, *NUM_WALK) {
-          Err(e) => {
-            log_error!("(get_score_or_recalculate) {}", e);
-            return 0.0;
-          },
-          _ => {},
-        };
-        match graph.get_node_score(src_id, dst_id) {
-          Ok(score) => score,
-          Err(e) => {
-            log_error!("(get_score_or_recalculate) {}", e);
-            0.0
-          },
+  fn fetch_score_reversed(&mut self, context: &str, dst_id: NodeId, ego_id: NodeId) -> Weight {
+    log_trace!("fetch_score_reversed");
+
+    match self.cache_score_get(context, ego_id, dst_id) {
+      Some(score) => score,
+      None => self.fetch_score(context, ego_id, dst_id),
+    }
+  }
+
+  fn fetch_user_score_reversed(&mut self, context: &str, dst_id: NodeId, ego_id: NodeId) -> Weight {
+    log_trace!("fetch_user_score_reversed");
+
+    if self.node_info_from_id(ego_id).kind == NodeKind::User {
+      return self.fetch_score_reversed(context, dst_id, ego_id);
+    }
+
+    match self.graph_from(context).graph.get_node_data(ego_id) {
+      Some(x) => {
+        if x.pos_edges.len() + x.neg_edges.len() == 0 {
+          log_error!("(fetch_user_score_reversed) Non-user node has no owner");
+          0.0
+        } else {
+          if x.pos_edges.len() + x.neg_edges.len() != 1 {
+            log_error!("(fetch_user_score_reversed) Non-user node has too many edges");
+          }
+
+          let parent_id =
+            if x.pos_edges.len() > 0 { x.pos_edges.keys()[0] } else { x.neg_edges.keys()[0] };
+
+          self.fetch_score_reversed(context, dst_id, parent_id)
         }
+      },
+
+      None => {
+        log_error!("(fetch_user_score_reversed) Node does not exist");
+        0.0
       },
     }
   }
@@ -569,8 +766,8 @@ impl AugMultiGraph {
 
     let ego_id = self.find_or_add_node_by_name(ego);
     let target_id = self.find_or_add_node_by_name(target);
-    let score_of_target_from_ego = self.get_score_or_recalculate(context, ego_id, target_id);
-    let score_of_ego_from_target = self.get_score_or_recalculate(context, target_id, ego_id);
+    let score_of_target_from_ego = self.fetch_score(context, ego_id, target_id);
+    let score_of_ego_from_target = self.fetch_user_score_reversed(context, ego_id, target_id);
 
     [(ego.to_string(), target.to_string(), score_of_target_from_ego, score_of_ego_from_target)]
       .to_vec()
@@ -626,7 +823,7 @@ impl AugMultiGraph {
 
     let ego_id = self.find_or_add_node_by_name(ego);
 
-    let ranks = self.get_ranks_or_recalculate(context, ego_id);
+    let ranks = self.fetch_all_scores(context, ego_id);
 
     let mut im: Vec<(NodeId, Weight)> = ranks
       .into_iter()
@@ -665,7 +862,7 @@ impl AugMultiGraph {
         ego.to_string(),
         self.node_info_from_id(im[i].0).name.clone(),
         im[i].1,
-        self.get_score_or_recalculate(context, im[i].0, ego_id),
+        self.fetch_user_score_reversed(context, ego_id, im[i].0),
       ));
     }
 
@@ -768,7 +965,7 @@ impl AugMultiGraph {
       let dst_kind = self.node_info_from_id(dst_id).kind;
 
       if dst_kind == NodeKind::User {
-        if positive_only && self.get_score_or_recalculate(context, ego_id, dst_id) <= 0.0 {
+        if positive_only && self.fetch_score(context, ego_id, dst_id) <= 0.0 {
           continue;
         }
 
@@ -1015,7 +1212,7 @@ impl AugMultiGraph {
           self.node_info_from_id(src_id).name.clone(),
           self.node_info_from_id(dst_id).name.clone(),
           weight,
-          self.get_score_or_recalculate(context, dst_id, src_id),
+          self.fetch_user_score_reversed(context, src_id, dst_id),
         )
       })
       .collect()
@@ -1217,7 +1414,7 @@ impl AugMultiGraph {
 
     let ego_id = self.find_or_add_node_by_name(ego);
     let ranks = self.fetch_all_scores(context, ego_id);
-    let mut v = Vec::<(String, String, Weight, Weight)>::new(); //Vec::<(String, String, Weight, Weight)>::new();
+    let mut v = Vec::<(String, String, Weight, Weight, Weight, Weight)>::new();
 
     v.reserve_exact(ranks.len());
 
@@ -1230,7 +1427,13 @@ impl AugMultiGraph {
       if score > 0.0 {
         // && info.kind == NodeKind::User
         let reversed_score = self.fetch_score_reversed(context, ego_id, node);
-        v.push((ego.to_string(), info.name.clone(), score, reversed_score));
+        v.push((
+          ego.to_string(),
+          info.name.clone(),
+          score,
+          reversed_score,
+          self.fetch_user_score_reversed(context, ego_id, node),
+        ));
         points.push((score as usize, reversed_score as usize));
       }
     }
@@ -1332,7 +1535,7 @@ impl AugMultiGraph {
         continue;
       }
 
-      let score = self.get_score_or_recalculate("", src_id, dst_id);
+      let score = self.fetch_score("", src_id, dst_id);
 
       if score < EPSILON {
         continue;
@@ -1377,7 +1580,7 @@ impl AugMultiGraph {
 
         //  FIXME Probably we should use NodeKind here.
         if self.node_infos[dst_id].name.starts_with(prefix) {
-          let score = self.get_score_or_recalculate("", src_id, dst_id);
+          let score = self.fetch_score("", src_id, dst_id);
 
           if !(score < EPSILON) {
             bloom_filter_add(&mut seen_nodes, &bits);
@@ -1449,7 +1652,7 @@ impl AugMultiGraph {
       .into_iter()
       .map(|id| -> Vec<(NodeId, NodeId, Weight)> {
         self
-          .get_ranks_or_recalculate("", id)
+          .fetch_all_scores("", id)
           .into_iter()
           .map(|(node_id, score)| (id, node_id, score))
           .filter(|(ego_id, node_id, score)| {
@@ -1556,6 +1759,5 @@ impl AugMultiGraph {
         self.set_edge("", zero, *node_id, *amount);
       }
     }
-    self.recalculate_all(*NUM_WALK); // FIXME Ad hok PERF hack
   }
 }
