@@ -1364,17 +1364,27 @@ impl AugMultiGraph {
     v
   }
 
-    pub fn distance(a: &(usize, usize), b: &(usize, usize)) -> f64 {
+    pub fn normalize_data(data: &Vec<(usize, f64)>) -> Vec<(usize, f64)> {
+        let min_score = data.iter().map(|&(_, score)| score).fold(f64::INFINITY, f64::min);
+        let max_score = data.iter().map(|&(_, score)| score).fold(f64::NEG_INFINITY, f64::max);
+        let range = max_score - min_score;
+
+        data.iter()
+            .map(|&(id, score)| (id, if range > 0.0 { (score - min_score) / range } else { 0.5 }))
+            .collect()
+    }
+
+    pub fn distance(a: &(usize, f64), b: &(usize, f64)) -> f64 {
         let dx = (a.0 as isize - b.0 as isize) as f64;
-        let dy = (a.1 as isize - b.1 as isize) as f64;
-        dx * dx + dy * dy
+        let dy = a.1 - b.1;
+        (dx * dx + dy * dy).sqrt() + 1e-9 // Adding a small epsilon for stability
     }
 
     pub fn kmeans(
-        data: &[(usize, usize)], // Points to cluster, e.g., (peer_id, score)
-        k: usize,                 // Number of clusters
-        max_iterations: usize,    // Maximum number of iterations
-        tolerance: f64,           // Convergence tolerance
+        data: &Vec<(usize, f64)>, // Normalized data points
+        k: usize, 
+        max_iterations: usize, 
+        tolerance: f64, 
     ) -> Vec<usize> {
         if data.is_empty() {
             log_error!("Data points are empty");
@@ -1396,7 +1406,7 @@ impl AugMultiGraph {
                 let (closest, _) = centroids
                     .iter()
                     .enumerate()
-                    .map(|(j, &centroid)| (j, Self::distance(&(point.0, point.1), &(centroid.0 as usize, centroid.1 as usize))))
+                    .map(|(j, &centroid)| (j, Self::distance(&(point.0, point.1), &(centroid.0 as usize, centroid.1))))
                     .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
                     .unwrap();
 
@@ -1411,7 +1421,7 @@ impl AugMultiGraph {
 
             for (i, &assignment) in assignments.iter().enumerate() {
                 new_centroids[assignment].0 += data[i].0 as f64;
-                new_centroids[assignment].1 += data[i].1 as f64;
+                new_centroids[assignment].1 += data[i].1;
                 counts[assignment] += 1;
             }
 
@@ -1423,7 +1433,7 @@ impl AugMultiGraph {
                     total_shift += (new_x - centroids[i].0).powi(2) + (new_y - centroids[i].1).powi(2);
                     centroids[i] = (new_x, new_y);
                 } else {
-                    *centroid = (data[rng.gen_range(0..data.len())].0 as f64, data[rng.gen_range(0..data.len())].1 as f64);
+                    *centroid = (data[rng.gen_range(0..data.len())].0 as f64, data[rng.gen_range(0..data.len())].1); // Controlled reinitialization
                 }
             }
 
@@ -1436,20 +1446,19 @@ impl AugMultiGraph {
     }
 
     fn kmeans_plus_plus_initialization(
-        data: &[(usize, usize)], k: usize, rng: &mut ThreadRng
+        data: &[(usize, f64)], k: usize, rng: &mut ThreadRng
     ) -> Vec<(f64, f64)> {
         let mut centroids = Vec::with_capacity(k);
         let mut distances: Vec<f64> = vec![f64::MAX; data.len()];
 
-        // Select the first centroid randomly
         centroids.push((
             data[rng.gen_range(0..data.len())].0 as f64,
-            data[rng.gen_range(0..data.len())].1 as f64,
+            data[rng.gen_range(0..data.len())].1,
         ));
 
         for _ in 1..k {
             for (i, &point) in data.iter().enumerate() {
-                let dist = Self::distance(&(point.0, point.1), &(centroids.last().unwrap().0 as usize, centroids.last().unwrap().1 as usize));
+                let dist = Self::distance(&(point.0, point.1), &(centroids.last().unwrap().0 as usize, centroids.last().unwrap().1));
                 distances[i] = distances[i].min(dist);
             }
 
@@ -1460,7 +1469,7 @@ impl AugMultiGraph {
             for (i, &d) in distances.iter().enumerate() {
                 cumulative_sum += d;
                 if cumulative_sum >= target {
-                    centroids.push((data[i].0 as f64, data[i].1 as f64));
+                    centroids.push((data[i].0 as f64, data[i].1));
                     break;
                 }
             }
@@ -1468,33 +1477,31 @@ impl AugMultiGraph {
         centroids
     }
 
-  pub fn read_mutual_scores(
+pub fn read_mutual_scores(
     &mut self,
     context: &str,
     ego: &str,
-  ) -> Vec<(String, String, Weight, Weight, usize)> {
-    // Adding cluster index
+) -> Vec<(String, String, Weight, usize)> {
     log_info!("CMD read_mutual_scores: `{}` `{}`", context, ego);
 
     if !self.contexts.contains_key(context) {
-      log_error!("(read_mutual_scores) Context does not exist: `{}`", context);
-      return vec![];
+        log_error!("(read_mutual_scores) Context does not exist: `{}`", context);
+        return vec![];
     }
 
     if !self.node_exists(ego) {
-      log_error!("(read_mutual_scores) Node does not exist: `{}`", ego);
-      return vec![];
+        log_error!("(read_mutual_scores) Node does not exist: `{}`", ego);
+        return vec![];
     }
 
     let ego_id = self.find_or_add_node_by_name(ego);
     let ranks = self.fetch_all_scores(context, ego_id);
-    let mut v = Vec::<(String, String, Weight, Weight)>::new(); //Vec::<(String, String, Weight, Weight)>::new();
+    let mut v = Vec::<(String, String, Weight)>::new();
 
     v.reserve_exact(ranks.len());
 
     // Collect (peer_id, score, reversed_score)
-    let mut points = Vec::<(usize, usize)>::new();
-    // let mut peers = Vec::<(String, String, Weight, Weight)>::new();
+    let mut points = Vec::<(usize, f64)>::new();
 
     for (node, score) in ranks {
       let info = self.node_info_from_id(node).clone();
@@ -1506,27 +1513,21 @@ impl AugMultiGraph {
       }
     }
 
-    let cluster_count = 1; // Set the number of clusters (K)
-    let max_iterations = 100;
-    let tolerance = 0.001;
-    let clusters = Self::kmeans(&points, cluster_count, max_iterations, tolerance);
+    // Normalize scores before clustering
+    let normalized_points = Self::normalize_data(&points);
 
-    println!(
-      "Your scores are: {:#?}",
-      v.clone()
-        .into_iter()
-        .zip(clusters.clone().into_iter())
-        .map(|((ego, name, score, reversed), cluster)| (ego, name, score, reversed, cluster))
-        .collect::<Vec<_>>()
-    );
+    // Perform k-means clustering on normalized points
+    let cluster_count = 3; // Define the number of clusters here
+    let max_iterations = 100;
+    let tolerance = 0.01;
+    let clusters = Self::kmeans(&normalized_points, cluster_count, max_iterations, tolerance);
 
     // Return the result with cluster index appended
-    v.clone()
-      .into_iter()
-      .zip(clusters.into_iter())
-      .map(|((ego, name, score, reversed), cluster)| (ego, name, score, reversed, cluster))
-      .collect::<Vec<_>>()
-  }
+    v.into_iter()
+        .zip(clusters.into_iter())
+        .map(|((ego, name, reversed), cluster)| (ego, name, reversed, cluster))
+        .collect::<Vec<_>>()
+}
 
   pub fn write_reset(&mut self) {
     log_info!("CMD write_reset");
