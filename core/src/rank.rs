@@ -53,18 +53,19 @@ impl MeritRank {
     }
 
     pub fn get_node_score(&self, ego: NodeId, target: NodeId) -> Result<Weight, MeritRankError> {
-        let counter = self.pos_hits.get(&ego)
+        let ego_positive_hits = self.pos_hits.get(&ego)
             .ok_or(MeritRankError::NodeIsNotCalculated)?;
 
-        let hits = counter.get_count(&target);
+        let target_hits = ego_positive_hits.get_count(&target);
 
         //if ASSERT && hits > 0.0 && !self.graph.is_connecting(ego, target) { return Err(MeritRankError::NoPathExists); }
 
         let default_counter = Counter::default();
 
         let ego_neg_hits = self.neg_hits.get(&ego).unwrap_or(&default_counter);
-        let hits_penalized: Weight = hits as Weight - ego_neg_hits.get_count(&target) as Weight;
-        Ok(hits_penalized / counter.total_count() as Weight)
+        let total_hits = ego_positive_hits.total_count() + ego_neg_hits.total_count();
+        let hits_penalized: Weight = target_hits as Weight - ego_neg_hits.get_count(&target) as Weight;
+        Ok(hits_penalized / total_hits as Weight)
     }
 
     pub fn get_ranks(&self, ego: NodeId, limit: Option<usize>) -> Result<Vec<(NodeId, Weight)>, MeritRankError> {
