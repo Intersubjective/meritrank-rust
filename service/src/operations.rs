@@ -1287,7 +1287,7 @@ impl AugMultiGraph {
         self.node_info_from_id(src_id).name.clone(),
         self.node_info_from_id(dst_id).name.clone(),
         weight,
-        self.fetch_user_score_reversed(context, src_id, dst_id)
+        self.fetch_user_score_reversed(context, ego_id, dst_id)
       )})
       .collect()
   }
