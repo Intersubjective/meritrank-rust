@@ -375,6 +375,7 @@ fn mr_mutual_scores(
     name!(dst,          String),
     name!(score_of_dst, f64),
     name!(score_of_src, f64),
+    name!(cluster, f64),
   )>,
   Box<dyn Error + 'static>,
 > {
@@ -392,7 +393,7 @@ fn mr_mutual_scores(
     payload  : args
   })?;
 
-  let response : Vec<(String, String, f64, f64)> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  let response : Vec<(String, String, f64, f64, f64)> = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
 

@@ -1391,59 +1391,63 @@ impl AugMultiGraph {
             return vec![];
         }
 
-        let mut rng = thread_rng();
-        let mut centroids: Vec<(f64, f64)> = Self::kmeans_plus_plus_initialization(data, k, &mut rng);
-        let mut assignments = vec![0; data.len()];
-        let mut changed = true;
+      let mut rng = thread_rng();
+      let mut centroids: Vec<(f64, f64)> = Self::kmeans_plus_plus_initialization(data, k, &mut rng);
+      let mut assignments = vec![0.0; data.len()];
+      let mut changed = true;
 
-        for _ in 0..max_iterations {
-            if !changed {
-                break;
-            }
-            changed = false;
+      for _ in 0..max_iterations {
+          if !changed {
+              break;
+          }
+          changed = false;
 
-            for (i, &point) in data.iter().enumerate() {
-                let (closest, _) = centroids
-                    .iter()
-                    .enumerate()
-                    .map(|(j, &centroid)| (j, Self::distance(&(point.0, point.1), &(centroid.0 as usize, centroid.1))))
-                    .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
-                    .unwrap();
+          for (i, &point) in data.iter().enumerate() {
+              let (closest, _) = centroids
+                  .iter()
+                  .enumerate()
+                  .map(|(j, &centroid)| (j as f64, Self::distance(&(point.0, point.1), &(centroid.0 as usize, centroid.1))))
+                  .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                  .unwrap();
 
-                if assignments[i] != closest {
-                    assignments[i] = closest;
-                    changed = true;
-                }
-            }
+              if assignments[i] != closest {
+                  assignments[i] = closest;
+                  changed = true;
+              }
+          }
 
-            let mut new_centroids = vec![(0.0, 0.0); k];
-            let mut counts = vec![0; k];
+          let mut new_centroids = vec![(0.0, 0.0); k];
+          let mut counts = vec![0; k];
 
-            for (i, &assignment) in assignments.iter().enumerate() {
-                new_centroids[assignment].0 += data[i].0 as f64;
-                new_centroids[assignment].1 += data[i].1;
-                counts[assignment] += 1;
-            }
+          for (i, &assignment) in assignments.iter().enumerate() {
+              let cluster_idx = assignment as usize;
+              new_centroids[cluster_idx].0 += data[i].0 as f64;
+              new_centroids[cluster_idx].1 += data[i].1;
+              counts[cluster_idx] += 1;
+          }
 
-            let mut total_shift = 0.0;
-            for (i, centroid) in new_centroids.iter_mut().enumerate() {
-                if counts[i] > 0 {
-                    let new_x = centroid.0 / counts[i] as f64;
-                    let new_y = centroid.1 / counts[i] as f64;
-                    total_shift += (new_x - centroids[i].0).powi(2) + (new_y - centroids[i].1).powi(2);
-                    centroids[i] = (new_x, new_y);
-                } else {
-                    *centroid = (data[rng.gen_range(0..data.len())].0 as f64, data[rng.gen_range(0..data.len())].1); // Controlled reinitialization
-                }
-            }
+          let mut total_shift = 0.0;
+          for (i, centroid) in new_centroids.iter_mut().enumerate() {
+              if counts[i] > 0 {
+                  let new_x = centroid.0 / counts[i] as f64;
+                  let new_y = centroid.1 / counts[i] as f64;
+                  total_shift += (new_x - centroids[i].0).powi(2) + (new_y - centroids[i].1).powi(2);
+                  centroids[i] = (new_x, new_y);
+              } else {
+                  *centroid = (
+                      data[rng.gen_range(0..data.len())].0 as f64,
+                      data[rng.gen_range(0..data.len())].1,
+                  );
+              }
+          }
 
-            if total_shift < tolerance {
-                break;
-            }
-        }
+          if total_shift < tolerance {
+              break;
+          }
+      }
 
-        assignments
-    }
+      assignments
+  }
 
     fn kmeans_plus_plus_initialization(
         data: &[(usize, f64)], k: usize, rng: &mut ThreadRng
@@ -1481,7 +1485,7 @@ pub fn read_mutual_scores(
     &mut self,
     context: &str,
     ego: &str,
-) -> Vec<(String, String, Weight, usize)> {
+) -> Vec<(String, String, Weight, Weight, f64)> {
     log_info!("CMD read_mutual_scores: `{}` `{}`", context, ego);
 
     if !self.contexts.contains_key(context) {
@@ -1496,7 +1500,7 @@ pub fn read_mutual_scores(
 
     let ego_id = self.find_or_add_node_by_name(ego);
     let ranks = self.fetch_all_scores(context, ego_id);
-    let mut v = Vec::<(String, String, Weight)>::new();
+    let mut v = Vec::<(String, String, Weight, Weight)>::new();
 
     v.reserve_exact(ranks.len());
 
@@ -1504,13 +1508,12 @@ pub fn read_mutual_scores(
     let mut points = Vec::<(usize, f64)>::new();
 
     for (node, score) in ranks {
-      let info = self.node_info_from_id(node).clone();
-      if score > 0.0 {
-        // && info.kind == NodeKind::User
-        let reversed_score = self.fetch_score_reversed(context, ego_id, node);
-        v.push((ego.to_string(), info.name.clone(), score, reversed_score));
-        points.push((score as usize, reversed_score as usize));
-      }
+        let info = self.node_info_from_id(node).clone();
+        if score > 0.0 && info.kind == NodeKind::User {
+            let reversed_score = self.fetch_score_reversed(context, ego_id, node);
+            v.push((ego.to_string(), info.name.clone(), score, reversed_score));
+            points.push((node, score));
+        }
     }
 
     // Normalize scores before clustering
@@ -1521,12 +1524,19 @@ pub fn read_mutual_scores(
     let max_iterations = 100;
     let tolerance = 0.01;
     let clusters = Self::kmeans(&normalized_points, cluster_count, max_iterations, tolerance);
+  
+  println!("Output of clusters function: {:#?}", clusters);
+  println!("Output of v: {:#?}",
+           v.clone().into_iter()
+           .zip(clusters.clone().into_iter())
+           .map(|((ego, name, score, reversed), cluster)| (ego, name, score, reversed, cluster as f64))
+           .collect::<Vec<_>>());
 
     // Return the result with cluster index appended
-    v.into_iter()
+    v.clone().into_iter()
         .zip(clusters.into_iter())
-        .map(|((ego, name, reversed), cluster)| (ego, name, reversed, cluster))
-        .collect::<Vec<_>>()
+        .map(|((ego, name, score, reversed), cluster)| (ego, name, score, reversed, cluster as f64))
+        .collect()
 }
 
   pub fn write_reset(&mut self) {
