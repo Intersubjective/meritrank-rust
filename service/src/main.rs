@@ -1,6 +1,7 @@
 pub mod log;
 pub mod protocol;
 pub mod astar;
+pub mod clustering;
 pub mod operations;
 pub mod service;
 

@@ -7,7 +7,6 @@ use std::{
 use petgraph::{visit::EdgeRef, graph::{DiGraph, NodeIndex}};
 use simple_pagerank::Pagerank;
 use meritrank_core::{MeritRank, Graph, NodeId, constants::EPSILON};
-use rand::{rngs::ThreadRng, thread_rng, Rng};
 
 use crate::log_error;
 use crate::log_warning;
@@ -16,6 +15,7 @@ use crate::log_verbose;
 use crate::log_trace;
 use crate::log::*;
 use crate::astar::*;
+use crate::clustering::*;
 
 pub use meritrank_core::Weight;
 
@@ -1364,180 +1364,64 @@ impl AugMultiGraph {
     v
   }
 
-    pub fn normalize_data(data: &Vec<(usize, f64)>) -> Vec<(usize, f64)> {
-        let min_score = data.iter().map(|&(_, score)| score).fold(f64::INFINITY, f64::min);
-        let max_score = data.iter().map(|&(_, score)| score).fold(f64::NEG_INFINITY, f64::max);
-        let range = max_score - min_score;
+  pub fn read_mutual_scores(
+      &mut self,
+      context: &str,
+      ego: &str,
+  ) -> Vec<(String, String, Weight, Weight, f64)> {
+      log_info!("CMD read_mutual_scores: `{}` `{}`", context, ego);
 
-        data.iter()
-            .map(|&(id, score)| (id, if range > 0.0 { (score - min_score) / range } else { 0.5 }))
-            .collect()
-    }
+      if !self.contexts.contains_key(context) {
+          log_error!("(read_mutual_scores) Context does not exist: `{}`", context);
+          return vec![];
+      }
 
-    pub fn distance(a: &(usize, f64), b: &(usize, f64)) -> f64 {
-        let dx = (a.0 as isize - b.0 as isize) as f64;
-        let dy = a.1 - b.1;
-        (dx * dx + dy * dy).sqrt() + 1e-9 // Adding a small epsilon for stability
-    }
+      if !self.node_exists(ego) {
+          log_error!("(read_mutual_scores) Node does not exist: `{}`", ego);
+          return vec![];
+      }
 
-    pub fn kmeans(
-        data: &Vec<(usize, f64)>, // Normalized data points
-        k: usize, 
-        max_iterations: usize, 
-        tolerance: f64, 
-    ) -> Vec<usize> {
-        if data.is_empty() {
-            log_error!("Data points are empty");
-            return vec![];
-        }
+      let ego_id = self.find_or_add_node_by_name(ego);
+      let ranks = self.fetch_all_scores(context, ego_id);
+      let mut v = Vec::<(String, String, Weight, Weight)>::new();
+      let mut points = Vec::<(usize, f64)>::new();
 
-      let mut rng = thread_rng();
-      let mut centroids: Vec<(f64, f64)> = Self::kmeans_plus_plus_initialization(data, k, &mut rng);
-      let mut assignments = vec![0.0; data.len()];
-      let mut changed = true;
-
-      for _ in 0..max_iterations {
-          if !changed {
-              break;
-          }
-          changed = false;
-
-          for (i, &point) in data.iter().enumerate() {
-              let (closest, _) = centroids
-                  .iter()
-                  .enumerate()
-                  .map(|(j, &centroid)| (j as f64, Self::distance(&(point.0, point.1), &(centroid.0 as usize, centroid.1))))
-                  .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
-                  .unwrap();
-
-              if assignments[i] != closest {
-                  assignments[i] = closest;
-                  changed = true;
-              }
-          }
-
-          let mut new_centroids = vec![(0.0, 0.0); k];
-          let mut counts = vec![0; k];
-
-          for (i, &assignment) in assignments.iter().enumerate() {
-              let cluster_idx = assignment as usize;
-              new_centroids[cluster_idx].0 += data[i].0 as f64;
-              new_centroids[cluster_idx].1 += data[i].1;
-              counts[cluster_idx] += 1;
-          }
-
-          let mut total_shift = 0.0;
-          for (i, centroid) in new_centroids.iter_mut().enumerate() {
-              if counts[i] > 0 {
-                  let new_x = centroid.0 / counts[i] as f64;
-                  let new_y = centroid.1 / counts[i] as f64;
-                  total_shift += (new_x - centroids[i].0).powi(2) + (new_y - centroids[i].1).powi(2);
-                  centroids[i] = (new_x, new_y);
-              } else {
-                  *centroid = (
-                      data[rng.gen_range(0..data.len())].0 as f64,
-                      data[rng.gen_range(0..data.len())].1,
-                  );
-              }
-          }
-
-          if total_shift < tolerance {
-              break;
+      for (node, score) in ranks {
+          let info = self.node_info_from_id(node).clone();
+          if score > 0.0 {
+              let reversed_score = self.fetch_score_reversed(context, ego_id, node);
+              v.push((ego.to_string(), info.name.clone(), score, reversed_score));
+              points.push((node, reversed_score));
           }
       }
 
-      assignments
-  }
-
-    fn kmeans_plus_plus_initialization(
-        data: &[(usize, f64)], k: usize, rng: &mut ThreadRng
-    ) -> Vec<(f64, f64)> {
-        let mut centroids = Vec::with_capacity(k);
-        let mut distances: Vec<f64> = vec![f64::MAX; data.len()];
-
-        centroids.push((
-            data[rng.gen_range(0..data.len())].0 as f64,
-            data[rng.gen_range(0..data.len())].1,
-        ));
-
-        for _ in 1..k {
-            for (i, &point) in data.iter().enumerate() {
-                let dist = Self::distance(&(point.0, point.1), &(centroids.last().unwrap().0 as usize, centroids.last().unwrap().1));
-                distances[i] = distances[i].min(dist);
-            }
-
-            let sum: f64 = distances.iter().sum();
-            let target = rng.gen_range(0.0..sum);
-            let mut cumulative_sum = 0.0;
-
-            for (i, &d) in distances.iter().enumerate() {
-                cumulative_sum += d;
-                if cumulative_sum >= target {
-                    centroids.push((data[i].0 as f64, data[i].1));
-                    break;
-                }
-            }
-        }
-        centroids
-    }
-
-pub fn read_mutual_scores(
-    &mut self,
-    context: &str,
-    ego: &str,
-) -> Vec<(String, String, Weight, Weight, f64)> {
-    log_info!("CMD read_mutual_scores: `{}` `{}`", context, ego);
-
-    if !self.contexts.contains_key(context) {
-        log_error!("(read_mutual_scores) Context does not exist: `{}`", context);
-        return vec![];
-    }
-
-    if !self.node_exists(ego) {
-        log_error!("(read_mutual_scores) Node does not exist: `{}`", ego);
-        return vec![];
-    }
-
-    let ego_id = self.find_or_add_node_by_name(ego);
-    let ranks = self.fetch_all_scores(context, ego_id);
-    let mut v = Vec::<(String, String, Weight, Weight)>::new();
-
-    v.reserve_exact(ranks.len());
-
-    // Collect (peer_id, score, reversed_score)
-    let mut points = Vec::<(usize, f64)>::new();
-
-    for (node, score) in ranks {
-        let info = self.node_info_from_id(node).clone();
-        if score > 0.0 && info.kind == NodeKind::User {
-            let reversed_score = self.fetch_score_reversed(context, ego_id, node);
-            v.push((ego.to_string(), info.name.clone(), score, reversed_score));
-            points.push((node, score));
-        }
-    }
-
-    // Normalize scores before clustering
-    let normalized_points = Self::normalize_data(&points);
-
-    // Perform k-means clustering on normalized points
-    let cluster_count = 3; // Define the number of clusters here
-    let max_iterations = 100;
+    let clusters_num: usize = 3;
+    let max_iterations: usize = 100;
     let tolerance = 0.01;
-    let clusters = Self::kmeans(&normalized_points, cluster_count, max_iterations, tolerance);
-  
-  println!("Output of clusters function: {:#?}", clusters);
-  println!("Output of v: {:#?}",
-           v.clone().into_iter()
-           .zip(clusters.clone().into_iter())
-           .map(|((ego, name, score, reversed), cluster)| (ego, name, score, reversed, cluster as f64))
-           .collect::<Vec<_>>());
+    let mut kmeans = KMeans::new(points, clusters_num, max_iterations, tolerance);
+    // let normalized_points = kmeans.normalize_data();
 
-    // Return the result with cluster index appended
-    v.clone().into_iter()
-        .zip(clusters.into_iter())
-        .map(|((ego, name, score, reversed), cluster)| (ego, name, score, reversed, cluster as f64))
-        .collect()
-}
+      // Perform k-means clustering on normalized points
+      let clusters = kmeans.run();
+
+      println!("Output of clusters function: {:#?}", clusters);
+      println!(
+          "Output of v: {:#?}",
+          v.clone()
+              .into_iter()
+              .zip(clusters.clone().into_iter())
+              .map(|((ego, name, score, reversed), cluster)| {
+                  (ego, name, score, reversed, cluster as f64)
+              })
+              .collect::<Vec<_>>()
+      );
+
+      // Return the result with cluster index appended
+      v.into_iter()
+          .zip(clusters.into_iter())
+          .map(|((ego, name, score, reversed), cluster)| (ego, name, score, reversed, cluster as f64))
+          .collect()
+  }
 
   pub fn write_reset(&mut self) {
     log_info!("CMD write_reset");
