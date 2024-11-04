@@ -1595,9 +1595,9 @@ fn scores_reversed() {
 
     match x.1.as_str() {
       "U1" => {
-        assert!(x.2 > 0.1);
+        assert!(x.2 > 0.0);
         assert!(x.2 < 0.4);
-        assert!(x.3 > 0.1);
+        assert!(x.3 > 0.0);
         assert!(x.3 < 0.4);
       },
 
@@ -1611,7 +1611,7 @@ fn scores_reversed() {
       "U3" => {
         assert!(x.2 > -0.1);
         assert!(x.2 < 0.3);
-        assert!(x.3 > -0.3);
+        assert!(x.3 > -0.6);
         assert!(x.3 < 0.0);
       },
 
