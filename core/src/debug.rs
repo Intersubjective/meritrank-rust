@@ -1,8 +1,11 @@
-use std::fmt;
 use crate::{RandomWalk, WalkStorage};
+use std::fmt;
 
 impl fmt::Debug for RandomWalk {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+  fn fmt(
+    &self,
+    f: &mut fmt::Formatter<'_>,
+  ) -> fmt::Result {
     // Implement the formatting logic for RandomWalk
     // Here you can format the RandomWalk fields as desired
     write!(f, "RandomWalk {{ nodes: {:?} }}", self.get_nodes())
@@ -10,7 +13,10 @@ impl fmt::Debug for RandomWalk {
 }
 
 impl fmt::Debug for WalkStorage {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+  fn fmt(
+    &self,
+    f: &mut fmt::Formatter<'_>,
+  ) -> fmt::Result {
     // Implement the formatting logic for WalkStorage
     // Here you can format the storage contents as desired
 
