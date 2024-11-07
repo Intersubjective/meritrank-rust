@@ -15,7 +15,7 @@ use crate::log_verbose;
 use crate::log_trace;
 use crate::log::*;
 use crate::astar::*;
-use crate::clustering::*;
+use crate::libs::clustering::KMeans;
 
 pub use meritrank_core::Weight;
 
@@ -1365,62 +1365,51 @@ impl AugMultiGraph {
   }
 
   pub fn read_mutual_scores(
-      &mut self,
-      context: &str,
-      ego: &str,
+    &mut self,
+    context: &str,
+    ego: &str,
   ) -> Vec<(String, String, Weight, Weight, f64)> {
-      log_info!("CMD read_mutual_scores: `{}` `{}`", context, ego);
+    log_info!("CMD read_mutual_scores: `{}` `{}`", context, ego);
 
-      if !self.contexts.contains_key(context) {
-          log_error!("(read_mutual_scores) Context does not exist: `{}`", context);
-          return vec![];
-      }
+    if !self.contexts.contains_key(context) {
+        log_error!("(read_mutual_scores) Context does not exist: `{}`", context);
+        return vec![];
+    }
 
-      if !self.node_exists(ego) {
-          log_error!("(read_mutual_scores) Node does not exist: `{}`", ego);
-          return vec![];
-      }
+    if !self.node_exists(ego) {
+        log_error!("(read_mutual_scores) Node does not exist: `{}`", ego);
+        return vec![];
+    }
 
-      let ego_id = self.find_or_add_node_by_name(ego);
-      let ranks = self.fetch_all_scores(context, ego_id);
-      let mut v = Vec::<(String, String, Weight, Weight)>::new();
-      let mut points = Vec::<(usize, f64)>::new();
+    let ego_id: usize = self.find_or_add_node_by_name(ego);
+    let ranks: Vec<(usize, f64)> = self.fetch_all_scores(context, ego_id);
+    let mut v = Vec::<(String, String, Weight, Weight)>::new();
+    let mut points = Vec::<f64>::new();
 
-      for (node, score) in ranks {
-          let info = self.node_info_from_id(node).clone();
-          if score > 0.0 {
-              let reversed_score = self.fetch_score_reversed(context, ego_id, node);
-              v.push((ego.to_string(), info.name.clone(), score, reversed_score));
-              points.push((node, reversed_score));
-          }
-      }
+    for (node, score) in ranks {
+        let info = self.node_info_from_id(node).clone();
+        if score > 0.0 && info.kind == NodeKind::User {
+            let reversed_score = self.fetch_score_reversed(context, ego_id, node);
+            v.push((ego.to_string(), info.name.clone(), score, reversed_score));
+            points.push(reversed_score);
+        }
+    }
 
-    let clusters_num: usize = 3;
+    if points.len() == 1 {
+      log_error!("(read_mutual_scores) Not enough points: `{}`", ego);
+      return vec![]
+    }
+
+    let clusters_num: usize = 2;
     let max_iterations: usize = 100;
     let tolerance = 0.01;
-    let mut kmeans = KMeans::new(points, clusters_num, max_iterations, tolerance);
-    // let normalized_points = kmeans.normalize_data();
+    let mut kmeans = KMeans::new(points.clone(), clusters_num, max_iterations, tolerance);
+    let clusters = kmeans.run();
 
-      // Perform k-means clustering on normalized points
-      let clusters = kmeans.run();
-
-      println!("Output of clusters function: {:#?}", clusters);
-      println!(
-          "Output of v: {:#?}",
-          v.clone()
-              .into_iter()
-              .zip(clusters.clone().into_iter())
-              .map(|((ego, name, score, reversed), cluster)| {
-                  (ego, name, score, reversed, cluster as f64)
-              })
-              .collect::<Vec<_>>()
-      );
-
-      // Return the result with cluster index appended
-      v.into_iter()
-          .zip(clusters.into_iter())
-          .map(|((ego, name, score, reversed), cluster)| (ego, name, score, reversed, cluster as f64))
-          .collect()
+    v.into_iter()
+        .zip(clusters.into_iter())
+        .map(|((ego, name, score, reversed), cluster)| (ego, name, score, reversed, cluster as f64))
+        .collect()
   }
 
   pub fn write_reset(&mut self) {
