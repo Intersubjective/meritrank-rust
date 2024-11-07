@@ -31,35 +31,6 @@ const VERSION: &str = match option_env!("CARGO_PKG_VERSION") {
 
 //  ================================================================
 //
-//    SQL
-//
-//  ================================================================
-
-extension_sql!(
-  r#"
--- deprecated
-DROP FUNCTION IF EXISTS mr_for_beacons_global;
-DROP FUNCTION IF EXISTS mr_score_linear_sum;
-DROP FUNCTION IF EXISTS mr_nodes;
-DROP FUNCTION IF EXISTS mr_users_stats;
-DROP FUNCTION IF EXISTS mr_node_score_linear_sum;
-DROP FUNCTION IF EXISTS mr_node_score_superposition;
-DROP FUNCTION IF EXISTS mr_scores_linear_sum;
-DROP FUNCTION IF EXISTS mr_scores_superposition;
-DROP FUNCTION IF EXISTS mr_mark_beacons;
-DROP FUNCTION IF EXISTS mr_unmarked_beacons;
-DROP VIEW     IF EXISTS mr_t_node;
-DROP VIEW     IF EXISTS mr_t_stats;
-DROP VIEW     IF EXISTS mr_t_edge;
-DROP VIEW     IF EXISTS mr_t_link;
-DROP VIEW     IF EXISTS mr_t_mutual_score;
-"#,
-  name = "bootstrap_raw",
-  bootstrap,
-);
-
-//  ================================================================
-//
 //    Utils
 //
 //  ================================================================
