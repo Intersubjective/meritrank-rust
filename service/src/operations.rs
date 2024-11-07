@@ -1396,8 +1396,8 @@ impl AugMultiGraph {
     }
 
     if points.len() == 1 {
-      log_error!("(read_mutual_scores) Not enough points: `{}`", ego);
-      return vec![]
+      log_info!("(read_mutual_scores) Only one point, treating as self-cluster.");
+      return vec![(ego.to_string(), ego.to_string(), 1.0, 1.0, 0.0)];
     }
 
     let clusters_num: usize = 2;
