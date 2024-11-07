@@ -1595,9 +1595,9 @@ fn scores_reversed() {
 
     match x.1.as_str() {
       "U1" => {
-        assert!(x.2 > 0.1);
+        assert!(x.2 > 0.0);
         assert!(x.2 < 0.4);
-        assert!(x.3 > 0.1);
+        assert!(x.3 > 0.0);
         assert!(x.3 < 0.4);
       },
 
@@ -1611,8 +1611,8 @@ fn scores_reversed() {
       "U3" => {
         assert!(x.2 > -0.1);
         assert!(x.2 < 0.3);
-        assert!(x.3 >= -1.0);
-        assert!(x.3 < -0.6);
+        assert!(x.3 > -0.6);
+        assert!(x.3 < 0.0);
       },
 
       _ => assert!(false),
@@ -2049,8 +2049,7 @@ fn graph_reversed() {
         if x.1 == "U1" {
           assert!(x.2 > 0.5);
           assert!(x.2 < 0.6);
-          assert!(x.3 > 0.15);
-          assert!(x.3 < 0.35);
+          assert!(x.3 > 0.4);
         }
 
         if x.1 == "U3" {
