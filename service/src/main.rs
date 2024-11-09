@@ -1,8 +1,8 @@
-pub mod log;
-pub mod protocol;
 pub mod astar;
 pub mod libs;
+pub mod log;
 pub mod operations;
+pub mod protocol;
 pub mod service;
 
 #[cfg(test)]
@@ -18,4 +18,4 @@ fn main() -> Result<(), ()> {
   });
 
   main_async(*THREADS)
-} 
+}
