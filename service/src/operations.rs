@@ -756,7 +756,7 @@ impl AugMultiGraph {
     log_trace!("fetch_score_reversed");
 
     match self.cache_score_get(context, ego_id, dst_id) {
-      Some(score) => score,
+      Some(score) => self.with_zero_opinion(context, dst_id, score),
       None => self.fetch_score(context, ego_id, dst_id),
     }
   }

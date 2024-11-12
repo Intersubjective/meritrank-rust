@@ -926,14 +926,14 @@ fn recalculate_zero_graph_all() {
   graph.write_recalculate_zero();
 
   let res: Vec<_> =
-    graph.read_graph("", "Uadeb43da4abb", "U000000000000", false, 0, 10000);
+    graph.read_graph("", "Uadeb43da4abb", "B7f628ad203b5", false, 0, 10000);
 
   let n = res.len();
 
   println!("Got {} edges", n);
 
-  assert!(n > 25);
-  assert!(n < 120);
+  assert!(n > 1);
+  assert!(n < 5);
 }
 
 #[test]
@@ -982,13 +982,13 @@ fn recalculate_zero_graph_positive_only() {
   graph.write_recalculate_zero();
 
   let res: Vec<_> =
-    graph.read_graph("", "Uadeb43da4abb", "U000000000000", true, 0, 10000);
+    graph.read_graph("", "Uadeb43da4abb", "B7f628ad203b5", true, 0, 10000);
 
   let n = res.len();
 
   println!("Got {} edges", n);
-  assert!(n > 25);
-  assert!(n < 120);
+  assert!(n > 1);
+  assert!(n < 5);
 }
 
 #[test]
@@ -1553,8 +1553,8 @@ fn node_score_uncontexted() {
   assert_eq!(res.len(), 1);
   assert_eq!(res[0].0, "U1");
   assert_eq!(res[0].1, "U2");
-  assert!(res[0].2 > 0.3);
-  assert!(res[0].2 < 0.45);
+  assert!(res[0].2 > 0.25);
+  assert!(res[0].2 < 0.4);
 }
 
 #[test]
@@ -1571,10 +1571,10 @@ fn node_score_reversed() {
   assert_eq!(res.len(), 1);
   assert_eq!(res[0].0, "U1");
   assert_eq!(res[0].1, "U2");
-  assert!(res[0].2 > 0.3);
-  assert!(res[0].2 < 0.45);
-  assert!(res[0].3 > 0.3);
-  assert!(res[0].3 < 0.45);
+  assert!(res[0].2 > 0.2);
+  assert!(res[0].2 < 0.4);
+  assert!(res[0].3 > 0.2);
+  assert!(res[0].3 < 0.4);
 }
 
 #[test]
@@ -1618,28 +1618,28 @@ fn mutual_scores_uncontexted() {
 
     match x.1.as_str() {
       "U1" => {
-        assert!(x.2 > 0.3);
-        assert!(x.2 < 0.5);
-        assert!(x.3 > 0.3);
-        assert!(x.3 < 0.5);
+        assert!(x.2 > 0.2);
+        assert!(x.2 < 0.4);
+        assert!(x.3 > 0.25);
+        assert!(x.3 < 0.4);
         assert!(u1);
         u1 = false;
       },
 
       "U2" => {
-        assert!(x.2 > 0.25);
-        assert!(x.2 < 0.4);
-        assert!(x.3 > 0.2);
-        assert!(x.3 < 0.35);
+        assert!(x.2 > 0.15);
+        assert!(x.2 < 0.3);
+        assert!(x.3 > 0.15);
+        assert!(x.3 < 0.3);
         assert!(u2);
         u2 = false;
       },
 
       "U3" => {
-        assert!(x.2 > 0.2);
-        assert!(x.2 < 0.35);
-        assert!(x.3 > 0.25);
-        assert!(x.3 < 0.35);
+        assert!(x.2 > 0.15);
+        assert!(x.2 < 0.3);
+        assert!(x.3 > 0.15);
+        assert!(x.3 < 0.3);
         assert!(u3);
         u3 = false;
       },
@@ -1663,10 +1663,10 @@ fn mutual_scores_self() {
   assert_eq!(res.len(), 1);
   assert_eq!(res[0].0, "U1");
   assert_eq!(res[0].1, "U1");
-  assert!(res[0].2 > 0.999);
-  assert!(res[0].2 < 1.001);
-  assert!(res[0].3 > 0.999);
-  assert!(res[0].3 < 1.001);
+  assert!(res[0].2 > 0.79);
+  assert!(res[0].2 < 0.81);
+  assert!(res[0].3 > 0.79);
+  assert!(res[0].3 < 0.81);
 }
 
 #[test]
@@ -1784,7 +1784,7 @@ fn graph_reversed() {
         assert_eq!(x.1, "U2");
         assert!(x.2 > 0.6);
         assert!(x.2 < 0.7);
-        assert!(x.3 > 0.15);
+        assert!(x.3 > 0.05);
         assert!(x.3 < 0.3);
       },
 
@@ -1792,7 +1792,8 @@ fn graph_reversed() {
         if x.1 == "U1" {
           assert!(x.2 > 0.5);
           assert!(x.2 < 0.6);
-          assert!(x.3 > 0.4);
+          assert!(x.3 > 0.2);
+          assert!(x.3 < 0.5);
         }
 
         if x.1 == "U3" {
