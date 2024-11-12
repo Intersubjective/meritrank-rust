@@ -621,14 +621,15 @@ impl AugMultiGraph {
     &mut self,
     context: &str,
     dst_id: NodeId,
-    score: Weight
+    score: Weight,
   ) -> Weight {
-    if context.is_empty() && self.node_info_from_id(dst_id).kind == NodeKind::User {
-      let zero_score =
-        match self.zero_opinion.get(dst_id) {
-          Some(x) => *x,
-          None    => 0.0,
-        };
+    if context.is_empty()
+      && self.node_info_from_id(dst_id).kind == NodeKind::User
+    {
+      let zero_score = match self.zero_opinion.get(dst_id) {
+        Some(x) => *x,
+        None => 0.0,
+      };
       let k = 0.01 * (*ZERO_OPINION_FACTOR as f64);
       score * (1.0 - k) + k * zero_score
     } else {
@@ -639,16 +640,15 @@ impl AugMultiGraph {
   fn with_zero_opinions(
     &mut self,
     context: &str,
-    mut scores: Vec<(NodeId, Weight)>
+    mut scores: Vec<(NodeId, Weight)>,
   ) -> Vec<(NodeId, Weight)> {
     if context.is_empty() {
       for i in 0..scores.len() {
         if self.node_info_from_id(scores[i].0).kind == NodeKind::User {
-          let zero_score =
-            match self.zero_opinion.get(scores[i].0) {
-              Some(x) => *x,
-              None    => 0.0,
-            };
+          let zero_score = match self.zero_opinion.get(scores[i].0) {
+            Some(x) => *x,
+            None => 0.0,
+          };
           let k = 0.01 * (*ZERO_OPINION_FACTOR as f64);
           scores[i].1 = scores[i].1 * (1.0 - k) + k * zero_score
         }
@@ -1826,11 +1826,11 @@ impl AugMultiGraph {
         let dst_kind = self.node_info_from_id(dst_id).kind;
         (ego_id, ego_kind, dst_id, dst_kind, weight)
       })
-      .filter(|(ego_id, ego_kind, dst_id, dst_kind, _)|
+      .filter(|(ego_id, ego_kind, dst_id, dst_kind, _)| {
         ego_id != dst_id
           && *ego_kind == NodeKind::User
           && (*dst_kind == NodeKind::User || *dst_kind == NodeKind::Beacon)
-      )
+      })
       .map(|(ego_id, _, dst_id, _, weight)| (ego_id, dst_id, weight))
       .collect();
 
@@ -1851,9 +1851,7 @@ impl AugMultiGraph {
 
     reduced
       .iter()
-      .filter(|(_src, _dst, weight)|
-        !(*weight > -EPSILON && *weight < EPSILON)
-      )
+      .filter(|(_src, _dst, weight)| !(*weight > -EPSILON && *weight < EPSILON))
       .for_each(|(src, dst, _weight)| {
         pr.add_edge(*src, *dst);
       });
