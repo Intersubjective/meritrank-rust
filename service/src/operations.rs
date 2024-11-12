@@ -30,9 +30,11 @@ pub const VERSION: &str = match option_env!("CARGO_PKG_VERSION") {
 };
 
 lazy_static::lazy_static! {
-  pub static ref ZERO_NODE : String =
-    var("MERITRANK_ZERO_NODE")
-      .unwrap_or("U000000000000".to_string());
+  pub static ref ZERO_OPINION_FACTOR : usize =
+    var("MERITRANK_ZERO_OPINION_FACTOR")
+      .ok()
+      .and_then(|s| s.parse::<usize>().ok())
+      .unwrap_or(20);
 
   pub static ref NUM_WALK : usize =
     var("MERITRANK_NUM_WALK")
@@ -128,6 +130,7 @@ pub struct AugMultiGraph {
   pub contexts:      HashMap<String, MeritRank>,
   pub cached_scores: Vec<CachedScore>,
   pub cached_walks:  Vec<CachedWalk>,
+  pub zero_opinion:  Vec<Weight>,
 }
 
 //  ================================================================
@@ -375,6 +378,7 @@ impl AugMultiGraph {
       contexts:      HashMap::new(),
       cached_scores: vec![],
       cached_walks:  vec![],
+      zero_opinion:  vec![],
     }
   }
 
@@ -388,6 +392,7 @@ impl AugMultiGraph {
     self.contexts = other.contexts.clone();
     self.cached_scores = other.cached_scores.clone();
     self.cached_walks = other.cached_walks.clone();
+    self.zero_opinion = other.zero_opinion.clone();
   }
 
   pub fn reset(&mut self) {
@@ -399,6 +404,7 @@ impl AugMultiGraph {
     self.contexts = HashMap::new();
     self.cached_scores = vec![];
     self.cached_walks = vec![];
+    self.zero_opinion = vec![];
   }
 
   pub fn node_exists(
@@ -611,6 +617,47 @@ impl AugMultiGraph {
     v
   }
 
+  fn with_zero_opinion(
+    &mut self,
+    context: &str,
+    dst_id: NodeId,
+    score: Weight,
+  ) -> Weight {
+    if context.is_empty()
+      && self.node_info_from_id(dst_id).kind == NodeKind::User
+    {
+      let zero_score = match self.zero_opinion.get(dst_id) {
+        Some(x) => *x,
+        None => 0.0,
+      };
+      let k = 0.01 * (*ZERO_OPINION_FACTOR as f64);
+      score * (1.0 - k) + k * zero_score
+    } else {
+      score
+    }
+  }
+
+  fn with_zero_opinions(
+    &mut self,
+    context: &str,
+    mut scores: Vec<(NodeId, Weight)>,
+  ) -> Vec<(NodeId, Weight)> {
+    if context.is_empty() {
+      for i in 0..scores.len() {
+        if self.node_info_from_id(scores[i].0).kind == NodeKind::User {
+          let zero_score = match self.zero_opinion.get(scores[i].0) {
+            Some(x) => *x,
+            None => 0.0,
+          };
+          let k = 0.01 * (*ZERO_OPINION_FACTOR as f64);
+          scores[i].1 = scores[i].1 * (1.0 - k) + k * zero_score
+        }
+      }
+    }
+
+    scores
+  }
+
   fn fetch_all_scores(
     &mut self,
     context: &str,
@@ -625,7 +672,7 @@ impl AugMultiGraph {
           for (dst_id, score) in &scores {
             self.cache_score_add(context, ego_id, *dst_id, *score);
           }
-          scores
+          self.with_zero_opinions(context, scores)
         },
         Err(e) => {
           log_error!("(fetch_all_scores) {}", e);
@@ -647,7 +694,7 @@ impl AugMultiGraph {
           for (dst_id, score) in &scores {
             self.cache_score_add(context, ego_id, *dst_id, *score);
           }
-          scores
+          self.with_zero_opinions(context, scores)
         },
         Err(e) => {
           log_error!("(fetch_all_scores) {}", e);
@@ -670,7 +717,7 @@ impl AugMultiGraph {
       match graph.get_node_score(ego_id, dst_id) {
         Ok(score) => {
           self.cache_score_add(context, ego_id, dst_id, score);
-          score
+          self.with_zero_opinion(context, dst_id, score)
         },
         Err(e) => {
           log_error!("(fetch_score) {}", e);
@@ -690,7 +737,7 @@ impl AugMultiGraph {
       match self.graph_from(context).get_node_score(ego_id, dst_id) {
         Ok(score) => {
           self.cache_score_add(context, ego_id, dst_id, score);
-          score
+          self.with_zero_opinion(context, dst_id, score)
         },
         Err(e) => {
           log_error!("(fetch_score) {}", e);
@@ -709,7 +756,7 @@ impl AugMultiGraph {
     log_trace!("fetch_score_reversed");
 
     match self.cache_score_get(context, ego_id, dst_id) {
-      Some(score) => score,
+      Some(score) => self.with_zero_opinion(context, dst_id, score),
       None => self.fetch_score(context, ego_id, dst_id),
     }
   }
@@ -1726,7 +1773,7 @@ impl AugMultiGraph {
 
 //  ================================================
 //
-//    Zero node recalculation
+//    Zero opinion recalculation
 //
 //  ================================================
 
@@ -1734,14 +1781,12 @@ impl AugMultiGraph {
   fn reduced_graph(&mut self) -> Vec<(NodeId, NodeId, Weight)> {
     log_trace!("reduced_graph");
 
-    let zero = self.find_or_add_node_by_name(ZERO_NODE.as_str());
-
     let users: Vec<NodeId> = self
       .node_infos
       .iter()
       .enumerate()
-      .filter(|(id, info)| *id != zero && info.kind == NodeKind::User)
-      .map(|(id, _)| id)
+      .filter(|(_id, info)| info.kind == NodeKind::User)
+      .map(|(id, _info)| id)
       .collect();
 
     if users.is_empty() {
@@ -1766,7 +1811,7 @@ impl AugMultiGraph {
             let kind = self.node_info_from_id(*node_id).kind;
 
             (kind == NodeKind::User || kind == NodeKind::Beacon)
-              && *score > 0.0
+              && *score > EPSILON
               && ego_id != node_id
           })
           .collect()
@@ -1782,28 +1827,14 @@ impl AugMultiGraph {
         (ego_id, ego_kind, dst_id, dst_kind, weight)
       })
       .filter(|(ego_id, ego_kind, dst_id, dst_kind, _)| {
-        if *ego_id == zero || *dst_id == zero {
-          false
-        } else {
-          ego_id != dst_id
-            && *ego_kind == NodeKind::User
-            && (*dst_kind == NodeKind::User || *dst_kind == NodeKind::Beacon)
-        }
+        ego_id != dst_id
+          && *ego_kind == NodeKind::User
+          && (*dst_kind == NodeKind::User || *dst_kind == NodeKind::Beacon)
       })
       .map(|(ego_id, _, dst_id, _, weight)| (ego_id, dst_id, weight))
       .collect();
 
     result
-  }
-
-  fn delete_from_zero(&mut self) {
-    log_trace!("delete_from_zero");
-
-    let src_id = self.find_or_add_node_by_name(ZERO_NODE.as_str());
-
-    for (dst_id, _) in self.all_neighbors("", src_id) {
-      self.set_edge("", src_id, dst_id, 0.0);
-    }
   }
 
   fn top_nodes(&mut self) -> Vec<(NodeId, f64)> {
@@ -1817,17 +1848,12 @@ impl AugMultiGraph {
     }
 
     let mut pr = Pagerank::<NodeId>::new();
-    let zero = self.find_or_add_node_by_name(ZERO_NODE.as_str());
 
     reduced
       .iter()
-      .filter(|(source, target, weight)| {
-        *source != zero
-          && *target != zero
-          && !(*weight > -EPSILON && *weight < EPSILON)
-      })
-      .for_each(|(source, target, _weight)| {
-        pr.add_edge(*source, *target);
+      .filter(|(_src, _dst, weight)| !(*weight > -EPSILON && *weight < EPSILON))
+      .for_each(|(src, dst, _weight)| {
+        pr.add_edge(*src, *dst);
       });
 
     log_verbose!("Calculate page rank");
@@ -1852,21 +1878,18 @@ impl AugMultiGraph {
   pub fn write_recalculate_zero(&mut self) {
     log_info!("CMD write_recalculate_zero");
 
-    self.recalculate_all(0); // FIXME Ad hok PERF hack
-    self.delete_from_zero();
-
+    self.recalculate_all(0);
     let nodes = self.top_nodes();
+    self.recalculate_all(0);
 
-    self.recalculate_all(0); // FIXME Ad hok PERF hack
-    {
-      let zero = self.find_or_add_node_by_name(ZERO_NODE.as_str());
+    self.zero_opinion.resize(0, 0.0);
+    self.zero_opinion.reserve(nodes.len());
 
-      for (k, (node_id, amount)) in nodes.iter().enumerate() {
-        if (k % 100) == 90 {
-          log_trace!("{}%", (k * 100) / nodes.len());
-        }
-        self.set_edge("", zero, *node_id, *amount);
+    for (node_id, amount) in nodes.iter() {
+      if *node_id > self.zero_opinion.len() {
+        self.zero_opinion.resize(*node_id + 1, 0.0);
       }
+      self.zero_opinion[*node_id] = *amount;
     }
   }
 }
