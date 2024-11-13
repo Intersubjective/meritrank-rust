@@ -110,8 +110,10 @@ fn mr_node_score(
     (
       name!(src, String),
       name!(dst, String),
-      name!(score_of_dst, f64),
-      name!(score_of_src, f64),
+      name!(score_value_of_dst, f64),
+      name!(score_value_of_src, f64),
+      name!(score_cluster_of_dst, f64),
+      name!(score_cluster_of_src, f64),
     ),
   >,
   Box<dyn Error + 'static>,
@@ -129,7 +131,7 @@ fn mr_node_score(
     payload:  args,
   })?;
 
-  let response: Vec<(String, String, f64, f64)> =
+  let response: Vec<(String, String, f64, f64, f64, f64)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
@@ -199,8 +201,10 @@ fn mr_scores(
     (
       name!(src, String),
       name!(dst, String),
-      name!(score_of_dst, f64),
-      name!(score_of_src, f64),
+      name!(score_value_of_dst, f64),
+      name!(score_value_of_src, f64),
+      name!(score_cluster_of_dst, f64),
+      name!(score_cluster_of_src, f64),
     ),
   >,
   Box<dyn Error + 'static>,
@@ -218,7 +222,7 @@ fn mr_scores(
     count,
   )?;
 
-  let response: Vec<(String, String, f64, f64)> =
+  let response: Vec<(String, String, f64, f64, f64, f64)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
@@ -237,8 +241,10 @@ fn mr_graph(
     (
       name!(src, String),
       name!(dst, String),
-      name!(score_of_dst, f64),
-      name!(score_of_src, f64),
+      name!(score_value_of_dst, f64),
+      name!(score_value_of_src, f64),
+      name!(score_cluster_of_dst, f64),
+      name!(score_cluster_of_src, f64),
     ),
   >,
   Box<dyn Error + 'static>,
@@ -259,7 +265,7 @@ fn mr_graph(
     payload:  args,
   })?;
 
-  let response: Vec<(String, String, f64, f64)> =
+  let response: Vec<(String, String, f64, f64, f64, f64)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
@@ -343,8 +349,10 @@ fn mr_mutual_scores(
     (
       name!(src, String),
       name!(dst, String),
-      name!(score_of_dst, f64),
-      name!(score_of_src, f64),
+      name!(score_value_of_dst, f64),
+      name!(score_value_of_src, f64),
+      name!(score_cluster_of_dst, f64),
+      name!(score_cluster_of_src, f64),
     ),
   >,
   Box<dyn Error + 'static>,
@@ -361,7 +369,7 @@ fn mr_mutual_scores(
     payload:  args,
   })?;
 
-  let response: Vec<(String, String, f64, f64)> =
+  let response: Vec<(String, String, f64, f64, f64, f64)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
@@ -552,7 +560,14 @@ fn mr_fetch_new_edges(
 ) -> Result<
   TableIterator<
     'static,
-    (name!(src, String), name!(dst, String), name!(score, f64)),
+    (
+      name!(src, String),
+      name!(dst, String),
+      name!(score_value_of_dst, f64),
+      name!(score_value_of_src, f64),
+      name!(score_cluster_of_dst, f64),
+      name!(score_cluster_of_src, f64),
+    ),
   >,
   Box<dyn Error + 'static>,
 > {
@@ -568,11 +583,28 @@ fn mr_fetch_new_edges(
     payload:  args,
   })?;
 
-  let response: Vec<(String, f64)> =
+  let response: Vec<(String, f64, f64, f64, f64)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  let edges: Vec<(String, String, f64)> = response
+  let edges: Vec<(String, String, f64, f64, f64, f64)> = response
     .iter()
-    .map(|(dst, score)| (src.to_string(), dst.clone(), *score))
+    .map(
+      |(
+        dst,
+        score_value_of_dst,
+        score_value_of_src,
+        score_cluster_of_dst,
+        score_cluster_of_src,
+      )| {
+        (
+          src.to_string(),
+          dst.clone(),
+          *score_value_of_dst,
+          *score_value_of_src,
+          *score_cluster_of_dst,
+          *score_cluster_of_src,
+        )
+      },
+    )
     .collect();
   Ok(TableIterator::new(edges))
 }
@@ -912,7 +944,7 @@ mod tests {
 
     let n = res
       .map(|x| {
-        let (ego, dst, score_dst, score_ego) = x;
+        let (ego, dst, score_dst, score_ego, _, _) = x;
         assert_eq!(ego, "U1");
         assert_eq!(dst, "U2");
         assert!(score_dst > 0.3);

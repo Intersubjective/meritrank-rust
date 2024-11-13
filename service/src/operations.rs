@@ -78,6 +78,12 @@ lazy_static::lazy_static! {
       .ok()
       .and_then(|s| s.parse::<usize>().ok())
       .unwrap_or(1024);
+
+  pub static ref NUM_SCORE_CLUSTERS : usize =
+    var("MERITRANK_NUM_SCORE_CLUSTERS")
+      .ok()
+      .and_then(|s| s.parse::<usize>().ok())
+      .unwrap_or(5);
 }
 
 //  ================================================================
@@ -938,36 +944,42 @@ impl AugMultiGraph {
     &mut self,
     context: &str,
     ego: &str,
-    target: &str,
-  ) -> Vec<(String, String, f64, f64)> {
-    log_info!("CMD read_node_score: `{}` `{}` `{}`", context, ego, target);
+    dst: &str,
+  ) -> Vec<(String, String, Weight, Weight, Weight, Weight)> {
+    log_info!("CMD read_node_score: `{}` `{}` `{}`", context, ego, dst);
 
     if !self.contexts.contains_key(context) {
       log_error!("(read_node_score) Context does not exist: `{}`", context);
-      return [(ego.to_string(), target.to_string(), 0.0, 0.0)].to_vec();
+      return [(ego.to_string(), dst.to_string(), 0.0, 0.0, 0.0, 0.0)].to_vec();
     }
 
     if !self.node_exists(ego) {
       log_error!("(read_node_score) Node does not exist: `{}`", ego);
-      return [(ego.to_string(), target.to_string(), 0.0, 0.0)].to_vec();
+      return [(ego.to_string(), dst.to_string(), 0.0, 0.0, 0.0, 0.0)].to_vec();
     }
 
-    if !self.node_exists(target) {
-      log_error!("(read_node_score) Node does not exist: `{}`", target);
-      return [(ego.to_string(), target.to_string(), 0.0, 0.0)].to_vec();
+    if !self.node_exists(dst) {
+      log_error!("(read_node_score) Node does not exist: `{}`", dst);
+      return [(ego.to_string(), dst.to_string(), 0.0, 0.0, 0.0, 0.0)].to_vec();
     }
 
     let ego_id = self.find_or_add_node_by_name(ego);
-    let target_id = self.find_or_add_node_by_name(target);
-    let score_of_target_from_ego = self.fetch_score(context, ego_id, target_id);
-    let score_of_ego_from_target =
-      self.fetch_user_score_reversed(context, ego_id, target_id);
+    let dst_id = self.find_or_add_node_by_name(dst);
+
+    let score_of_dst_from_ego = self.fetch_score(context, ego_id, dst_id);
+    let score_of_ego_from_dst =
+      self.fetch_user_score_reversed(context, ego_id, dst_id);
+
+    let score_cluster_of_dst = -1.0; // TODO
+    let score_cluster_of_src = -1.0; // TODO
 
     [(
       ego.to_string(),
-      target.to_string(),
-      score_of_target_from_ego,
-      score_of_ego_from_target,
+      dst.to_string(),
+      score_of_dst_from_ego,
+      score_of_ego_from_dst,
+      score_cluster_of_dst,
+      score_cluster_of_src,
     )]
     .to_vec()
   }
@@ -984,7 +996,7 @@ impl AugMultiGraph {
     score_gte: bool,
     index: u32,
     count: u32,
-  ) -> Vec<(String, String, Weight, Weight)> {
+  ) -> Vec<(String, String, Weight, Weight, Weight, Weight)> {
     log_info!(
       "CMD read_scores: `{}` `{}` `{}` {} {} {} {} {} {} {}",
       context,
@@ -1024,7 +1036,7 @@ impl AugMultiGraph {
 
     let ranks = self.fetch_all_scores(context, ego_id);
 
-    let mut im: Vec<(NodeId, Weight)> = ranks
+    let mut im: Vec<(NodeId, Weight, Weight)> = ranks
       .into_iter()
       .map(|(n, w)| (n, self.node_info_from_id(n).kind, w))
       .filter(|(_, target_kind, _)| {
@@ -1054,26 +1066,40 @@ impl AugMultiGraph {
           _ => true,
         }
       })
-      .map(|(target_id, _, weight)| (target_id, weight))
+      .map(|(target_id, _, weight)| {
+        let score_cluster = -1.0; // TODO
+        (target_id, weight, score_cluster)
+      })
       .collect();
 
-    im.sort_by(|(_, a), (_, b)| b.abs().total_cmp(&a.abs()));
+    im.sort_by(|(_, a, _), (_, b, _)| b.abs().total_cmp(&a.abs()));
 
     let index = index as usize;
     let count = count as usize;
 
-    let mut page: Vec<(String, String, Weight, Weight)> = vec![];
+    let mut page: Vec<(String, String, Weight, Weight, Weight, Weight)> =
+      vec![];
     page.reserve_exact(if count < im.len() { count } else { im.len() });
 
     for i in index..count {
       if i >= im.len() {
         break;
       }
+
+      let score_value_of_dst = im[i].1;
+      let score_value_of_ego =
+        self.fetch_user_score_reversed(context, ego_id, im[i].0);
+
+      let score_cluster_of_dst = im[i].2;
+      let score_cluster_of_ego = -1.0; // TODO
+
       page.push((
         ego.to_string(),
         self.node_info_from_id(im[i].0).name.clone(),
-        im[i].1,
-        self.fetch_user_score_reversed(context, ego_id, im[i].0),
+        score_value_of_dst,
+        score_value_of_ego,
+        score_cluster_of_dst,
+        score_cluster_of_ego,
       ));
     }
 
@@ -1153,7 +1179,7 @@ impl AugMultiGraph {
     positive_only: bool,
     index: u32,
     count: u32,
-  ) -> Vec<(String, String, Weight, Weight)> {
+  ) -> Vec<(String, String, Weight, Weight, Weight, Weight)> {
     log_info!(
       "CMD read_graph: `{}` `{}` `{}` {} {} {}",
       context,
@@ -1477,12 +1503,20 @@ impl AugMultiGraph {
       .into_iter()
       .skip(index as usize)
       .take(count as usize)
-      .map(|(src_id, dst_id, weight)| {
+      .map(|(src_id, dst_id, score_value_of_dst)| {
+        let score_value_of_ego =
+          self.fetch_user_score_reversed(context, ego_id, dst_id);
+
+        let score_cluster_of_dst = -1.0; // TODO
+        let score_cluster_of_ego = -1.0; // TODO
+
         (
           self.node_info_from_id(src_id).name.clone(),
           self.node_info_from_id(dst_id).name.clone(),
-          weight,
-          self.fetch_user_score_reversed(context, ego_id, dst_id),
+          score_value_of_dst,
+          score_value_of_ego,
+          score_cluster_of_dst,
+          score_cluster_of_ego,
         )
       })
       .collect()
@@ -1560,7 +1594,7 @@ impl AugMultiGraph {
     &mut self,
     context: &str,
     ego: &str,
-  ) -> Vec<(String, String, Weight, Weight)> {
+  ) -> Vec<(String, String, Weight, Weight, Weight, Weight)> {
     log_info!("CMD read_mutual_scores: `{}` `{}`", context, ego);
 
     if !self.contexts.contains_key(context) {
@@ -1575,18 +1609,26 @@ impl AugMultiGraph {
 
     let ego_id = self.find_or_add_node_by_name(ego);
     let ranks = self.fetch_all_scores(context, ego_id);
-    let mut v = Vec::<(String, String, Weight, Weight)>::new();
+    let mut v = Vec::<(String, String, Weight, Weight, Weight, Weight)>::new();
 
     v.reserve_exact(ranks.len());
 
-    for (node, score) in ranks {
+    for (node, score_value_of_dst) in ranks {
       let info = self.node_info_from_id(node).clone();
-      if score > 0.0 && info.kind == NodeKind::User {
+      if score_value_of_dst > 0.0 && info.kind == NodeKind::User {
+        let score_value_of_ego =
+          self.fetch_user_score_reversed(context, ego_id, node);
+
+        let score_cluster_of_dst = -1.0; // TODO
+        let score_cluster_of_ego = -1.0; // TODO
+
         v.push((
           ego.to_string(),
           info.name,
-          score,
-          self.fetch_user_score_reversed(context, ego_id, node),
+          score_value_of_dst,
+          score_value_of_ego,
+          score_cluster_of_dst,
+          score_cluster_of_ego,
         ));
       }
     }
@@ -1647,7 +1689,7 @@ impl AugMultiGraph {
     &mut self,
     src: &str,
     prefix: &str,
-  ) -> Vec<(String, Weight)> {
+  ) -> Vec<(String, Weight, Weight, Weight, Weight)> {
     log_info!("CMD write_fetch_new_edges: `{}` `{}`", src, prefix);
 
     let num_hashes = *FILTER_NUM_HASHES;
@@ -1670,7 +1712,7 @@ impl AugMultiGraph {
     //  Fetch new edges
     //
 
-    let mut v: Vec<(String, Weight)> = vec![];
+    let mut v: Vec<(String, Weight, Weight, Weight, Weight)> = vec![];
 
     for dst_id in 0..self.node_count {
       //  FIXME Probably we should use NodeKind here.
@@ -1678,9 +1720,13 @@ impl AugMultiGraph {
         continue;
       }
 
-      let score = self.fetch_score("", src_id, dst_id);
+      let score_value_of_dst = self.fetch_score("", src_id, dst_id);
+      let score_value_of_src = self.fetch_score_reversed("", src_id, dst_id);
 
-      if score < EPSILON {
+      let score_cluster_of_dst = -1.0; // TODO
+      let score_cluster_of_src = -1.0; // TODO
+
+      if score_value_of_dst < EPSILON {
         continue;
       }
 
@@ -1691,7 +1737,13 @@ impl AugMultiGraph {
       );
 
       if !bloom_filter_contains(&self.node_infos[src_id].seen_nodes, &bits) {
-        v.push((self.node_infos[dst_id].name.clone(), score));
+        v.push((
+          self.node_infos[dst_id].name.clone(),
+          score_value_of_dst,
+          score_value_of_src,
+          score_cluster_of_dst,
+          score_cluster_of_src,
+        ));
       }
     }
 

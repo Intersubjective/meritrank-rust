@@ -1970,3 +1970,76 @@ fn context_already_exist() {
   assert!(edges[0].2 > 0.999);
   assert!(edges[0].2 < 1.001);
 }
+
+#[test]
+fn mutual_scores_cluster_single_score() {
+  let mut graph = AugMultiGraph::new();
+
+  graph.write_put_edge("X", "U1", "U2", 10.0);
+
+  let res: Vec<_> = graph.read_mutual_scores("X", "U1");
+
+  println!("{:?}", res);
+
+  assert_eq!(res.len(), 2);
+  assert!(res[0].4 > 0.99);
+  assert!(res[0].4 < 1.01);
+  assert!(res[1].4 > -0.01);
+  assert!(res[1].4 < 0.01);
+}
+
+#[test]
+fn mutual_scores_clustering() {
+  let mut graph = AugMultiGraph::new();
+
+  graph.write_put_edge("X", "U1", "U2", -5.0);
+  graph.write_put_edge("X", "U1", "U3", -5.0);
+  graph.write_put_edge("X", "U1", "U4", 1.0);
+  graph.write_put_edge("X", "U1", "U5", 1.0);
+  graph.write_put_edge("X", "U1", "U6", 3.0);
+  graph.write_put_edge("X", "U1", "U7", 3.0);
+  graph.write_put_edge("X", "U1", "U8", 5.0);
+  graph.write_put_edge("X", "U1", "U9", 5.0);
+  graph.write_put_edge("X", "U1", "U10", 6.0);
+  graph.write_put_edge("X", "U1", "U11", 6.0);
+
+  graph.write_put_edge("X", "U2", "U1", 1.0);
+  graph.write_put_edge("X", "U3", "U1", 2.0);
+  graph.write_put_edge("X", "U4", "U1", 3.0);
+  graph.write_put_edge("X", "U5", "U1", 1.0);
+  graph.write_put_edge("X", "U6", "U1", 2.0);
+  graph.write_put_edge("X", "U7", "U1", 3.0);
+  graph.write_put_edge("X", "U8", "U1", 1.0);
+  graph.write_put_edge("X", "U9", "U1", 2.0);
+  graph.write_put_edge("X", "U10", "U1", 3.0);
+  graph.write_put_edge("X", "U11", "U1", 1.0);
+
+  graph.write_put_edge("X", "U2", "U3", 4.0);
+  graph.write_put_edge("X", "U3", "U4", 5.0);
+  graph.write_put_edge("X", "U4", "U5", 6.0);
+  graph.write_put_edge("X", "U5", "U6", 1.0);
+  graph.write_put_edge("X", "U6", "U7", 2.0);
+  graph.write_put_edge("X", "U7", "U8", 3.0);
+  graph.write_put_edge("X", "U8", "U9", 4.0);
+  graph.write_put_edge("X", "U9", "U10", 5.0);
+  graph.write_put_edge("X", "U10", "U11", 6.0);
+
+  let res: Vec<_> = graph.read_mutual_scores("X", "U1");
+
+  for (
+    _src,
+    _dst,
+    _score_of_dst,
+    _score_of_src,
+    cluster_of_dst,
+    cluster_of_src,
+  ) in res.iter()
+  {
+    assert!(*cluster_of_dst >= 0.0);
+    assert!(*cluster_of_dst <= 1.0);
+    assert!(*cluster_of_src >= 0.0);
+    assert!(*cluster_of_src <= 1.0);
+  }
+
+  //  TODO: Add asserts for specific score cluster values.
+}
