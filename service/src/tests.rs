@@ -1983,8 +1983,8 @@ fn mutual_scores_cluster_single_score() {
 
   assert_eq!(res.len(), 2);
   assert!(res[0].4 > 0.99);
-  assert!(res[0].4 < 1.01);
-  assert!(res[1].4 > -0.01);
+  assert!(res[0].4 <= 1.0);
+  assert!(res[1].4 >= 0.0);
   assert!(res[1].4 < 0.01);
 }
 
