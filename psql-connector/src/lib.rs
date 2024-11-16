@@ -229,7 +229,7 @@ fn mr_scores(
 
 #[pg_extern(immutable)]
 fn mr_graph(
-  src: Option<&str>,
+  ego: Option<&str>,
   focus: Option<&str>,
   context: default!(Option<&str>, "''"),
   positive_only: default!(Option<bool>, "false"),
@@ -241,16 +241,15 @@ fn mr_graph(
     (
       name!(src, String),
       name!(dst, String),
-      name!(score_value_of_dst, f64),
-      name!(score_value_of_src, f64),
-      name!(score_cluster_of_dst, f64),
-      name!(score_cluster_of_src, f64),
+      name!(weight, f64),
+      name!(score_value_of_ego, f64),
+      name!(score_cluster_of_ego, f64),
     ),
   >,
   Box<dyn Error + 'static>,
 > {
   let context = context.unwrap_or("");
-  let ego = src.expect("src should not be null");
+  let ego = ego.expect("ego should not be null");
   let focus = focus.expect("focus should not be null");
   let positive_only = positive_only.unwrap_or(false);
   let index = index.unwrap_or(0) as u32;
@@ -265,7 +264,7 @@ fn mr_graph(
     payload:  args,
   })?;
 
-  let response: Vec<(String, String, f64, f64, f64, f64)> =
+  let response: Vec<(String, String, f64, f64, f64)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
