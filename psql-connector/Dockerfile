@@ -1,4 +1,4 @@
-FROM rust:1.75.0-alpine as compile
+FROM rust:1.82-alpine as compile
 
 RUN apk add jq cmake make gcc llvm15 clang15 musl-dev postgresql16 postgresql16-dev openssl-dev curl git
 WORKDIR /usr/project
@@ -15,7 +15,7 @@ RUN git clone --depth 1 --branch v3.1.9 https://github.com/michelp/pgsodium.git 
 #
 WORKDIR /usr/project/psql-connector
 ENV RUSTFLAGS="-Ctarget-feature=-crt-static"
-RUN cargo install --locked --version 0.11.4 cargo-pgrx
+RUN cargo install --locked --version 0.12.8 cargo-pgrx
 RUN cargo pgrx init --pg16 pg_config
 RUN cargo pgrx package
 RUN sh generate_scripts.sh target/release/pgmer2-pg16/usr/share/postgresql16/extension

@@ -13,6 +13,7 @@ pub const CMD_LOG_LEVEL: &str = "log_level";
 pub const CMD_SYNC: &str = "sync";
 pub const CMD_RESET: &str = "reset";
 pub const CMD_RECALCULATE_ZERO: &str = "recalculate_zero";
+pub const CMD_RECALCULATE_CLUSTERING: &str = "recalculate_clustering";
 pub const CMD_NODE_LIST: &str = "node_list";
 pub const CMD_READ_NEW_EDGES_FILTER: &str = "read_new_edges_filter";
 pub const CMD_WRITE_NEW_EDGES_FILTER: &str = "write_new_edges_filter";

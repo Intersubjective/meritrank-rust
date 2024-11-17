@@ -31,6 +31,24 @@ const VERSION: &str = match option_env!("CARGO_PKG_VERSION") {
 
 //  ================================================================
 //
+//    SQL
+//
+//  ================================================================
+
+extension_sql!(
+  r#"
+DROP FUNCTION IF EXISTS mr_node_score;
+DROP FUNCTION IF EXISTS mr_scores;
+DROP FUNCTION IF EXISTS mr_graph;
+DROP FUNCTION IF EXISTS mr_mutual_scores;
+DROP FUNCTION IF EXISTS mr_fetch_new_edges;
+"#,
+  name = "bootstrap_raw",
+  bootstrap,
+);
+
+//  ================================================================
+//
 //    Utils
 //
 //  ================================================================
@@ -110,8 +128,10 @@ fn mr_node_score(
     (
       name!(src, String),
       name!(dst, String),
-      name!(score_of_dst, f64),
-      name!(score_of_src, f64),
+      name!(score_value_of_dst, f64),
+      name!(score_value_of_src, f64),
+      name!(score_cluster_of_dst, f64),
+      name!(score_cluster_of_src, f64),
     ),
   >,
   Box<dyn Error + 'static>,
@@ -129,7 +149,7 @@ fn mr_node_score(
     payload:  args,
   })?;
 
-  let response: Vec<(String, String, f64, f64)> =
+  let response: Vec<(String, String, f64, f64, f64, f64)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
@@ -199,8 +219,10 @@ fn mr_scores(
     (
       name!(src, String),
       name!(dst, String),
-      name!(score_of_dst, f64),
-      name!(score_of_src, f64),
+      name!(score_value_of_dst, f64),
+      name!(score_value_of_src, f64),
+      name!(score_cluster_of_dst, f64),
+      name!(score_cluster_of_src, f64),
     ),
   >,
   Box<dyn Error + 'static>,
@@ -218,14 +240,14 @@ fn mr_scores(
     count,
   )?;
 
-  let response: Vec<(String, String, f64, f64)> =
+  let response: Vec<(String, String, f64, f64, f64, f64)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
 
 #[pg_extern(immutable)]
 fn mr_graph(
-  src: Option<&str>,
+  ego: Option<&str>,
   focus: Option<&str>,
   context: default!(Option<&str>, "''"),
   positive_only: default!(Option<bool>, "false"),
@@ -237,14 +259,15 @@ fn mr_graph(
     (
       name!(src, String),
       name!(dst, String),
-      name!(score_of_dst, f64),
-      name!(score_of_src, f64),
+      name!(weight, f64),
+      name!(score_value_of_ego, f64),
+      name!(score_cluster_of_ego, f64),
     ),
   >,
   Box<dyn Error + 'static>,
 > {
   let context = context.unwrap_or("");
-  let ego = src.expect("src should not be null");
+  let ego = ego.expect("ego should not be null");
   let focus = focus.expect("focus should not be null");
   let positive_only = positive_only.unwrap_or(false);
   let index = index.unwrap_or(0) as u32;
@@ -259,7 +282,7 @@ fn mr_graph(
     payload:  args,
   })?;
 
-  let response: Vec<(String, String, f64, f64)> =
+  let response: Vec<(String, String, f64, f64, f64)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
@@ -343,8 +366,10 @@ fn mr_mutual_scores(
     (
       name!(src, String),
       name!(dst, String),
-      name!(score_of_dst, f64),
-      name!(score_of_src, f64),
+      name!(score_value_of_dst, f64),
+      name!(score_value_of_src, f64),
+      name!(score_cluster_of_dst, f64),
+      name!(score_cluster_of_src, f64),
     ),
   >,
   Box<dyn Error + 'static>,
@@ -361,7 +386,7 @@ fn mr_mutual_scores(
     payload:  args,
   })?;
 
-  let response: Vec<(String, String, f64, f64)> =
+  let response: Vec<(String, String, f64, f64, f64, f64)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
@@ -552,7 +577,14 @@ fn mr_fetch_new_edges(
 ) -> Result<
   TableIterator<
     'static,
-    (name!(src, String), name!(dst, String), name!(score, f64)),
+    (
+      name!(src, String),
+      name!(dst, String),
+      name!(score_value_of_dst, f64),
+      name!(score_value_of_src, f64),
+      name!(score_cluster_of_dst, f64),
+      name!(score_cluster_of_src, f64),
+    ),
   >,
   Box<dyn Error + 'static>,
 > {
@@ -568,11 +600,28 @@ fn mr_fetch_new_edges(
     payload:  args,
   })?;
 
-  let response: Vec<(String, f64)> =
+  let response: Vec<(String, f64, f64, f64, f64)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  let edges: Vec<(String, String, f64)> = response
+  let edges: Vec<(String, String, f64, f64, f64, f64)> = response
     .iter()
-    .map(|(dst, score)| (src.to_string(), dst.clone(), *score))
+    .map(
+      |(
+        dst,
+        score_value_of_dst,
+        score_value_of_src,
+        score_cluster_of_dst,
+        score_cluster_of_src,
+      )| {
+        (
+          src.to_string(),
+          dst.clone(),
+          *score_value_of_dst,
+          *score_value_of_src,
+          *score_cluster_of_dst,
+          *score_cluster_of_src,
+        )
+      },
+    )
     .collect();
   Ok(TableIterator::new(edges))
 }
@@ -603,6 +652,28 @@ fn mr_zerorec(
 
   let payload = encode_request(&Command {
     id: CMD_RECALCULATE_ZERO.to_string(),
+    context: "".to_string(),
+    blocking,
+    payload: rmp_serde::to_vec(&())?,
+  })?;
+
+  let _: () = request(payload, timeout_msec)?;
+  return Ok("Ok");
+}
+
+#[pg_extern]
+fn mr_recalculate_clustering(
+  blocking: default!(Option<bool>, "true"),
+  timeout_msec: default!(Option<i32>, "6000000"),
+) -> Result<&'static str, Box<dyn Error + 'static>> {
+  let blocking = blocking.unwrap_or(true);
+  let timeout_msec = match timeout_msec {
+    Some(x) => Some(x as u64),
+    _ => None,
+  };
+
+  let payload = encode_request(&Command {
+    id: CMD_RECALCULATE_CLUSTERING.to_string(),
     context: "".to_string(),
     blocking,
     payload: rmp_serde::to_vec(&())?,
@@ -661,6 +732,15 @@ mod tests {
 
     assert!(n > 1);
     assert!(n < 5);
+  }
+
+  #[pg_test]
+  fn recalculate_clustering() {
+    let _ = crate::mr_reset().unwrap();
+
+    put_testing_edges();
+
+    let _ = crate::mr_recalculate_clustering(Some(true), None).unwrap();
   }
 
   #[pg_test]
@@ -912,7 +992,7 @@ mod tests {
 
     let n = res
       .map(|x| {
-        let (ego, dst, score_dst, score_ego) = x;
+        let (ego, dst, score_dst, score_ego, _, _) = x;
         assert_eq!(ego, "U1");
         assert_eq!(dst, "U2");
         assert!(score_dst > 0.3);
