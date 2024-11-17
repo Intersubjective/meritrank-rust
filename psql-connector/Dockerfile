@@ -1,4 +1,4 @@
-FROM rust:1.75.0-alpine as compile
+FROM rust:1.82-alpine as compile
 
 RUN apk add jq cmake make gcc llvm15 clang15 musl-dev postgresql16 postgresql16-dev openssl-dev curl git
 WORKDIR /usr/project

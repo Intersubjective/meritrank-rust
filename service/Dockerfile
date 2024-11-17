@@ -1,4 +1,4 @@
-FROM rust:1.75.0-alpine as compile
+FROM rust:1.82-alpine as compile
 RUN apk add cmake make gcc musl-dev
 
 WORKDIR /usr/project
