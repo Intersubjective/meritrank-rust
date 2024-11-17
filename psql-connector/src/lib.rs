@@ -31,6 +31,24 @@ const VERSION: &str = match option_env!("CARGO_PKG_VERSION") {
 
 //  ================================================================
 //
+//    SQL
+//
+//  ================================================================
+
+extension_sql!(
+  r#"
+DROP FUNCTION IF EXISTS mr_node_score;
+DROP FUNCTION IF EXISTS mr_scores;
+DROP FUNCTION IF EXISTS mr_graph;
+DROP FUNCTION IF EXISTS mr_mutual_scores;
+DROP FUNCTION IF EXISTS mr_fetch_new_edges;
+"#,
+  name = "bootstrap_raw",
+  bootstrap,
+);
+
+//  ================================================================
+//
 //    Utils
 //
 //  ================================================================
@@ -643,6 +661,28 @@ fn mr_zerorec(
   return Ok("Ok");
 }
 
+#[pg_extern]
+fn mr_recalculate_clusterint(
+  blocking: default!(Option<bool>, "true"),
+  timeout_msec: default!(Option<i32>, "6000000"),
+) -> Result<&'static str, Box<dyn Error + 'static>> {
+  let blocking = blocking.unwrap_or(true);
+  let timeout_msec = match timeout_msec {
+    Some(x) => Some(x as u64),
+    _ => None,
+  };
+
+  let payload = encode_request(&Command {
+    id: CMD_RECALCULATE_CLUSTERING.to_string(),
+    context: "".to_string(),
+    blocking,
+    payload: rmp_serde::to_vec(&())?,
+  })?;
+
+  let _: () = request(payload, timeout_msec)?;
+  return Ok("Ok");
+}
+
 //  ================================================================
 //
 //    Tests
@@ -692,6 +732,15 @@ mod tests {
 
     assert!(n > 1);
     assert!(n < 5);
+  }
+
+  #[pg_test]
+  fn recalculate_clustering() {
+    let _ = crate::mr_reset().unwrap();
+
+    put_testing_edges();
+
+    let _ = crate::mr_recalculate_clustering(Some(true), None).unwrap();
   }
 
   #[pg_test]

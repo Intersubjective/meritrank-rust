@@ -48,6 +48,7 @@ fn perform_command(
 
   if command.id == CMD_RESET
     || command.id == CMD_RECALCULATE_ZERO
+    || command.id == CMD_RECALCULATE_CLUSTERING
     || command.id == CMD_DELETE_EDGE
     || command.id == CMD_DELETE_NODE
     || command.id == CMD_PUT_EDGE
@@ -80,6 +81,12 @@ fn perform_command(
         if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
           ok = true;
           graph.write_recalculate_zero();
+        }
+      },
+      CMD_RECALCULATE_CLUSTERING => {
+        if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
+          ok = true;
+          graph.write_recalculate_clustering();
         }
       },
       CMD_DELETE_EDGE => {
@@ -337,6 +344,7 @@ fn decode_and_handle_request(
       || command.id == CMD_LOG_LEVEL
       || command.id == CMD_RESET
       || command.id == CMD_RECALCULATE_ZERO
+      || command.id == CMD_RECALCULATE_CLUSTERING
       || command.id == CMD_NODE_LIST
       || command.id == CMD_READ_NEW_EDGES_FILTER
       || command.id == CMD_WRITE_NEW_EDGES_FILTER
