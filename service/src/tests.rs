@@ -1975,9 +1975,9 @@ fn context_already_exist() {
 fn mutual_scores_cluster_single_score() {
   let mut graph = AugMultiGraph::new();
 
-  graph.write_put_edge("X", "U1", "U2", 10.0);
+  graph.write_put_edge("", "U1", "U2", 10.0);
 
-  let res: Vec<_> = graph.read_mutual_scores("X", "U1");
+  let res: Vec<_> = graph.read_mutual_scores("", "U1");
 
   println!("{:?}", res);
 
