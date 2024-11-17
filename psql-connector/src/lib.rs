@@ -662,7 +662,7 @@ fn mr_zerorec(
 }
 
 #[pg_extern]
-fn mr_recalculate_clusterint(
+fn mr_recalculate_clustering(
   blocking: default!(Option<bool>, "true"),
   timeout_msec: default!(Option<i32>, "6000000"),
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
