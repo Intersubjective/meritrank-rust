@@ -163,10 +163,11 @@ pub struct AugMultiGraph {
   pub cached_walks:          Vec<CachedWalk>,
   pub zero_opinion:          Vec<Weight>,
   pub time_begin:            Instant,
-  pub cached_score_clusters: Vec<ClusterGroupBounds>,
+  pub cached_score_clusters: HashMap<String, Vec<ClusterGroupBounds>>,
 
-  pub dummy_info:  NodeInfo,
-  pub dummy_graph: MeritRank,
+  pub dummy_info:     NodeInfo,
+  pub dummy_graph:    MeritRank,
+  pub dummy_clusters: Vec<ClusterGroupBounds>,
 }
 
 //  ================================================================
@@ -410,9 +411,10 @@ impl AugMultiGraph {
       cached_walks:          vec![],
       zero_opinion:          vec![],
       time_begin:            Instant::now(),
-      cached_score_clusters: vec![],
+      cached_score_clusters: HashMap::new(),
       dummy_info:            Default::default(),
       dummy_graph:           MeritRank::new(Graph::new()),
+      dummy_clusters:        vec![],
     }
   }
 
@@ -444,7 +446,7 @@ impl AugMultiGraph {
     self.cached_walks = vec![];
     self.zero_opinion = vec![];
     self.time_begin = Instant::now();
-    self.cached_score_clusters = vec![];
+    self.cached_score_clusters = HashMap::new();
   }
 
   pub fn node_exists(
@@ -791,6 +793,7 @@ impl AugMultiGraph {
 
   fn calculate_score_clusters_bounds(
     &mut self,
+    context: &str,
     ego: NodeId,
   ) -> Vec<Weight> {
     log_trace!("calculate_score_clusters_bounds: {}", ego);
@@ -800,9 +803,9 @@ impl AugMultiGraph {
     }
 
     let mut scores: Vec<Weight> = self
-      .all_neighbors("", ego)
+      .all_neighbors(context, ego)
       .into_iter()
-      .map(|(dst, _)| self.fetch_raw_score("", ego, dst))
+      .map(|(dst, _)| self.fetch_raw_score(context, ego, dst))
       .collect();
 
     if scores.is_empty() {
@@ -810,7 +813,7 @@ impl AugMultiGraph {
     }
 
     //  Add self score
-    scores.push(self.fetch_raw_score("", ego, ego));
+    scores.push(self.fetch_raw_score(context, ego, ego));
 
     let distance = |a: f64, b: f64| (a - b).abs();
 
@@ -920,14 +923,36 @@ impl AugMultiGraph {
     bounds
   }
 
+  fn clusters_from(
+    &mut self,
+    context: &str,
+  ) -> &mut Vec<ClusterGroupBounds> {
+    log_trace!("clusters_from: {:?}", context);
+
+    if !self.cached_score_clusters.contains_key(context) {
+      self.cached_score_clusters.insert(context.to_string(), vec![]);
+    }
+
+    match self.cached_score_clusters.get_mut(context) {
+      Some(clusters) => clusters,
+  
+      None => {
+        log_error!("(clusters_from) No context: {:?}", context);
+        self.dummy_clusters = vec![];
+        &mut self.dummy_clusters
+      }
+    }
+  }
+
   fn update_node_score_clustering(
     &mut self,
+    context: &str,
     ego: NodeId,
   ) {
     log_trace!("update_node_score_clustering: {} ", ego);
 
     let time = self.time_begin.elapsed().as_secs() as u64;
-    let bounds = self.calculate_score_clusters_bounds(ego);
+    let bounds = self.calculate_score_clusters_bounds(context, ego);
 
     if ego >= self.node_count {
       log_error!(
@@ -939,42 +964,51 @@ impl AugMultiGraph {
 
     let node_count = self.node_count;
 
-    self
-      .cached_score_clusters
-      .resize(node_count, Default::default());
-    self.cached_score_clusters[ego].updated_sec = time;
-    self.cached_score_clusters[ego].bounds = bounds;
+    let clusters = self.clusters_from(context);
+
+    clusters.resize(node_count, Default::default());
+    clusters[ego].updated_sec = time;
+    clusters[ego].bounds = bounds;
   }
 
   fn update_all_nodes_score_clustering(&mut self) {
     log_trace!("update_all_nodes_score_clustering");
 
-    for node_id in 0..self.node_count {
-      self.update_node_score_clustering(node_id);
+    for (context, _) in self.contexts.clone() {
+      for node_id in 0..self.node_count {
+        self.update_node_score_clustering(context.as_str(), node_id);
+      }
     }
   }
 
   fn init_node_score_clustering(
     &mut self,
+    context: &str,
     ego: NodeId,
   ) {
-    log_trace!("init_node_score_clustering: {}", ego);
+    log_trace!("init_node_score_clustering: {:?} {}", context, ego);
 
-    self
-      .cached_score_clusters
-      .resize(self.node_count, Default::default());
-    if self.cached_score_clusters[ego].bounds.is_empty() {
-      log_verbose!("Init score clustering for node {}", ego);
-      self.update_node_score_clustering(ego);
+    let node_count = self.node_count;
+
+    let clusters = self.clusters_from(context);
+
+    clusters.resize(node_count, Default::default());
+
+    if !clusters[ego].bounds.is_empty() {
+      return;
     }
+
+    log_verbose!("Init score clustering for node {} in {:?}", ego, context);
+    self.update_node_score_clustering(context, ego);
   }
 
   fn apply_score_clustering(
     &mut self,
+    context: &str,
     ego: NodeId,
     score: Weight,
   ) -> (Weight, Cluster) {
-    log_trace!("apply_score_clustering: {} {}", ego, score);
+    log_trace!("apply_score_clustering: {:?} {} {}", context, ego, score);
 
     if ego >= self.node_count {
       log_error!("(apply_score_clustering) Node does not exist: {}", ego);
@@ -986,16 +1020,21 @@ impl AugMultiGraph {
       return (score, 0.0);
     }
 
-    self.init_node_score_clustering(ego);
+    self.init_node_score_clustering(context, ego);
 
-    if self.time_begin.elapsed().as_secs()
-      >= self.cached_score_clusters[ego].updated_sec + *SCORE_CLUSTERS_TIMEOUT
+    let elapsed_secs = self.time_begin.elapsed().as_secs();
+
+    let clusters = self.clusters_from(context);
+
+    if elapsed_secs >= clusters[ego].updated_sec + *SCORE_CLUSTERS_TIMEOUT
     {
-      log_verbose!("Recalculate clustering for node {}", ego);
-      self.update_node_score_clustering(ego);
+      log_verbose!("Recalculate clustering for node {} in {:?}", ego, context);
+      self.update_node_score_clustering(context, ego);
     }
 
-    let bounds = &self.cached_score_clusters[ego].bounds;
+    let clusters = self.clusters_from(context);
+
+    let bounds = &clusters[ego].bounds;
 
     if bounds.is_empty() {
       //  Default cluster value when there's no clustering data available.
@@ -1031,7 +1070,7 @@ impl AugMultiGraph {
         (
           *dst_id,
           *score,
-          self.apply_score_clustering(ego_id, *score).1,
+          self.apply_score_clustering(context, ego_id, *score).1,
         )
       })
       .collect()
@@ -1046,7 +1085,7 @@ impl AugMultiGraph {
     log_trace!("fetch_score: {:?} {} {}", context, ego_id, dst_id);
 
     let score = self.fetch_raw_score(context, ego_id, dst_id);
-    self.apply_score_clustering(ego_id, score)
+    self.apply_score_clustering(context, ego_id, score)
   }
 
   fn fetch_score_reversed(
@@ -1062,7 +1101,7 @@ impl AugMultiGraph {
       None => self.fetch_raw_score(context, ego_id, dst_id),
     };
 
-    self.apply_score_clustering(ego_id, score)
+    self.apply_score_clustering(context, ego_id, score)
   }
 
   fn fetch_user_score_reversed(
@@ -1412,6 +1451,7 @@ impl AugMultiGraph {
     src: &str,
     dst: &str,
     amount: f64,
+    _index: i32,
   ) {
     log_info!(
       "CMD write_put_edge: {:?} {:?} {:?} {}",
@@ -1432,6 +1472,7 @@ impl AugMultiGraph {
     context: &str,
     src: &str,
     dst: &str,
+    _index: i32,
   ) {
     log_info!("CMD write_delete_edge: {:?} {:?} {:?}", context, src, dst);
 
@@ -1449,6 +1490,7 @@ impl AugMultiGraph {
     &mut self,
     context: &str,
     node: &str,
+    _index: i32,
   ) {
     log_info!("CMD write_delete_node: {:?} {:?}", context, node);
 
