@@ -90,25 +90,25 @@ fn perform_command(
         }
       },
       CMD_DELETE_EDGE => {
-        if let Ok((src, dst)) =
+        if let Ok((src, dst, index)) =
           rmp_serde::from_slice(command.payload.as_slice())
         {
           ok = true;
-          graph.write_delete_edge(command.context.as_str(), src, dst);
+          graph.write_delete_edge(command.context.as_str(), src, dst, index);
         }
       },
       CMD_DELETE_NODE => {
-        if let Ok(node) = rmp_serde::from_slice(command.payload.as_slice()) {
+        if let Ok((node, index)) = rmp_serde::from_slice(command.payload.as_slice()) {
           ok = true;
-          graph.write_delete_node(command.context.as_str(), node);
+          graph.write_delete_node(command.context.as_str(), node, index);
         }
       },
       CMD_PUT_EDGE => {
-        if let Ok((src, dst, amount)) =
+        if let Ok((src, dst, amount, index)) =
           rmp_serde::from_slice(command.payload.as_slice())
         {
           ok = true;
-          graph.write_put_edge(command.context.as_str(), src, dst, amount);
+          graph.write_put_edge(command.context.as_str(), src, dst, amount, index);
         }
       },
       CMD_CREATE_CONTEXT => {

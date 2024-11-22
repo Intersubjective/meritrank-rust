@@ -3,7 +3,7 @@ fn put_edge_(
   dst: &str,
   weight: f64,
 ) {
-  let _ = crate::mr_put_edge(Some(src), Some(dst), Some(weight), None).unwrap();
+  let _ = crate::mr_put_edge(Some(src), Some(dst), Some(weight), None, Some(-1)).unwrap();
 }
 
 pub fn put_testing_edges() {
