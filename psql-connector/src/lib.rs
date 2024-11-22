@@ -829,7 +829,7 @@ mod tests {
       Some(0.0),
       None,
       Some(0),
-      Some(i32::MAX),
+      Some(i32::MAX as i64),
     )
     .unwrap();
 
