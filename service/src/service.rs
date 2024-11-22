@@ -98,7 +98,9 @@ fn perform_command(
         }
       },
       CMD_DELETE_NODE => {
-        if let Ok((node, index)) = rmp_serde::from_slice(command.payload.as_slice()) {
+        if let Ok((node, index)) =
+          rmp_serde::from_slice(command.payload.as_slice())
+        {
           ok = true;
           graph.write_delete_node(command.context.as_str(), node, index);
         }
@@ -108,7 +110,13 @@ fn perform_command(
           rmp_serde::from_slice(command.payload.as_slice())
         {
           ok = true;
-          graph.write_put_edge(command.context.as_str(), src, dst, amount, index);
+          graph.write_put_edge(
+            command.context.as_str(),
+            src,
+            dst,
+            amount,
+            index,
+          );
         }
       },
       CMD_CREATE_CONTEXT => {
