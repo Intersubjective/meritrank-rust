@@ -930,17 +930,19 @@ impl AugMultiGraph {
     log_trace!("clusters_from: {:?}", context);
 
     if !self.cached_score_clusters.contains_key(context) {
-      self.cached_score_clusters.insert(context.to_string(), vec![]);
+      self
+        .cached_score_clusters
+        .insert(context.to_string(), vec![]);
     }
 
     match self.cached_score_clusters.get_mut(context) {
       Some(clusters) => clusters,
-  
+
       None => {
         log_error!("(clusters_from) No context: {:?}", context);
         self.dummy_clusters = vec![];
         &mut self.dummy_clusters
-      }
+      },
     }
   }
 
@@ -1026,8 +1028,7 @@ impl AugMultiGraph {
 
     let clusters = self.clusters_from(context);
 
-    if elapsed_secs >= clusters[ego].updated_sec + *SCORE_CLUSTERS_TIMEOUT
-    {
+    if elapsed_secs >= clusters[ego].updated_sec + *SCORE_CLUSTERS_TIMEOUT {
       log_verbose!("Recalculate clustering for node {} in {:?}", ego, context);
       self.update_node_score_clustering(context, ego);
     }
@@ -1451,7 +1452,7 @@ impl AugMultiGraph {
     src: &str,
     dst: &str,
     amount: f64,
-    _index: i32,
+    _index: i64,
   ) {
     log_info!(
       "CMD write_put_edge: {:?} {:?} {:?} {}",
@@ -1472,7 +1473,7 @@ impl AugMultiGraph {
     context: &str,
     src: &str,
     dst: &str,
-    _index: i32,
+    _index: i64,
   ) {
     log_info!("CMD write_delete_edge: {:?} {:?} {:?}", context, src, dst);
 
@@ -1490,7 +1491,7 @@ impl AugMultiGraph {
     &mut self,
     context: &str,
     node: &str,
-    _index: i32,
+    _index: i64,
   ) {
     log_info!("CMD write_delete_node: {:?} {:?}", context, node);
 

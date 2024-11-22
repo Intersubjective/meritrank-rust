@@ -45,6 +45,8 @@ DROP FUNCTION IF EXISTS mr_fetch_new_edges;
 DROP FUNCTION IF EXISTS mr_put_edge;
 DROP FUNCTION IF EXISTS mr_delete_edge;
 DROP FUNCTION IF EXISTS mr_delete_node;
+DROP FUNCTION IF EXISTS mr_log_level;
+DROP FUNCTION IF EXISTS mr_sync;
 "#,
   name = "bootstrap_raw",
   bootstrap,
@@ -166,15 +168,15 @@ fn scores_payload(
   lte: Option<f64>,
   gt: Option<f64>,
   gte: Option<f64>,
-  index: Option<i32>,
-  count: Option<i32>,
+  index: Option<i64>,
+  count: Option<i64>,
 ) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
   let context = context.unwrap_or("");
   let ego = src.expect("ego should not be null");
   let hide_personal = hide_personal.unwrap_or(false);
   let k = kind.unwrap_or("");
   let index = index.unwrap_or(0) as u32;
-  let count = count.unwrap_or(i32::MAX) as u32;
+  let count = count.unwrap_or(i32::MAX as i64) as u32;
   if lt.is_some() && lte.is_some() {
     return Err(Box::from("either lt or lte is allowed!"));
   }
@@ -214,8 +216,8 @@ fn mr_scores(
   lte: default!(Option<f64>, "null"),
   gt: default!(Option<f64>, "null"),
   gte: default!(Option<f64>, "null"),
-  index: default!(Option<i32>, "0"),
-  count: default!(Option<i32>, "16"),
+  index: default!(Option<i64>, "0"),
+  count: default!(Option<i64>, "16"),
 ) -> Result<
   TableIterator<
     'static,
@@ -254,8 +256,8 @@ fn mr_graph(
   focus: Option<&str>,
   context: default!(Option<&str>, "''"),
   positive_only: default!(Option<bool>, "false"),
-  index: default!(Option<i32>, "0"),
-  count: default!(Option<i32>, "16"),
+  index: default!(Option<i64>, "0"),
+  count: default!(Option<i64>, "16"),
 ) -> Result<
   TableIterator<
     'static,
@@ -274,7 +276,7 @@ fn mr_graph(
   let focus = focus.expect("focus should not be null");
   let positive_only = positive_only.unwrap_or(false);
   let index = index.unwrap_or(0) as u32;
-  let count = count.unwrap_or(i32::MAX) as u32;
+  let count = count.unwrap_or(i32::MAX as i64) as u32;
 
   let args = rmp_serde::to_vec(&(ego, focus, positive_only, index, count))?;
 
@@ -415,7 +417,7 @@ fn mr_get_new_edges_filter(
 
 #[pg_extern(immutable)]
 fn mr_sync(
-  timeout_msec: default!(Option<i32>, "6000000")
+  timeout_msec: default!(Option<i64>, "6000000")
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
   let timeout_msec = match timeout_msec {
     Some(x) => Some(x as u64),
@@ -441,15 +443,15 @@ fn mr_sync(
 
 #[pg_extern]
 fn mr_log_level(
-  log_level: default!(Option<i32>, "1")
+  log_level: default!(Option<i64>, "1")
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-  let log_level = log_level.unwrap_or(0);
+  let log_level = log_level.unwrap_or(0) as u32;
 
   let payload = encode_request(&Command {
     id:       CMD_LOG_LEVEL.to_string(),
     context:  "".to_string(),
     blocking: true,
-    payload:  rmp_serde::to_vec(&(log_level as u32))?,
+    payload:  rmp_serde::to_vec(&(log_level))?,
   })?;
 
   let _: () = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
@@ -479,7 +481,7 @@ fn mr_put_edge(
   dst: Option<&str>,
   weight: Option<f64>,
   context: default!(Option<&str>, "''"),
-  index: default!(Option<i32>, "-1"),
+  index: default!(Option<i64>, "-1"),
 ) -> Result<
   TableIterator<
     'static,
@@ -515,7 +517,7 @@ fn mr_delete_edge(
   src: Option<&str>,
   dst: Option<&str>,
   context: default!(Option<&str>, "''"),
-  index: default!(Option<i32>, "-1"),
+  index: default!(Option<i64>, "-1"),
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
   let context = context.unwrap_or("");
   let ego = src.expect("src should not be null");
@@ -539,7 +541,7 @@ fn mr_delete_edge(
 fn mr_delete_node(
   src: Option<&str>,
   context: default!(Option<&str>, "''"),
-  index: default!(Option<i32>, "-1"),
+  index: default!(Option<i64>, "-1"),
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
   let context = context.unwrap_or("");
   let ego = src.expect("src should not be null");
@@ -651,7 +653,7 @@ fn mr_reset() -> Result<&'static str, Box<dyn Error + 'static>> {
 #[pg_extern]
 fn mr_zerorec(
   blocking: default!(Option<bool>, "true"),
-  timeout_msec: default!(Option<i32>, "6000000"),
+  timeout_msec: default!(Option<i64>, "6000000"),
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
   let blocking = blocking.unwrap_or(true);
   let timeout_msec = match timeout_msec {
@@ -673,7 +675,7 @@ fn mr_zerorec(
 #[pg_extern]
 fn mr_recalculate_clustering(
   blocking: default!(Option<bool>, "true"),
-  timeout_msec: default!(Option<i32>, "6000000"),
+  timeout_msec: default!(Option<i64>, "6000000"),
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
   let blocking = blocking.unwrap_or(true);
   let timeout_msec = match timeout_msec {
@@ -710,11 +712,14 @@ mod tests {
     for _ in 0..3000 {
       let _ = crate::mr_reset().unwrap();
       let _ =
-        crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None, Some(-1)).unwrap();
+        crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None, Some(-1))
+          .unwrap();
       let _ =
-        crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None, Some(-1)).unwrap();
+        crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None, Some(-1))
+          .unwrap();
       let _ =
-        crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), None, Some(-1)).unwrap();
+        crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), None, Some(-1))
+          .unwrap();
       let _ = crate::mr_sync(Some(1000)).unwrap();
     }
   }
@@ -824,7 +829,7 @@ mod tests {
       Some(0.0),
       None,
       Some(0),
-      Some(i32::MAX),
+      Some(i32::MAX as i64),
     )
     .unwrap();
 
@@ -839,7 +844,7 @@ mod tests {
     let ver = crate::mr_service();
 
     //  check if ver is in form "X.Y.Z"
-    assert_eq!(ver.split(".").map(|x| x.parse::<i32>().unwrap()).count(), 3);
+    assert_eq!(ver.split(".").map(|x| x.parse::<u32>().unwrap()).count(), 3);
   }
 
   #[pg_test]
@@ -848,7 +853,8 @@ mod tests {
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res =
-      crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None, Some(-1))
+        .unwrap();
 
     let n = res
       .map(|x| {
@@ -867,8 +873,14 @@ mod tests {
     let _ = crate::mr_reset().unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
-    let res =
-      crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), Some("X"), Some(-1)).unwrap();
+    let res = crate::mr_put_edge(
+      Some("U1"),
+      Some("U2"),
+      Some(1.0),
+      Some("X"),
+      Some(-1),
+    )
+    .unwrap();
 
     let n = res
       .map(|x| {
@@ -886,7 +898,8 @@ mod tests {
   fn create_context() {
     let _ = crate::mr_reset().unwrap();
     let _ =
-      crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None, Some(-1))
+        .unwrap();
     let _ = crate::mr_create_context(Some("X"));
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
@@ -909,10 +922,22 @@ mod tests {
   fn null_context_is_sum() {
     let _ = crate::mr_reset().unwrap();
 
-    let _ =
-      crate::mr_put_edge(Some("B1"), Some("B2"), Some(1.0), Some("X"), Some(-1)).unwrap();
-    let _ =
-      crate::mr_put_edge(Some("B1"), Some("B2"), Some(2.0), Some("Y"), Some(-1)).unwrap();
+    let _ = crate::mr_put_edge(
+      Some("B1"),
+      Some("B2"),
+      Some(1.0),
+      Some("X"),
+      Some(-1),
+    )
+    .unwrap();
+    let _ = crate::mr_put_edge(
+      Some("B1"),
+      Some("B2"),
+      Some(2.0),
+      Some("Y"),
+      Some(-1),
+    )
+    .unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res = crate::mr_edgelist(None).unwrap();
@@ -934,11 +959,24 @@ mod tests {
   fn delete_contexted_edge() {
     let _ = crate::mr_reset().unwrap();
 
-    let _ =
-      crate::mr_put_edge(Some("B1"), Some("B2"), Some(1.0), Some("X"), Some(-1)).unwrap();
-    let _ =
-      crate::mr_put_edge(Some("B1"), Some("B2"), Some(2.0), Some("Y"), Some(-1)).unwrap();
-    let _ = crate::mr_delete_edge(Some("B1"), Some("B2"), Some("X"), Some(-1)).unwrap();
+    let _ = crate::mr_put_edge(
+      Some("B1"),
+      Some("B2"),
+      Some(1.0),
+      Some("X"),
+      Some(-1),
+    )
+    .unwrap();
+    let _ = crate::mr_put_edge(
+      Some("B1"),
+      Some("B2"),
+      Some(2.0),
+      Some("Y"),
+      Some(-1),
+    )
+    .unwrap();
+    let _ = crate::mr_delete_edge(Some("B1"), Some("B2"), Some("X"), Some(-1))
+      .unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
     //  We should still have "Y" edge.
@@ -960,7 +998,9 @@ mod tests {
   fn delete_nodes() {
     let _ = crate::mr_reset().unwrap();
 
-    let _ = crate::mr_put_edge(Some("B1"), Some("B2"), Some(1.0), None, Some(-1)).unwrap();
+    let _ =
+      crate::mr_put_edge(Some("B1"), Some("B2"), Some(1.0), None, Some(-1))
+        .unwrap();
     let _ = crate::mr_delete_node(Some("B1"), None, Some(-1)).unwrap();
     let _ = crate::mr_delete_node(Some("B2"), None, Some(-1)).unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
@@ -974,15 +1014,33 @@ mod tests {
   fn null_context_invariant() {
     let _ = crate::mr_reset().unwrap();
 
-    let _ =
-      crate::mr_put_edge(Some("B1"), Some("B2"), Some(1.0), Some("X"), Some(-1)).unwrap();
-    let _ =
-      crate::mr_put_edge(Some("B1"), Some("B2"), Some(2.0), Some("Y"), Some(-1)).unwrap();
+    let _ = crate::mr_put_edge(
+      Some("B1"),
+      Some("B2"),
+      Some(1.0),
+      Some("X"),
+      Some(-1),
+    )
+    .unwrap();
+    let _ = crate::mr_put_edge(
+      Some("B1"),
+      Some("B2"),
+      Some(2.0),
+      Some("Y"),
+      Some(-1),
+    )
+    .unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
     //  Delete and put back again.
     let _ = crate::mr_delete_edge(Some("B1"), Some("B2"), Some("X"), Some(-1));
-    let _ = crate::mr_put_edge(Some("B1"), Some("B2"), Some(1.0), Some("X"), Some(-1));
+    let _ = crate::mr_put_edge(
+      Some("B1"),
+      Some("B2"),
+      Some(1.0),
+      Some("X"),
+      Some(-1),
+    );
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res = crate::mr_edgelist(None).unwrap();
@@ -1003,12 +1061,30 @@ mod tests {
   fn node_score_context() {
     let _ = crate::mr_reset().unwrap();
 
-    let _ =
-      crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X"), Some(-1)).unwrap();
-    let _ =
-      crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("X"), Some(-1)).unwrap();
-    let _ =
-      crate::mr_put_edge(Some("U3"), Some("U2"), Some(3.0), Some("X"), Some(-1)).unwrap();
+    let _ = crate::mr_put_edge(
+      Some("U1"),
+      Some("U2"),
+      Some(2.0),
+      Some("X"),
+      Some(-1),
+    )
+    .unwrap();
+    let _ = crate::mr_put_edge(
+      Some("U1"),
+      Some("U3"),
+      Some(1.0),
+      Some("X"),
+      Some(-1),
+    )
+    .unwrap();
+    let _ = crate::mr_put_edge(
+      Some("U3"),
+      Some("U2"),
+      Some(3.0),
+      Some("X"),
+      Some(-1),
+    )
+    .unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res = crate::mr_node_score(Some("U1"), Some("U2"), Some("X")).unwrap();
@@ -1033,11 +1109,14 @@ mod tests {
     let _ = crate::mr_reset().unwrap();
 
     let _ =
-      crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some(""), Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some(""), Some(-1))
+        .unwrap();
     let _ =
-      crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some(""), Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some(""), Some(-1))
+        .unwrap();
     let _ =
-      crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some(""), Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some(""), Some(-1))
+        .unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res: Vec<_> = crate::mr_scores(
@@ -1085,12 +1164,30 @@ mod tests {
   fn scores_context() {
     let _ = crate::mr_reset().unwrap();
 
-    let _ =
-      crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X"), Some(-1)).unwrap();
-    let _ =
-      crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("X"), Some(-1)).unwrap();
-    let _ =
-      crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("X"), Some(-1)).unwrap();
+    let _ = crate::mr_put_edge(
+      Some("U1"),
+      Some("U2"),
+      Some(2.0),
+      Some("X"),
+      Some(-1),
+    )
+    .unwrap();
+    let _ = crate::mr_put_edge(
+      Some("U1"),
+      Some("U3"),
+      Some(1.0),
+      Some("X"),
+      Some(-1),
+    )
+    .unwrap();
+    let _ = crate::mr_put_edge(
+      Some("U2"),
+      Some("U3"),
+      Some(3.0),
+      Some("X"),
+      Some(-1),
+    )
+    .unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res: Vec<_> = crate::mr_scores(
@@ -1138,12 +1235,30 @@ mod tests {
   fn scores_defaults() {
     let _ = crate::mr_reset().unwrap();
 
-    let _ =
-      crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), Some("X"), Some(-1)).unwrap();
-    let _ =
-      crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), Some("X"), Some(-1)).unwrap();
-    let _ =
-      crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some("X"), Some(-1)).unwrap();
+    let _ = crate::mr_put_edge(
+      Some("U1"),
+      Some("U2"),
+      Some(2.0),
+      Some("X"),
+      Some(-1),
+    )
+    .unwrap();
+    let _ = crate::mr_put_edge(
+      Some("U1"),
+      Some("U3"),
+      Some(1.0),
+      Some("X"),
+      Some(-1),
+    )
+    .unwrap();
+    let _ = crate::mr_put_edge(
+      Some("U2"),
+      Some("U3"),
+      Some(3.0),
+      Some("X"),
+      Some(-1),
+    )
+    .unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res: Vec<_> = crate::mr_scores(
@@ -1192,11 +1307,14 @@ mod tests {
     let _ = crate::mr_reset().unwrap();
 
     let _ =
-      crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None, Some(-1))
+        .unwrap();
     let _ =
-      crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None, Some(-1))
+        .unwrap();
     let _ =
-      crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), None, Some(-1))
+        .unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res: Vec<_> = crate::mr_nodelist(None).unwrap().collect();
@@ -1213,11 +1331,14 @@ mod tests {
     let _ = crate::mr_reset().unwrap();
 
     let _ =
-      crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U1"), Some("U2"), Some(2.0), None, Some(-1))
+        .unwrap();
     let _ =
-      crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None, Some(-1))
+        .unwrap();
     let _ =
-      crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), None, Some(-1))
+        .unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res: Vec<_> = crate::mr_connected(Some("U1"), None).unwrap().collect();
@@ -1235,17 +1356,23 @@ mod tests {
     let _ = crate::mr_reset().unwrap();
 
     let _ =
-      crate::mr_put_edge(Some("U1"), Some("U2"), Some(3.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U1"), Some("U2"), Some(3.0), None, Some(-1))
+        .unwrap();
     let _ =
-      crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None, Some(-1))
+        .unwrap();
     let _ =
-      crate::mr_put_edge(Some("U2"), Some("U1"), Some(2.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U2"), Some("U1"), Some(2.0), None, Some(-1))
+        .unwrap();
     let _ =
-      crate::mr_put_edge(Some("U2"), Some("U3"), Some(4.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U2"), Some("U3"), Some(4.0), None, Some(-1))
+        .unwrap();
     let _ =
-      crate::mr_put_edge(Some("U3"), Some("U1"), Some(3.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U3"), Some("U1"), Some(3.0), None, Some(-1))
+        .unwrap();
     let _ =
-      crate::mr_put_edge(Some("U3"), Some("U2"), Some(2.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U3"), Some("U2"), Some(2.0), None, Some(-1))
+        .unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res: Vec<_> =
@@ -1300,7 +1427,8 @@ mod tests {
     let _ = crate::mr_reset().unwrap();
 
     let _ =
-      crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None, Some(-1))
+        .unwrap();
 
     assert_eq!(
       crate::mr_fetch_new_edges(Some("U1"), Some("B"))
@@ -1310,9 +1438,11 @@ mod tests {
     );
 
     let _ =
-      crate::mr_put_edge(Some("U1"), Some("B3"), Some(2.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U1"), Some("B3"), Some(2.0), None, Some(-1))
+        .unwrap();
     let _ =
-      crate::mr_put_edge(Some("U2"), Some("B4"), Some(3.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U2"), Some("B4"), Some(3.0), None, Some(-1))
+        .unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res = crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap();
@@ -1336,7 +1466,8 @@ mod tests {
     let _ = crate::mr_reset().unwrap();
 
     let _ =
-      crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None, Some(-1))
+        .unwrap();
 
     assert_eq!(
       crate::mr_fetch_new_edges(Some("U1"), Some("B"))
@@ -1346,9 +1477,11 @@ mod tests {
     );
 
     let _ =
-      crate::mr_put_edge(Some("U1"), Some("B3"), Some(2.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U1"), Some("B3"), Some(2.0), None, Some(-1))
+        .unwrap();
     let _ =
-      crate::mr_put_edge(Some("U2"), Some("B4"), Some(3.0), None, Some(-1)).unwrap();
+      crate::mr_put_edge(Some("U2"), Some("B4"), Some(3.0), None, Some(-1))
+        .unwrap();
     let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let filter: Vec<u8> = crate::mr_get_new_edges_filter(Some("U1")).unwrap();
