@@ -176,7 +176,7 @@ fn scores_payload(
   let hide_personal = hide_personal.unwrap_or(false);
   let k = kind.unwrap_or("");
   let index = index.unwrap_or(0) as u32;
-  let count = count.unwrap_or(i32::MAX) as u32;
+  let count = count.unwrap_or(i32::MAX as i64) as u32;
   if lt.is_some() && lte.is_some() {
     return Err(Box::from("either lt or lte is allowed!"));
   }
@@ -276,7 +276,7 @@ fn mr_graph(
   let focus = focus.expect("focus should not be null");
   let positive_only = positive_only.unwrap_or(false);
   let index = index.unwrap_or(0) as u32;
-  let count = count.unwrap_or(i32::MAX) as u32;
+  let count = count.unwrap_or(i32::MAX as i64) as u32;
 
   let args = rmp_serde::to_vec(&(ego, focus, positive_only, index, count))?;
 
