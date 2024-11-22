@@ -45,6 +45,8 @@ DROP FUNCTION IF EXISTS mr_fetch_new_edges;
 DROP FUNCTION IF EXISTS mr_put_edge;
 DROP FUNCTION IF EXISTS mr_delete_edge;
 DROP FUNCTION IF EXISTS mr_delete_node;
+DROP FUNCTION IF EXISTS mr_log_level;
+DROP FUNCTION IF EXISTS mr_sync;
 "#,
   name = "bootstrap_raw",
   bootstrap,
@@ -166,15 +168,15 @@ fn scores_payload(
   lte: Option<f64>,
   gt: Option<f64>,
   gte: Option<f64>,
-  index: Option<u32>,
-  count: Option<u32>,
+  index: Option<i64>,
+  count: Option<i64>,
 ) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
   let context = context.unwrap_or("");
   let ego = src.expect("ego should not be null");
   let hide_personal = hide_personal.unwrap_or(false);
   let k = kind.unwrap_or("");
-  let index = index.unwrap_or(0);
-  let count = count.unwrap_or(i32::MAX);
+  let index = index.unwrap_or(0) as u32;
+  let count = count.unwrap_or(i32::MAX) as u32;
   if lt.is_some() && lte.is_some() {
     return Err(Box::from("either lt or lte is allowed!"));
   }
@@ -214,8 +216,8 @@ fn mr_scores(
   lte: default!(Option<f64>, "null"),
   gt: default!(Option<f64>, "null"),
   gte: default!(Option<f64>, "null"),
-  index: default!(Option<u32>, "0"),
-  count: default!(Option<u32>, "16"),
+  index: default!(Option<i64>, "0"),
+  count: default!(Option<i64>, "16"),
 ) -> Result<
   TableIterator<
     'static,
@@ -254,8 +256,8 @@ fn mr_graph(
   focus: Option<&str>,
   context: default!(Option<&str>, "''"),
   positive_only: default!(Option<bool>, "false"),
-  index: default!(Option<u32>, "0"),
-  count: default!(Option<u32>, "16"),
+  index: default!(Option<i64>, "0"),
+  count: default!(Option<i64>, "16"),
 ) -> Result<
   TableIterator<
     'static,
@@ -273,8 +275,8 @@ fn mr_graph(
   let ego = ego.expect("ego should not be null");
   let focus = focus.expect("focus should not be null");
   let positive_only = positive_only.unwrap_or(false);
-  let index = index.unwrap_or(0);
-  let count = count.unwrap_or(i32::MAX);
+  let index = index.unwrap_or(0) as u32;
+  let count = count.unwrap_or(i32::MAX) as u32;
 
   let args = rmp_serde::to_vec(&(ego, focus, positive_only, index, count))?;
 
@@ -441,9 +443,9 @@ fn mr_sync(
 
 #[pg_extern]
 fn mr_log_level(
-  log_level: default!(Option<u32>, "1")
+  log_level: default!(Option<i64>, "1")
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-  let log_level = log_level.unwrap_or(0);
+  let log_level = log_level.unwrap_or(0) as u32;
 
   let payload = encode_request(&Command {
     id:       CMD_LOG_LEVEL.to_string(),
