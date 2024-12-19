@@ -32,79 +32,48 @@ pub const VERSION: &str = match option_env!("CARGO_PKG_VERSION") {
   None => "dev",
 };
 
+fn parse_env_with_default<T>(
+  name: &str,
+  default: T,
+) -> T
+where
+  T: std::str::FromStr,
+{
+  var(name)
+    .ok()
+    .and_then(|s| s.parse().ok())
+    .unwrap_or(default)
+}
+
+fn parse_env_with_transform<T, F>(
+  name: &str,
+  default: T,
+  transform: F,
+) -> T
+where
+  T: std::str::FromStr,
+  F: FnOnce(T) -> Option<T>,
+{
+  var(name)
+    .ok()
+    .and_then(|s| s.parse().ok())
+    .and_then(transform)
+    .unwrap_or(default)
+}
+
 lazy_static::lazy_static! {
-  pub static ref ZERO_OPINION_FACTOR : usize =
-    var("MERITRANK_ZERO_OPINION_FACTOR")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(20);
-
-  pub static ref NUM_WALK : usize =
-    var("MERITRANK_NUM_WALK")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(10000);
-
-  pub static ref TOP_NODES_LIMIT : usize =
-    var("MERITRANK_TOP_NODES_LIMIT")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(100);
-
-  pub static ref FILTER_NUM_HASHES : usize =
-    var("MERITRANK_FILTER_NUM_HASHES")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(10);
-
-  pub static ref FILTER_MIN_SIZE : usize =
-    var("MERITRANK_FILTER_MIN_SIZE")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .and_then(|n| Some(std::cmp::max(n, 1)))
-      .unwrap_or(32);
-
-  pub static ref FILTER_MAX_SIZE : usize =
-    var("MERITRANK_FILTER_MAX_SIZE")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(8192);
-
-  pub static ref SCORES_CACHE_SIZE : usize =
-    var("MERITRANK_SCORES_CACHE_SIZE")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(1024 * 10);
-
-  pub static ref WALKS_CACHE_SIZE : usize =
-    var("MERITRANK_WALKS_CACHE_SIZE")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(1024);
-
-  pub static ref NUM_SCORE_CLUSTERS : usize =
-    var("MERITRANK_NUM_SCORE_CLUSTERS")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(5);
-
-  pub static ref SCORE_CLUSTERS_TIMEOUT : u64 =
-    var("MERITRANK_SCORE_CLUSTERS_TIMEOUT")
-      .ok()
-      .and_then(|s| s.parse::<u64>().ok())
-      .unwrap_or(60 * 60 * 6); // 6 hours
-
-  pub static ref KMEANS_TOLERANCE : f64 =
-    var("MERITRANK_KMEANS_TOLERANCE")
-      .ok()
-      .and_then(|s| s.parse::<f64>().ok())
-      .unwrap_or(0.01);
-
-  pub static ref KMEANS_ITERATIONS: usize =
-    var("MERITRANK_KMEANS_ITERATIONS")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(200);
+    pub static ref ZERO_OPINION_FACTOR: usize = parse_env_with_default("MERITRANK_ZERO_OPINION_FACTOR", 20);
+    pub static ref NUM_WALK: usize = parse_env_with_default("MERITRANK_NUM_WALK", 10000);
+    pub static ref TOP_NODES_LIMIT: usize = parse_env_with_default("MERITRANK_TOP_NODES_LIMIT", 100);
+    pub static ref FILTER_NUM_HASHES: usize = parse_env_with_default("MERITRANK_FILTER_NUM_HASHES", 10);
+    pub static ref FILTER_MIN_SIZE: usize = parse_env_with_transform("MERITRANK_FILTER_MIN_SIZE",32,|n| Some(std::cmp::max(n, 1)));
+    pub static ref FILTER_MAX_SIZE: usize = parse_env_with_default("MERITRANK_FILTER_MAX_SIZE", 8192);
+    pub static ref SCORES_CACHE_SIZE: usize = parse_env_with_default("MERITRANK_SCORES_CACHE_SIZE", 1024 * 10);
+    pub static ref WALKS_CACHE_SIZE: usize = parse_env_with_default("MERITRANK_WALKS_CACHE_SIZE", 1024);
+    pub static ref NUM_SCORE_CLUSTERS: usize = parse_env_with_default("MERITRANK_NUM_SCORE_CLUSTERS", 5);
+    pub static ref SCORE_CLUSTERS_TIMEOUT: u64 = parse_env_with_default("MERITRANK_SCORE_CLUSTERS_TIMEOUT", 60 * 60 * 6);
+    pub static ref KMEANS_TOLERANCE: f64 = parse_env_with_default("MERITRANK_KMEANS_TOLERANCE", 0.01);
+    pub static ref KMEANS_ITERATIONS: usize = parse_env_with_default("MERITRANK_KMEANS_ITERATIONS", 200);
 }
 
 //  ================================================================
