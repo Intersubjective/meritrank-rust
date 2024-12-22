@@ -1810,8 +1810,8 @@ fn graph_reversed() {
         if x.1 == "U3" {
           assert!(x.2 > 0.39);
           assert!(x.2 < 0.49);
-          assert!(x.3 > -0.1);
-          assert!(x.3 < 0.1);
+          assert!(x.3 > 0.1);
+          assert!(x.3 < 0.3);
         }
       },
 
