@@ -1514,7 +1514,7 @@ impl AugMultiGraph {
     positive_only: bool,
     index: u32,
     count: u32,
-  ) -> Vec<(String, String, Weight, Weight, Cluster)> {
+  ) -> Vec<(String, String, Weight, Weight, Weight, Cluster, Cluster)> {
     log_info!(
       "CMD read_graph: {:?} {:?} {:?} {} {} {}",
       context,
@@ -1840,6 +1840,8 @@ impl AugMultiGraph {
       .skip(index as usize)
       .take(count as usize)
       .map(|(src_id, dst_id, weight_of_dst)| {
+        let (score_value_of_dst, score_cluster_of_dst) =
+          self.fetch_user_score(context, ego_id, dst_id);
         let (score_value_of_ego, score_cluster_of_ego) =
           self.fetch_user_score_reversed(context, ego_id, dst_id);
 
@@ -1847,7 +1849,9 @@ impl AugMultiGraph {
           self.node_info_from_id(src_id).name.clone(),
           self.node_info_from_id(dst_id).name.clone(),
           weight_of_dst,
+          score_value_of_dst,
           score_value_of_ego,
+          score_cluster_of_dst,
           score_cluster_of_ego,
         )
       })
