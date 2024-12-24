@@ -937,6 +937,16 @@ fn recalculate_zero_graph_all() {
 }
 
 #[test]
+fn recalculate_out_of_bounds_regression() {
+  let mut graph = AugMultiGraph::new();
+
+  graph.write_put_edge("", "U1", "U2", 1.0, -1);
+  graph.write_put_edge("", "U1", "U3", 1.0, -1);
+
+  graph.write_recalculate_zero();
+}
+
+#[test]
 fn graph_sort_order() {
   let mut graph = AugMultiGraph::new();
 
