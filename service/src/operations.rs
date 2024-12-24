@@ -2239,7 +2239,7 @@ impl AugMultiGraph {
     self.zero_opinion.reserve(nodes.len());
 
     for (node_id, amount) in nodes.iter() {
-      if *node_id > self.zero_opinion.len() {
+      if *node_id >= self.zero_opinion.len() {
         self.zero_opinion.resize(*node_id + 1, 0.0);
       }
       self.zero_opinion[*node_id] = *amount;
