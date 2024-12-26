@@ -1108,177 +1108,7 @@ fn scores_sort_order() {
   }
 }
 
-fn put_testing_edges_with_zero(graph : &mut AugMultiGraph) {
-  graph.write_put_edge("", "U784662a9d229", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ub660dcc736b6", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ub4b17bc06434", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U0ae9f5d0bf02", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ue62e5ffad707", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U0929c858681e", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Uf82dbb4708ba", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ucf8af4b3fa12", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U0be96c3b9883", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ub4b46ee7a5e4", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U1691db0d4d7f", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U70303578cf3d", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U7725640de5b2", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U00a73eafb789", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ucc76e1b73be0", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U133f8c421ed0", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U043fbd8f99fa", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U13f1bde6e566", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U5d33a9be1633", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U17b825d673df", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U0d2e9e0dc40e", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U3ea0a229ad85", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U68c2a35a5c73", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ub9713d01f478", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U0ea4876f2b2b", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U6f2df9691c1e", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U49f87748a6eb", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ua3974669b55c", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U7f00a4668300", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ud3fedd6e69de", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Uf5dc346ce127", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ue925856b9cd9", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U323855718209", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U71deb40da828", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ufc33a8cb3e4d", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ub47d8c364c9e", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U163b54808a6b", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ub38adbd60723", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Udf36e098c231", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U58c3e7370e32", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U95c43e314793", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Uf765bb63af01", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U75cddb09a54e", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U01558602b2d5", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U86e3be9101fa", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U0bf7eddae79d", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U2db9f2283f6a", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Uef1c0af37d4c", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U4506d6073350", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U777590fcd586", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ua18956bd9c25", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U55272fd6c264", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U69218e678fdc", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U29a00cc1c9c2", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U3be62375581d", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U19ad3b903835", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Udecbe941f450", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U948afb314973", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U8af8a7e48e6d", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U57c0388e5cb5", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ub28987fd8681", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U66bb6232f9fc", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Uc12f2b363b9c", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U77a03e9a08af", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ud10b3f42f87b", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U9de057150efc", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U881eb59c559f", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U3a466eaf5798", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U422adbe0083e", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U0080a5f2547d", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ud21004c2382a", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Uadeb43da4abb", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U016217c34c6e", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U7a8d8324441d", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Uad577360d968", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U861750348e9f", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Uc4ebbce44401", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ue55b928fa8dd", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ue87b661973ef", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U3da01fd48941", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U58d7f150b0f9", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ua5cf9177c96e", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U04d86c56e1b8", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U7b30e21179fc", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U47746fcce8c0", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ue6cc7bfa0efd", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Uef7fbf45ef11", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U9a89e0679dec", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Udb60bbb285ca", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ue7a29d5409f2", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U9e42f6dab85a", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U389f9f24b31c", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U9a2c85753a6d", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Uc3c31b8a022f", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Udece0afd9a8b", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U26aca0e369c7", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Uf5096f6ab14e", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Uf2b0a6b1d423", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Uaa4e2be7a87a", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U0c17798eaab4", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U1c285703fc63", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Uc1158424318a", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U80e22da6d8c4", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U0d47e4861ef0", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U6d2f25cc4264", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U09cf1f359454", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U01814d1ec9ff", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U99a0f1f7e6ee", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U8a78048d60f7", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U1bcba4fd7175", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U499f24158a40", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U21769235b28d", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U390d75770ac1", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U6d23bed38776", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ued8da07b9559", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U76a293d70033", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U40bb83163d40", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U34252014c05b", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ua37f245cf686", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ud7002ae5a86c", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ucc6cc40df2b7", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U46e5959770ad", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U614185021ae5", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ueb139752b907", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U6661263fb410", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U02fbd7c8df4c", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ud5b22ebf52f2", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U41784ed376c3", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U9605bd4d1218", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ub93799d9400e", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U682c3380036f", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U6240251593cd", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U697c59e5d3d7", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ua12e78308f49", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U9e972ae23870", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ud2123c013577", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ub7b49e360599", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ud9df8116deba", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Uce7e9acd408e", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ube0563a943d9", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Uda18fb0fbcee", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Udcc4d659895b", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U1e41b5f3adff", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ud04c89aaf453", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U79466f73dc0c", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Uc35c445325f5", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U3c63a9b6115a", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U0cd6bd2dde4f", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ud5df48b5768c", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ua3e5f30e88c2", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U2cd96f1b2ea6", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ud3d487baa4db", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U84ba0b3e06d4", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U638f5c19326f", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U11456af7d414", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U18a178de1dfb", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U67bf00435429", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U5e745dde0c76", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ue40b938f47a4", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U6307b2993c24", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ud1fb013acf2c", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U425e5e1ff39b", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ucc8ea98c2b41", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U3c963c53d335", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ua06b740988b1", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ucb442106b78c", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U0da9b1b0859f", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "U95f3426b8e5d", "U000000000000", 1.0, -1);
-  graph.write_put_edge("", "Ue9e793f3ad14", "U000000000000", 1.0, -1);
+fn put_testing_edges_2(graph : &mut AugMultiGraph) {
   graph.write_put_edge("", "U95f3426b8e5d", "U499f24158a40", 1.0, -1);
   graph.write_put_edge("", "U77a03e9a08af", "U6d2f25cc4264", 1.0, -1);
   graph.write_put_edge("", "Ub47d8c364c9e", "Ub01f4ad1b03f", 1.0, -1);
@@ -1379,7 +1209,6 @@ fn put_testing_edges_with_zero(graph : &mut AugMultiGraph) {
   graph.write_put_edge("", "U3a466eaf5798", "U6d2f25cc4264", 1.0, -1);
   graph.write_put_edge("", "Ue925856b9cd9", "U1691db0d4d7f", 1.0, -1);
   graph.write_put_edge("", "Ue925856b9cd9", "U3a466eaf5798", 1.0, -1);
-  graph.write_put_edge("", "Ue925856b9cd9", "U6d2f25cc4264", 1.0, -1);
   graph.write_put_edge("", "U0ae9f5d0bf02", "Ub01f4ad1b03f", 1.0, -1);
   graph.write_put_edge("", "Ueb139752b907", "U79466f73dc0c", 1.0, -1);
   graph.write_put_edge("", "Ub01f4ad1b03f", "U499f24158a40", 1.0, -1);
@@ -1408,37 +1237,9 @@ fn put_testing_edges_with_zero(graph : &mut AugMultiGraph) {
 fn scores_without_recalculate() {
   let mut graph = AugMultiGraph::new();
 
-  put_testing_edges_with_zero(&mut graph);
+  put_testing_edges_2(&mut graph);
 
-  let res: Vec<_> = graph.read_scores(
-    "",
-    "Ue925856b9cd9",
-    "U",
-    true,
-    100.0,
-    false,
-    -100.0,
-    false,
-    0,
-    u32::MAX,
-  );
-
-  let n = res.len();
-
-  assert!(n > 2);
-
-  for x in res {
-    println!("{} -> {}: {}, {}, {}, {}", x.0, x.1, x.2, x.3, x.4, x.5);
-  }
-}
-
-#[test]
-fn new_user_without_recalculate() {
-  let mut graph = AugMultiGraph::new();
-
-  put_testing_edges_with_zero(&mut graph);
-
-  graph.write_put_edge("", "U1", "U000000000000", 1.0, -1);
+  graph.write_put_edge("", "U1", "U0", 1.0, -1);
 
   let res: Vec<_> = graph.read_scores(
     "",
@@ -1456,21 +1257,17 @@ fn new_user_without_recalculate() {
   let n = res.len();
 
   assert_eq!(n, 2);
-
-  for x in res {
-    println!("{} -> {}: {}, {}, {}, {}", x.0, x.1, x.2, x.3, x.4, x.5);
-  }
 }
 
 #[test]
-fn new_user_with_recalculate() {
+fn scores_with_recalculate() {
   let mut graph = AugMultiGraph::new();
 
-  put_testing_edges_with_zero(&mut graph);
+  put_testing_edges_2(&mut graph);
 
   graph.write_recalculate_zero();
 
-  graph.write_put_edge("", "U1", "U000000000000", 1.0, -1);
+  graph.write_put_edge("", "U1", "U0", 1.0, -1);
 
   let res: Vec<_> = graph.read_scores(
     "",
@@ -1488,25 +1285,75 @@ fn new_user_with_recalculate() {
   let n = res.len();
 
   assert!(n > 2);
+}
 
-  for x in res {
-    println!("{} -> {}: {}, {}, {}, {}", x.0, x.1, x.2, x.3, x.4, x.5);
-  }
+#[test]
+fn new_user_without_recalculate() {
+  let mut graph = AugMultiGraph::new();
+
+  put_testing_edges_2(&mut graph);
+
+  //  read_scores should return zero opinion data even if the node doesn't exist
+
+  let res: Vec<_> = graph.read_scores(
+    "",
+    "U1",
+    "U",
+    true,
+    100.0,
+    false,
+    -100.0,
+    false,
+    0,
+    u32::MAX,
+  );
+
+  let n = res.len();
+
+  assert_eq!(n, 0);
+}
+
+#[test]
+fn new_user_with_recalculate() {
+  let mut graph = AugMultiGraph::new();
+
+  put_testing_edges_2(&mut graph);
+
+  graph.write_recalculate_zero();
+
+  //  read_scores should return zero opinion data even if the node doesn't exist
+
+  let res: Vec<_> = graph.read_scores(
+    "",
+    "U1",
+    "U",
+    true,
+    100.0,
+    false,
+    -100.0,
+    false,
+    0,
+    u32::MAX,
+  );
+
+  let n = res.len();
+
+  assert!(n > 2);
 }
 
 #[test]
 fn new_friend() {
   let mut graph = AugMultiGraph::new();
 
-  put_testing_edges_with_zero(&mut graph);
+  put_testing_edges_2(&mut graph);
 
   graph.write_recalculate_zero();
 
-  let (_, _, s0, _, _, _) = graph.read_node_score("", "Ue925856b9cd9", "Ucc76e1b73be0")[0];
+  let (_, _, s0, _, _, _) = graph.read_node_score("", "Ue925856b9cd9", "U6d2f25cc4264")[0];
 
-  graph.write_put_edge("", "Ue925856b9cd9", "Ucc76e1b73be0", 1.0, -1);
+  graph.write_put_edge("", "Ue925856b9cd9", "U6d2f25cc4264", 1.0, -1);
 
-  let (_, _, s1, _, _, _) = graph.read_node_score("", "Ue925856b9cd9", "Ucc76e1b73be0")[0];
+  let (_, _, s1, _, _, _) = graph.read_node_score("", "Ue925856b9cd9", "U6d2f25cc4264")[0];
 
   assert_ne!(s0, s1);
 }
