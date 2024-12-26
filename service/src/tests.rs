@@ -1405,7 +1405,7 @@ fn put_testing_edges_with_zero(graph : &mut AugMultiGraph) {
 }
 
 #[test]
-fn scores_without_recalculate_smoke() {
+fn scores_without_recalculate() {
   let mut graph = AugMultiGraph::new();
 
   put_testing_edges_with_zero(&mut graph);
@@ -1433,7 +1433,7 @@ fn scores_without_recalculate_smoke() {
 }
 
 #[test]
-fn new_user_without_recalculate_smoke() {
+fn new_user_without_recalculate() {
   let mut graph = AugMultiGraph::new();
 
   put_testing_edges_with_zero(&mut graph);
@@ -1455,13 +1455,43 @@ fn new_user_without_recalculate_smoke() {
 
   let n = res.len();
 
-  // assert!(n > 2);
+  assert_eq!(n, 2);
 
   for x in res {
     println!("{} -> {}: {}, {}, {}, {}", x.0, x.1, x.2, x.3, x.4, x.5);
   }
+}
 
-  // assert!(false);
+#[test]
+fn new_user_with_recalculate() {
+  let mut graph = AugMultiGraph::new();
+
+  put_testing_edges_with_zero(&mut graph);
+
+  graph.write_recalculate_zero();
+
+  graph.write_put_edge("", "U1", "U000000000000", 1.0, -1);
+
+  let res: Vec<_> = graph.read_scores(
+    "",
+    "U1",
+    "U",
+    true,
+    100.0,
+    false,
+    -100.0,
+    false,
+    0,
+    u32::MAX,
+  );
+
+  let n = res.len();
+
+  assert!(n > 2);
+
+  for x in res {
+    println!("{} -> {}: {}, {}, {}, {}", x.0, x.1, x.2, x.3, x.4, x.5);
+  }
 }
 
 #[test]
