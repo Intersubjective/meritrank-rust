@@ -955,7 +955,9 @@ fn graph_sort_order() {
   graph.write_recalculate_zero();
 
   let res: Vec<_> =
-    graph.read_graph("", "Uadeb43da4abb", "U000000000000", false, 0, 10000);
+    graph.read_graph("", "Uadeb43da4abb", "Bfae1726e4e87", false, 0, 10000);
+
+  assert!(res.len() > 1);
 
   for n in 1..res.len() {
     assert!(res[n - 1].2.abs() >= res[n].2.abs());
@@ -971,7 +973,9 @@ fn recalculate_zero_graph_duplicates() {
   graph.write_recalculate_zero();
 
   let res: Vec<_> =
-    graph.read_graph("", "U000000000000", "Ub01f4ad1b03f", false, 0, 10000);
+    graph.read_graph("", "Bb5f87c1621d5", "Ub01f4ad1b03f", false, 0, 10000);
+
+  assert!(res.len() > 1);
 
   for (i, x) in res.iter().enumerate() {
     for (j, y) in res.iter().take(i).enumerate() {
@@ -1041,7 +1045,9 @@ fn recalculate_zero_reset_perf() {
   let get_time =
     || SystemTime::now().duration_since(begin).unwrap().as_millis();
 
-  graph.read_graph("", "Uadeb43da4abb", "U000000000000", true, 0, 10000);
+  let res: Vec<_> = graph.read_graph("", "Uadeb43da4abb", "B0e230e9108dd", true, 0, 10000);
+
+  assert!(res.len() > 1);
 
   assert!(get_time() < 200);
 }
