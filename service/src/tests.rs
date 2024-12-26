@@ -1495,6 +1495,23 @@ fn new_user_with_recalculate() {
 }
 
 #[test]
+fn new_friend() {
+  let mut graph = AugMultiGraph::new();
+
+  put_testing_edges_with_zero(&mut graph);
+
+  graph.write_recalculate_zero();
+
+  let (_, _, s0, _, _, _) = graph.read_node_score("", "Ue925856b9cd9", "Ucc76e1b73be0")[0];
+
+  graph.write_put_edge("", "Ue925856b9cd9", "Ucc76e1b73be0", 1.0, -1);
+
+  let (_, _, s1, _, _, _) = graph.read_node_score("", "Ue925856b9cd9", "Ucc76e1b73be0")[0];
+
+  assert_ne!(s0, s1);
+}
+
+#[test]
 fn edge_uncontexted() {
   let mut graph = AugMultiGraph::new();
 
