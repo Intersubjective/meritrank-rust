@@ -651,21 +651,39 @@ impl AugMultiGraph {
   fn with_zero_opinions(
     &mut self,
     context: &str,
-    mut scores: Vec<(NodeId, Weight)>,
+    scores: Vec<(NodeId, Weight)>,
   ) -> Vec<(NodeId, Weight)> {
     log_trace!("with_zero_opinions: {:?}", context);
 
     if context.is_empty() {
-      for i in 0..scores.len() {
-        if self.node_info_from_id(scores[i].0).kind == NodeKind::User {
-          let zero_score = match self.zero_opinion.get(scores[i].0) {
-            Some(x) => *x,
-            None => 0.0,
-          };
-          let k = 0.01 * (*ZERO_OPINION_FACTOR as f64);
-          scores[i].1 = scores[i].1 * (1.0 - k) + k * zero_score
+      let k = 0.01 * (*ZERO_OPINION_FACTOR as f64);
+
+      let mut res : Vec<(NodeId, Weight)> = vec![];
+      res.resize(self.zero_opinion.len(), (0, 0.0));
+
+      for (id, zero_score) in self.zero_opinion.iter().enumerate() {
+        res[id] = (id, zero_score * k);
+      }
+
+      for (id, score) in scores.iter() {
+        if *id >= res.len() {
+          let n = res.len();
+          res.resize(id + 1, (0, 0.0));
+          for id in n..res.len() {
+            res[id].0 = id;
+          }
+        }
+        if self.node_info_from_id(*id).kind == NodeKind::User {
+          res[*id].1 += (1.0 - k) * score;
+        } else {
+          res[*id].1 = *score;
         }
       }
+
+      return res
+        .into_iter()
+        .filter(|(_id, score)| *score != 0.0)
+        .collect::<Vec<_>>();
     }
 
     scores
@@ -1332,11 +1350,6 @@ impl AugMultiGraph {
       return vec![];
     }
 
-    if !self.node_exists(ego) {
-      log_error!("(read_scores) Node does not exist: {:?}", ego);
-      return vec![];
-    }
-
     let ego_id = self.find_or_add_node_by_name(ego);
 
     let ranks = self.fetch_all_scores(context, ego_id);
@@ -1904,11 +1917,6 @@ impl AugMultiGraph {
 
     if !self.contexts.contains_key(context) {
       log_error!("(read_mutual_scores) Context does not exist: {:?}", context);
-      return vec![];
-    }
-
-    if !self.node_exists(ego) {
-      log_error!("(read_mutual_scores) Node does not exist: {:?}", ego);
       return vec![];
     }
 
