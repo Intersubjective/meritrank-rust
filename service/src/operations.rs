@@ -744,8 +744,7 @@ impl AugMultiGraph {
     log_trace!("fetch_raw_score");
 
     if self.cache_walk_get(context, ego_id) {
-      let graph = self.graph_from(context);
-      match graph.get_node_score(ego_id, dst_id) {
+      match self.graph_from(context).get_node_score(ego_id, dst_id) {
         Ok(score) => {
           self.cache_score_add(context, ego_id, dst_id, score);
           self.with_zero_opinion(context, dst_id, score)
@@ -2139,7 +2138,7 @@ impl AugMultiGraph {
 //  ================================================
 
 impl AugMultiGraph {
-  fn reduced_graph(&mut self) -> Vec<(NodeId, NodeId, Weight)> {
+  pub fn reduced_graph(&mut self) -> Vec<(NodeId, NodeId, Weight)> {
     log_trace!("reduced_graph");
 
     let users: Vec<NodeId> = self
@@ -2198,7 +2197,7 @@ impl AugMultiGraph {
     result
   }
 
-  fn top_nodes(&mut self) -> Vec<(NodeId, f64)> {
+  pub fn top_nodes(&mut self) -> Vec<(NodeId, f64)> {
     log_trace!("top_nodes");
 
     let reduced = self.reduced_graph();
@@ -2241,7 +2240,11 @@ impl AugMultiGraph {
 
     self.recalculate_all(0);
     let nodes = self.top_nodes();
+
+    //  Drop all walks and make sure to empty caches.
     self.recalculate_all(0);
+    self.cached_scores = vec![];
+    self.cached_walks = vec![];
 
     self.zero_opinion.resize(0, 0.0);
     self.zero_opinion.reserve(nodes.len());

@@ -1340,7 +1340,24 @@ fn new_user_with_recalculate() {
 }
 
 #[test]
-fn new_friend() {
+fn new_friend_smol() {
+  let mut graph = AugMultiGraph::new();
+
+  graph.write_put_edge("", "Ue925856b9cd9", "Ucc76e1b73be0", 1.0, -1);
+
+  graph.write_recalculate_zero();
+
+  let (_, _, s0, _, _, _) = graph.read_node_score("", "Ue925856b9cd9", "U6d2f25cc4264")[0];
+
+  graph.write_put_edge("", "Ue925856b9cd9", "U6d2f25cc4264", 1.0, -1);
+
+  let (_, _, s1, _, _, _) = graph.read_node_score("", "Ue925856b9cd9", "U6d2f25cc4264")[0];
+
+  assert_ne!(s0, s1);
+}
+
+#[test]
+fn new_friend_big() {
   let mut graph = AugMultiGraph::new();
 
   put_testing_edges_2(&mut graph);
@@ -1883,10 +1900,6 @@ fn mutual_scores_uncontexted() {
   graph.write_put_edge("", "U3", "U2", 2.0, -1);
 
   let res: Vec<_> = graph.read_mutual_scores("", "U1");
-
-  for x in res.iter() {
-    println!("{:?}", x);
-  }
 
   assert_eq!(res.len(), 3);
 
