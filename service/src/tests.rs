@@ -2349,10 +2349,54 @@ fn mutual_scores_clustering() {
 }
 
 #[test]
-fn separate_clusters() {
+fn five_scores_clustering() {
   let mut graph = AugMultiGraph::new();
 
-  graph.write_put_edge("", "U1", "U2", 2.0, -1);
+  graph.write_put_edge("", "U1", "U2", 5.0, -1);
+  graph.write_put_edge("", "U1", "U3", 1.0, -1);
+  graph.write_put_edge("", "U1", "U4", 2.0, -1);
+  graph.write_put_edge("", "U1", "U5", 3.0, -1);
+  graph.write_put_edge("", "U2", "U1", 4.0, -1);
+
+  //  We will get 5 score values including self-score.
+
+  let res: Vec<_> = graph.read_scores(
+    "",
+    "U1",
+    "",
+    true,
+    100.0,
+    false,
+    -100.0,
+    false,
+    0,
+    u32::MAX,
+  );
+
+  println!("{:?}", res);
+
+  assert_eq!(res.len(), 5);
+
+  assert!(res[0].4 <= 5);
+  assert!(res[0].4 >= 3);
+  
+  assert!(res[1].4 <= 5);
+  assert!(res[1].4 >= 2);
+
+  assert!(res[2].4 <= 5);
+  assert!(res[2].4 >= 1);
+
+  assert!(res[3].4 <= 4);
+  assert!(res[3].4 >= 1);
+
+  assert!(res[4].4 <= 3);
+  assert!(res[4].4 >= 1);
+}
+
+#[test]
+fn separate_clusters_without_users() {
+  let mut graph = AugMultiGraph::new();
+
   graph.write_put_edge("", "U1", "B1", 3.0, -1);
   graph.write_put_edge("", "U1", "C1", 4.0, -1);
 
@@ -2371,10 +2415,38 @@ fn separate_clusters() {
 
   println!("{:?}", res);
 
-  assert_eq!(res.len(), 4);
+  assert_eq!(res.len(), 3);
 
   assert_eq!(res[0].4, 5);
   assert_eq!(res[1].4, 5);
   assert_eq!(res[2].4, 5);
-  assert_eq!(res[3].4, 5);
+}
+
+#[test]
+fn separate_clusters_self_score() {
+  let mut graph = AugMultiGraph::new();
+
+  graph.write_put_edge("", "U1", "U2", 2.0, -1);
+  graph.write_put_edge("", "U1", "B1", 3.0, -1);
+  graph.write_put_edge("", "U1", "C1", 4.0, -1);
+
+  let res: Vec<_> = graph.read_scores(
+    "",
+    "U1",
+    "U",
+    true,
+    100.0,
+    false,
+    -100.0,
+    false,
+    0,
+    u32::MAX,
+  );
+
+  println!("{:?}", res);
+
+  assert_eq!(res.len(), 2);
+
+  assert_eq!(res[0].4, 5);
+  assert_eq!(res[1].4, 1);
 }
