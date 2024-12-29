@@ -19,7 +19,7 @@ use crate::log_verbose;
 use crate::log_warning;
 
 pub use meritrank_core::Weight;
-pub type Cluster = f64;
+pub type Cluster = i32;
 
 //  ================================================================
 //
@@ -1000,12 +1000,12 @@ impl AugMultiGraph {
 
     if ego >= self.node_count {
       log_error!("(apply_score_clustering) Node does not exist: {}", ego);
-      return (score, 0.0);
+      return (score, 0);
     }
 
     if self.node_info_from_id(ego).kind != NodeKind::User {
       //  We apply score clustering only for user nodes.
-      return (score, 0.0);
+      return (score, 0);
     }
 
     self.init_node_score_clustering(context, ego);
@@ -1025,12 +1025,11 @@ impl AugMultiGraph {
 
     if bounds.is_empty() {
       //  Default cluster value when there's no clustering data available.
-      return (score, 0.5);
+      return (score, *NUM_SCORE_CLUSTERS as Cluster);
     }
 
-    let step = 1.0 / (bounds.len() as f64);
-
-    let mut cluster = 0.0;
+    let step        = 1;
+    let mut cluster = (*NUM_SCORE_CLUSTERS - bounds.len()) as Cluster;
 
     for bound in bounds {
       if score < *bound + EPSILON {
@@ -1107,7 +1106,7 @@ impl AugMultiGraph {
       Some(x) => {
         if x.pos_edges.len() + x.neg_edges.len() == 0 {
           log_error!("(fetch_user_score_reversed) Non-user node has no owner");
-          (0.0, 0.0)
+          (0.0, 0)
         } else {
           if x.pos_edges.len() + x.neg_edges.len() != 1 {
             log_error!(
@@ -1127,7 +1126,7 @@ impl AugMultiGraph {
 
       None => {
         log_error!("(fetch_user_score_reversed) Node does not exist");
-        (0.0, 0.0)
+        (0.0, 0)
       },
     }
   }
@@ -1269,22 +1268,22 @@ impl AugMultiGraph {
     context: &str,
     ego: &str,
     dst: &str,
-  ) -> Vec<(String, String, Weight, Weight, Weight, Weight)> {
+  ) -> Vec<(String, String, Weight, Weight, Cluster, Cluster)> {
     log_info!("CMD read_node_score: {:?} {:?} {:?}", context, ego, dst);
 
     if !self.contexts.contains_key(context) {
       log_error!("(read_node_score) Context does not exist: {:?}", context);
-      return [(ego.to_string(), dst.to_string(), 0.0, 0.0, 0.0, 0.0)].to_vec();
+      return [(ego.to_string(), dst.to_string(), 0.0, 0.0, 0, 0)].to_vec();
     }
 
     if !self.node_exists(ego) {
       log_error!("(read_node_score) Node does not exist: {:?}", ego);
-      return [(ego.to_string(), dst.to_string(), 0.0, 0.0, 0.0, 0.0)].to_vec();
+      return [(ego.to_string(), dst.to_string(), 0.0, 0.0, 0, 0)].to_vec();
     }
 
     if !self.node_exists(dst) {
       log_error!("(read_node_score) Node does not exist: {:?}", dst);
-      return [(ego.to_string(), dst.to_string(), 0.0, 0.0, 0.0, 0.0)].to_vec();
+      return [(ego.to_string(), dst.to_string(), 0.0, 0.0, 0, 0)].to_vec();
     }
 
     let ego_id = self.find_or_add_node_by_name(ego);
@@ -1911,7 +1910,7 @@ impl AugMultiGraph {
     &mut self,
     context: &str,
     ego: &str,
-  ) -> Vec<(String, String, Weight, Weight, Weight, Weight)> {
+  ) -> Vec<(String, String, Weight, Weight, Cluster, Cluster)> {
     log_info!("CMD read_mutual_scores: {:?} {:?}", context, ego);
 
     if !self.contexts.contains_key(context) {
@@ -1921,7 +1920,7 @@ impl AugMultiGraph {
 
     let ego_id = self.find_or_add_node_by_name(ego);
     let ranks = self.fetch_all_scores(context, ego_id);
-    let mut v = Vec::<(String, String, Weight, Weight, Weight, Weight)>::new();
+    let mut v = Vec::<(String, String, Weight, Weight, Cluster, Cluster)>::new();
 
     v.reserve_exact(ranks.len());
 

@@ -1,4 +1,4 @@
-use core::result::Result;
+se core::result::Result;
 use lazy_static::lazy_static;
 use meritrank_service::protocol::*;
 use nng::options::{Options, RecvTimeout};
@@ -135,8 +135,8 @@ fn mr_node_score(
       name!(dst, String),
       name!(score_value_of_dst, f64),
       name!(score_value_of_src, f64),
-      name!(score_cluster_of_dst, f64),
-      name!(score_cluster_of_src, f64),
+      name!(score_cluster_of_dst, i32),
+      name!(score_cluster_of_src, i32),
     ),
   >,
   Box<dyn Error + 'static>,
@@ -154,7 +154,7 @@ fn mr_node_score(
     payload:  args,
   })?;
 
-  let response: Vec<(String, String, f64, f64, f64, f64)> =
+  let response: Vec<(String, String, f64, f64, i32, i32)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
@@ -226,8 +226,8 @@ fn mr_scores(
       name!(dst, String),
       name!(score_value_of_dst, f64),
       name!(score_value_of_src, f64),
-      name!(score_cluster_of_dst, f64),
-      name!(score_cluster_of_src, f64),
+      name!(score_cluster_of_dst, i32),
+      name!(score_cluster_of_src, i32),
     ),
   >,
   Box<dyn Error + 'static>,
@@ -245,7 +245,7 @@ fn mr_scores(
     count,
   )?;
 
-  let response: Vec<(String, String, f64, f64, f64, f64)> =
+  let response: Vec<(String, String, f64, f64, i32, i32)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
@@ -267,8 +267,8 @@ fn mr_graph(
       name!(weight, f64),
       name!(score_value_of_dst, f64),
       name!(score_value_of_ego, f64),
-      name!(score_cluster_of_dst, f64),
-      name!(score_cluster_of_ego, f64),
+      name!(score_cluster_of_dst, i32),
+      name!(score_cluster_of_ego, i32),
     ),
   >,
   Box<dyn Error + 'static>,
@@ -289,7 +289,7 @@ fn mr_graph(
     payload:  args,
   })?;
 
-  let response: Vec<(String, String, f64, f64, f64, f64, f64)> =
+  let response: Vec<(String, String, f64, f64, f64, i32, i32)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
@@ -375,8 +375,8 @@ fn mr_mutual_scores(
       name!(dst, String),
       name!(score_value_of_dst, f64),
       name!(score_value_of_src, f64),
-      name!(score_cluster_of_dst, f64),
-      name!(score_cluster_of_src, f64),
+      name!(score_cluster_of_dst, i32),
+      name!(score_cluster_of_src, i32),
     ),
   >,
   Box<dyn Error + 'static>,
@@ -393,7 +393,7 @@ fn mr_mutual_scores(
     payload:  args,
   })?;
 
-  let response: Vec<(String, String, f64, f64, f64, f64)> =
+  let response: Vec<(String, String, f64, f64, i32, i32)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
@@ -595,8 +595,8 @@ fn mr_fetch_new_edges(
       name!(dst, String),
       name!(score_value_of_dst, f64),
       name!(score_value_of_src, f64),
-      name!(score_cluster_of_dst, f64),
-      name!(score_cluster_of_src, f64),
+      name!(score_cluster_of_dst, i32),
+      name!(score_cluster_of_src, i32),
     ),
   >,
   Box<dyn Error + 'static>,
@@ -613,9 +613,9 @@ fn mr_fetch_new_edges(
     payload:  args,
   })?;
 
-  let response: Vec<(String, f64, f64, f64, f64)> =
+  let response: Vec<(String, f64, f64, i32, i32)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  let edges: Vec<(String, String, f64, f64, f64, f64)> = response
+  let edges: Vec<(String, String, f64, f64, i32, i32)> = response
     .iter()
     .map(
       |(
