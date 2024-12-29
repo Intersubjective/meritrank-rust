@@ -1,4 +1,4 @@
-se core::result::Result;
+use core::result::Result;
 use lazy_static::lazy_static;
 use meritrank_service::protocol::*;
 use nng::options::{Options, RecvTimeout};
