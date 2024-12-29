@@ -457,9 +457,10 @@ fn calculate_clusters_bounds_with_kmeans(
     let mut right = scores[scores.len() - 1];
 
     for k in 1..assignments.len() {
-      if assignments[k - 1] < last + EPSILON && assignments[k] > last + EPSILON {
-        last  = assignments[k];
-        left  = scores[k - 1];
+      if assignments[k - 1] < last + EPSILON && assignments[k] > last + EPSILON
+      {
+        last = assignments[k];
+        left = scores[k - 1];
         right = scores[k];
         break;
       }
@@ -785,7 +786,7 @@ impl AugMultiGraph {
     if context.is_empty() {
       let k = 0.01 * (*ZERO_OPINION_FACTOR as f64);
 
-      let mut res : Vec<(NodeId, Weight)> = vec![];
+      let mut res: Vec<(NodeId, Weight)> = vec![];
       res.resize(self.zero_opinion.len(), (0, 0.0));
 
       for (id, zero_score) in self.zero_opinion.iter().enumerate() {
@@ -1012,9 +1013,21 @@ impl AugMultiGraph {
 
     for (context, _) in self.contexts.clone() {
       for node_id in 0..self.node_count {
-        self.update_node_score_clustering(context.as_str(), node_id, NodeKind::User);
-        self.update_node_score_clustering(context.as_str(), node_id, NodeKind::Beacon);
-        self.update_node_score_clustering(context.as_str(), node_id, NodeKind::Comment);
+        self.update_node_score_clustering(
+          context.as_str(),
+          node_id,
+          NodeKind::User,
+        );
+        self.update_node_score_clustering(
+          context.as_str(),
+          node_id,
+          NodeKind::Beacon,
+        );
+        self.update_node_score_clustering(
+          context.as_str(),
+          node_id,
+          NodeKind::Comment,
+        );
       }
     }
   }
@@ -1032,7 +1045,10 @@ impl AugMultiGraph {
 
     clusters.resize(node_count, Default::default());
 
-    if !clusters[ego].users.bounds.is_empty() && !clusters[ego].users.bounds.is_empty() && !clusters[ego].users.bounds.is_empty() {
+    if !clusters[ego].users.bounds.is_empty()
+      && !clusters[ego].users.bounds.is_empty()
+      && !clusters[ego].users.bounds.is_empty()
+    {
       return;
     }
 
@@ -1099,7 +1115,7 @@ impl AugMultiGraph {
       return (score, *NUM_SCORE_CLUSTERS as Cluster);
     }
 
-    let step        = 1;
+    let step = 1;
     let mut cluster = (*NUM_SCORE_CLUSTERS - bounds.len()) as Cluster;
 
     for bound in bounds {
@@ -1994,7 +2010,8 @@ impl AugMultiGraph {
 
     let ego_id = self.find_or_add_node_by_name(ego);
     let ranks = self.fetch_all_scores(context, ego_id);
-    let mut v = Vec::<(String, String, Weight, Weight, Cluster, Cluster)>::new();
+    let mut v =
+      Vec::<(String, String, Weight, Weight, Cluster, Cluster)>::new();
 
     v.reserve_exact(ranks.len());
 

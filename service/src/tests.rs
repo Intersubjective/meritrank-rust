@@ -871,7 +871,7 @@ fn put_testing_edges(graph: &mut AugMultiGraph) {
   graph.write_put_edge("", "U1bcba4fd7175", "Bc4addf09b79f", 3.0, -1);
 }
 
-fn put_testing_edges_2(graph : &mut AugMultiGraph) {
+fn put_testing_edges_2(graph: &mut AugMultiGraph) {
   graph.write_put_edge("", "U95f3426b8e5d", "U499f24158a40", 1.0, -1);
   graph.write_put_edge("", "U77a03e9a08af", "U6d2f25cc4264", 1.0, -1);
   graph.write_put_edge("", "Ub47d8c364c9e", "Ub01f4ad1b03f", 1.0, -1);
@@ -1167,7 +1167,8 @@ fn recalculate_zero_reset_perf() {
   let get_time =
     || SystemTime::now().duration_since(begin).unwrap().as_millis();
 
-  let res: Vec<_> = graph.read_graph("", "Uadeb43da4abb", "B0e230e9108dd", true, 0, 10000);
+  let res: Vec<_> =
+    graph.read_graph("", "Uadeb43da4abb", "B0e230e9108dd", true, 0, 10000);
 
   assert!(res.len() > 1);
 
@@ -1344,11 +1345,13 @@ fn new_friend_smol() {
 
   graph.write_recalculate_zero();
 
-  let (_, _, s0, _, _, _) = graph.read_node_score("", "Ue925856b9cd9", "U6d2f25cc4264")[0];
+  let (_, _, s0, _, _, _) =
+    graph.read_node_score("", "Ue925856b9cd9", "U6d2f25cc4264")[0];
 
   graph.write_put_edge("", "Ue925856b9cd9", "U6d2f25cc4264", 1.0, -1);
 
-  let (_, _, s1, _, _, _) = graph.read_node_score("", "Ue925856b9cd9", "U6d2f25cc4264")[0];
+  let (_, _, s1, _, _, _) =
+    graph.read_node_score("", "Ue925856b9cd9", "U6d2f25cc4264")[0];
 
   assert_ne!(s0, s1);
 }
@@ -1361,11 +1364,13 @@ fn new_friend_big() {
 
   graph.write_recalculate_zero();
 
-  let (_, _, s0, _, _, _) = graph.read_node_score("", "Ue925856b9cd9", "U6d2f25cc4264")[0];
+  let (_, _, s0, _, _, _) =
+    graph.read_node_score("", "Ue925856b9cd9", "U6d2f25cc4264")[0];
 
   graph.write_put_edge("", "Ue925856b9cd9", "U6d2f25cc4264", 1.0, -1);
 
-  let (_, _, s1, _, _, _) = graph.read_node_score("", "Ue925856b9cd9", "U6d2f25cc4264")[0];
+  let (_, _, s1, _, _, _) =
+    graph.read_node_score("", "Ue925856b9cd9", "U6d2f25cc4264")[0];
 
   assert_ne!(s0, s1);
 }
@@ -2379,7 +2384,7 @@ fn five_scores_clustering() {
 
   assert!(res[0].4 <= 5);
   assert!(res[0].4 >= 3);
-  
+
   assert!(res[1].4 <= 5);
   assert!(res[1].4 >= 2);
 
