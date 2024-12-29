@@ -135,8 +135,8 @@ fn mr_node_score(
       name!(dst, String),
       name!(score_value_of_dst, f64),
       name!(score_value_of_src, f64),
-      name!(score_cluster_of_dst, f64),
-      name!(score_cluster_of_src, f64),
+      name!(score_cluster_of_dst, i32),
+      name!(score_cluster_of_src, i32),
     ),
   >,
   Box<dyn Error + 'static>,
@@ -154,7 +154,7 @@ fn mr_node_score(
     payload:  args,
   })?;
 
-  let response: Vec<(String, String, f64, f64, f64, f64)> =
+  let response: Vec<(String, String, f64, f64, i32, i32)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
@@ -226,8 +226,8 @@ fn mr_scores(
       name!(dst, String),
       name!(score_value_of_dst, f64),
       name!(score_value_of_src, f64),
-      name!(score_cluster_of_dst, f64),
-      name!(score_cluster_of_src, f64),
+      name!(score_cluster_of_dst, i32),
+      name!(score_cluster_of_src, i32),
     ),
   >,
   Box<dyn Error + 'static>,
@@ -245,7 +245,7 @@ fn mr_scores(
     count,
   )?;
 
-  let response: Vec<(String, String, f64, f64, f64, f64)> =
+  let response: Vec<(String, String, f64, f64, i32, i32)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
@@ -265,8 +265,10 @@ fn mr_graph(
       name!(src, String),
       name!(dst, String),
       name!(weight, f64),
+      name!(score_value_of_dst, f64),
       name!(score_value_of_ego, f64),
-      name!(score_cluster_of_ego, f64),
+      name!(score_cluster_of_dst, i32),
+      name!(score_cluster_of_ego, i32),
     ),
   >,
   Box<dyn Error + 'static>,
@@ -287,7 +289,7 @@ fn mr_graph(
     payload:  args,
   })?;
 
-  let response: Vec<(String, String, f64, f64, f64)> =
+  let response: Vec<(String, String, f64, f64, f64, i32, i32)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
@@ -373,8 +375,8 @@ fn mr_mutual_scores(
       name!(dst, String),
       name!(score_value_of_dst, f64),
       name!(score_value_of_src, f64),
-      name!(score_cluster_of_dst, f64),
-      name!(score_cluster_of_src, f64),
+      name!(score_cluster_of_dst, i32),
+      name!(score_cluster_of_src, i32),
     ),
   >,
   Box<dyn Error + 'static>,
@@ -391,7 +393,7 @@ fn mr_mutual_scores(
     payload:  args,
   })?;
 
-  let response: Vec<(String, String, f64, f64, f64, f64)> =
+  let response: Vec<(String, String, f64, f64, i32, i32)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   Ok(TableIterator::new(response))
 }
@@ -593,8 +595,8 @@ fn mr_fetch_new_edges(
       name!(dst, String),
       name!(score_value_of_dst, f64),
       name!(score_value_of_src, f64),
-      name!(score_cluster_of_dst, f64),
-      name!(score_cluster_of_src, f64),
+      name!(score_cluster_of_dst, i32),
+      name!(score_cluster_of_src, i32),
     ),
   >,
   Box<dyn Error + 'static>,
@@ -611,9 +613,9 @@ fn mr_fetch_new_edges(
     payload:  args,
   })?;
 
-  let response: Vec<(String, f64, f64, f64, f64)> =
+  let response: Vec<(String, f64, f64, i32, i32)> =
     request(payload, Some(*RECV_TIMEOUT_MSEC))?;
-  let edges: Vec<(String, String, f64, f64, f64, f64)> = response
+  let edges: Vec<(String, String, f64, f64, i32, i32)> = response
     .iter()
     .map(
       |(
@@ -1504,6 +1506,59 @@ mod tests {
     assert_eq!(beacons.len(), 2);
     assert_eq!(beacons[0].1, "B3");
     assert_eq!(beacons[1].1, "B4");
+  }
+
+  #[pg_test]
+  fn five_scores_clustering() {
+    let _ = crate::mr_reset().unwrap();
+
+    let _ =
+      crate::mr_put_edge(Some("U1"), Some("U2"), Some(5.0), None, Some(-1))
+        .unwrap();
+    let _ =
+      crate::mr_put_edge(Some("U1"), Some("U3"), Some(1.0), None, Some(-1))
+        .unwrap();
+    let _ =
+      crate::mr_put_edge(Some("U1"), Some("U4"), Some(2.0), None, Some(-1))
+        .unwrap();
+    let _ =
+      crate::mr_put_edge(Some("U1"), Some("U5"), Some(3.0), None, Some(-1))
+        .unwrap();
+    let _ =
+      crate::mr_put_edge(Some("U2"), Some("U1"), Some(4.0), None, Some(-1))
+        .unwrap();
+
+    let res: Vec<_> = crate::mr_scores(
+      Some("U1"),
+      Some(true),
+      Some(""),
+      Some(""),
+      None,
+      None,
+      Some(0.0),
+      None,
+      Some(0),
+      Some(i32::MAX as i64),
+    )
+    .unwrap()
+    .collect();
+
+    assert_eq!(res.len(), 5);
+
+    assert!(res[0].4 <= 5);
+    assert!(res[0].4 >= 3);
+
+    assert!(res[1].4 <= 5);
+    assert!(res[1].4 >= 2);
+
+    assert!(res[2].4 <= 5);
+    assert!(res[2].4 >= 1);
+
+    assert!(res[3].4 <= 4);
+    assert!(res[3].4 >= 1);
+
+    assert!(res[4].4 <= 3);
+    assert!(res[4].4 >= 1);
   }
 }
 

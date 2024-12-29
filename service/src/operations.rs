@@ -19,7 +19,7 @@ use crate::log_verbose;
 use crate::log_warning;
 
 pub use meritrank_core::Weight;
-pub type Cluster = f64;
+pub type Cluster = i32;
 
 //  ================================================================
 //
@@ -32,79 +32,48 @@ pub const VERSION: &str = match option_env!("CARGO_PKG_VERSION") {
   None => "dev",
 };
 
+fn parse_env_with_default<T>(
+  name: &str,
+  default: T,
+) -> T
+where
+  T: std::str::FromStr,
+{
+  var(name)
+    .ok()
+    .and_then(|s| s.parse().ok())
+    .unwrap_or(default)
+}
+
+fn parse_env_with_transform<T, F>(
+  name: &str,
+  default: T,
+  transform: F,
+) -> T
+where
+  T: std::str::FromStr,
+  F: FnOnce(T) -> Option<T>,
+{
+  var(name)
+    .ok()
+    .and_then(|s| s.parse().ok())
+    .and_then(transform)
+    .unwrap_or(default)
+}
+
 lazy_static::lazy_static! {
-  pub static ref ZERO_OPINION_FACTOR : usize =
-    var("MERITRANK_ZERO_OPINION_FACTOR")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(20);
-
-  pub static ref NUM_WALK : usize =
-    var("MERITRANK_NUM_WALK")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(10000);
-
-  pub static ref TOP_NODES_LIMIT : usize =
-    var("MERITRANK_TOP_NODES_LIMIT")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(100);
-
-  pub static ref FILTER_NUM_HASHES : usize =
-    var("MERITRANK_FILTER_NUM_HASHES")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(10);
-
-  pub static ref FILTER_MIN_SIZE : usize =
-    var("MERITRANK_FILTER_MIN_SIZE")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .and_then(|n| Some(std::cmp::max(n, 1)))
-      .unwrap_or(32);
-
-  pub static ref FILTER_MAX_SIZE : usize =
-    var("MERITRANK_FILTER_MAX_SIZE")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(8192);
-
-  pub static ref SCORES_CACHE_SIZE : usize =
-    var("MERITRANK_SCORES_CACHE_SIZE")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(1024 * 10);
-
-  pub static ref WALKS_CACHE_SIZE : usize =
-    var("MERITRANK_WALKS_CACHE_SIZE")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(1024);
-
-  pub static ref NUM_SCORE_CLUSTERS : usize =
-    var("MERITRANK_NUM_SCORE_CLUSTERS")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(5);
-
-  pub static ref SCORE_CLUSTERS_TIMEOUT : u64 =
-    var("MERITRANK_SCORE_CLUSTERS_TIMEOUT")
-      .ok()
-      .and_then(|s| s.parse::<u64>().ok())
-      .unwrap_or(60 * 60 * 6); // 6 hours
-
-  pub static ref KMEANS_TOLERANCE : f64 =
-    var("MERITRANK_KMEANS_TOLERANCE")
-      .ok()
-      .and_then(|s| s.parse::<f64>().ok())
-      .unwrap_or(0.01);
-
-  pub static ref KMEANS_ITERATIONS: usize =
-    var("MERITRANK_KMEANS_ITERATIONS")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(200);
+    pub static ref ZERO_OPINION_FACTOR: usize = parse_env_with_default("MERITRANK_ZERO_OPINION_FACTOR", 20);
+    pub static ref NUM_WALK: usize = parse_env_with_default("MERITRANK_NUM_WALK", 10000);
+    pub static ref TOP_NODES_LIMIT: usize = parse_env_with_default("MERITRANK_TOP_NODES_LIMIT", 100);
+    pub static ref FILTER_NUM_HASHES: usize = parse_env_with_default("MERITRANK_FILTER_NUM_HASHES", 10);
+    pub static ref FILTER_MIN_SIZE: usize = parse_env_with_transform("MERITRANK_FILTER_MIN_SIZE",32,|n| Some(std::cmp::max(n, 1)));
+    pub static ref FILTER_MAX_SIZE: usize = parse_env_with_default("MERITRANK_FILTER_MAX_SIZE", 8192);
+    pub static ref SCORES_CACHE_SIZE: usize = parse_env_with_default("MERITRANK_SCORES_CACHE_SIZE", 1024 * 10);
+    pub static ref WALKS_CACHE_SIZE: usize = parse_env_with_default("MERITRANK_WALKS_CACHE_SIZE", 1024);
+    pub static ref NUM_SCORE_CLUSTERS: usize = parse_env_with_default("MERITRANK_NUM_SCORE_CLUSTERS", 5);
+    pub static ref SCORE_CLUSTERS_TIMEOUT: u64 = parse_env_with_default("MERITRANK_SCORE_CLUSTERS_TIMEOUT", 60 * 60 * 6);
+    pub static ref KMEANS_TOLERANCE: f64 = parse_env_with_default("MERITRANK_KMEANS_TOLERANCE", 0.01);
+    pub static ref KMEANS_ITERATIONS: usize = parse_env_with_default("MERITRANK_KMEANS_ITERATIONS", 200);
 }
 
 //  ================================================================
@@ -113,7 +82,7 @@ lazy_static::lazy_static! {
 //
 //  ================================================================
 
-#[derive(PartialEq, Eq, Clone, Copy, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub enum NodeKind {
   #[default]
   Unknown,
@@ -151,6 +120,14 @@ pub struct ClusterGroupBounds {
   pub bounds:      Vec<Weight>,
 }
 
+#[derive(PartialEq, Clone, Default)]
+pub struct ScoreClustersByKind {
+  //  FIXME Refactor this to be more general.
+  pub users:    ClusterGroupBounds,
+  pub beacons:  ClusterGroupBounds,
+  pub comments: ClusterGroupBounds,
+}
+
 //  Augmented multi-context graph
 //
 #[derive(Clone)]
@@ -163,11 +140,12 @@ pub struct AugMultiGraph {
   pub cached_walks:          Vec<CachedWalk>,
   pub zero_opinion:          Vec<Weight>,
   pub time_begin:            Instant,
-  pub cached_score_clusters: HashMap<String, Vec<ClusterGroupBounds>>,
+  pub cached_score_clusters: HashMap<String, Vec<ScoreClustersByKind>>,
 
   pub dummy_info:     NodeInfo,
   pub dummy_graph:    MeritRank,
-  pub dummy_clusters: Vec<ClusterGroupBounds>,
+  pub dummy_clusters: Vec<ScoreClustersByKind>,
+  
   pub vsids:          Option<vsids::VSIDSManager>,
 }
 
@@ -374,6 +352,126 @@ impl AugMultiGraph {
 
     return false;
   }
+}
+
+//  ================================================================
+//
+//    K-means
+//
+//  ================================================================
+
+fn calculate_clusters_bounds_with_kmeans(
+  mut scores: Vec<Weight>
+) -> Vec<Weight> {
+  let distance = |a: f64, b: f64| (a - b).abs();
+
+  //  K-means
+
+  let mut rng = thread_rng();
+  let mut centroids = Vec::with_capacity(*NUM_SCORE_CLUSTERS);
+  let mut distances: Vec<f64> = vec![f64::MAX; scores.len()];
+  centroids.push(scores[rng.gen_range(0..scores.len())]);
+
+  for _ in 1..*NUM_SCORE_CLUSTERS {
+    for (i, &point) in scores.iter().enumerate() {
+      let dist = distance(point, *centroids.last().unwrap());
+      distances[i] = distances[i].min(dist);
+    }
+
+    let sum: f64 = distances.iter().sum();
+    let target = if sum > EPSILON {
+      // LMAO RUST LIBRARIES
+      rng.gen_range(0.0..sum)
+    } else {
+      0.0
+    };
+    let mut cumulative_sum = 0.0;
+
+    for (i, &d) in distances.iter().enumerate() {
+      cumulative_sum += d;
+      if cumulative_sum >= target {
+        centroids.push(scores[i]);
+        break;
+      }
+    }
+  }
+
+  let mut assignments = vec![0.0; scores.len()];
+  let mut changed = true;
+
+  for _ in 0..*KMEANS_ITERATIONS {
+    if !changed {
+      break;
+    }
+    changed = false;
+
+    for (i, &point) in scores.iter().enumerate() {
+      let (closest, _) = centroids
+        .iter()
+        .enumerate()
+        .map(|(j, &centroid)| (j as f64, distance(point, centroid)))
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+        .unwrap();
+
+      if assignments[i] != closest {
+        assignments[i] = closest;
+        changed = true;
+      }
+    }
+
+    let mut new_centroids = vec![0.0; *NUM_SCORE_CLUSTERS];
+    let mut counts = vec![0; *NUM_SCORE_CLUSTERS];
+
+    for (i, &assignment) in assignments.iter().enumerate() {
+      let cluster_idx = assignment as usize;
+      new_centroids[cluster_idx] += scores[i];
+      counts[cluster_idx] += 1;
+    }
+
+    let mut total_shift = 0.0;
+    for (i, centroid) in new_centroids.iter_mut().enumerate() {
+      if counts[i] > 0 {
+        let new_centroid = *centroid / counts[i] as f64;
+        total_shift += (new_centroid - centroids[i]).powi(2);
+        centroids[i] = new_centroid;
+      } else {
+        *centroid = scores[rng.gen_range(0..scores.len())];
+      }
+    }
+
+    if total_shift < *KMEANS_TOLERANCE {
+      break;
+    }
+  }
+
+  //  Find clusters' bounds
+
+  let mut bounds: Vec<Weight> = vec![0.0; *NUM_SCORE_CLUSTERS - 1];
+
+  scores.sort_by(|a, b| a.total_cmp(b));
+  centroids.sort_by(|a, b| a.total_cmp(b));
+  assignments.sort_by(|a, b| a.total_cmp(b));
+
+  let mut last = 0.0;
+
+  for i in 1..centroids.len() {
+    let mut left = scores[0];
+    let mut right = scores[scores.len() - 1];
+
+    for k in 1..assignments.len() {
+      if assignments[k - 1] < last + EPSILON && assignments[k] > last + EPSILON
+      {
+        last = assignments[k];
+        left = scores[k - 1];
+        right = scores[k];
+        break;
+      }
+    }
+
+    bounds[i - 1] = (left + right) * 0.5;
+  }
+
+  bounds
 }
 
 //  ================================================================
@@ -684,21 +782,39 @@ impl AugMultiGraph {
   fn with_zero_opinions(
     &mut self,
     context: &str,
-    mut scores: Vec<(NodeId, Weight)>,
+    scores: Vec<(NodeId, Weight)>,
   ) -> Vec<(NodeId, Weight)> {
     log_trace!("with_zero_opinions: {:?}", context);
 
     if context.is_empty() {
-      for i in 0..scores.len() {
-        if self.node_info_from_id(scores[i].0).kind == NodeKind::User {
-          let zero_score = match self.zero_opinion.get(scores[i].0) {
-            Some(x) => *x,
-            None => 0.0,
-          };
-          let k = 0.01 * (*ZERO_OPINION_FACTOR as f64);
-          scores[i].1 = scores[i].1 * (1.0 - k) + k * zero_score
+      let k = 0.01 * (*ZERO_OPINION_FACTOR as f64);
+
+      let mut res: Vec<(NodeId, Weight)> = vec![];
+      res.resize(self.zero_opinion.len(), (0, 0.0));
+
+      for (id, zero_score) in self.zero_opinion.iter().enumerate() {
+        res[id] = (id, zero_score * k);
+      }
+
+      for (id, score) in scores.iter() {
+        if *id >= res.len() {
+          let n = res.len();
+          res.resize(id + 1, (0, 0.0));
+          for id in n..res.len() {
+            res[id].0 = id;
+          }
+        }
+        if self.node_info_from_id(*id).kind == NodeKind::User {
+          res[*id].1 += (1.0 - k) * score;
+        } else {
+          res[*id].1 = *score;
         }
       }
+
+      return res
+        .into_iter()
+        .filter(|(_id, score)| *score != 0.0)
+        .collect::<Vec<_>>();
     }
 
     scores
@@ -759,8 +875,7 @@ impl AugMultiGraph {
     log_trace!("fetch_raw_score");
 
     if self.cache_walk_get(context, ego_id) {
-      let graph = self.graph_from(context);
-      match graph.get_node_score(ego_id, dst_id) {
+      match self.graph_from(context).get_node_score(ego_id, dst_id) {
         Ok(score) => {
           self.cache_score_add(context, ego_id, dst_id, score);
           self.with_zero_opinion(context, dst_id, score)
@@ -797,6 +912,7 @@ impl AugMultiGraph {
     &mut self,
     context: &str,
     ego: NodeId,
+    kind: NodeKind,
   ) -> Vec<Weight> {
     log_trace!("calculate_score_clusters_bounds: {}", ego);
 
@@ -807,128 +923,28 @@ impl AugMultiGraph {
     let mut scores: Vec<Weight> = self
       .all_neighbors(context, ego)
       .into_iter()
+      .filter(|(dst, _)| self.node_info_from_id(*dst).kind == kind)
+      .collect::<Vec<_>>()
+      .into_iter()
       .map(|(dst, _)| self.fetch_raw_score(context, ego, dst))
       .collect();
+
+    if self.node_info_from_id(ego).kind == kind {
+      //  Add self score
+      scores.push(self.fetch_raw_score(context, ego, ego));
+    }
 
     if scores.is_empty() {
       return vec![];
     }
 
-    //  Add self score
-    scores.push(self.fetch_raw_score(context, ego, ego));
-
-    let distance = |a: f64, b: f64| (a - b).abs();
-
-    //  K-means
-
-    let mut rng = thread_rng();
-    let mut centroids = Vec::with_capacity(*NUM_SCORE_CLUSTERS);
-    let mut distances: Vec<f64> = vec![f64::MAX; scores.len()];
-    centroids.push(scores[rng.gen_range(0..scores.len())]);
-
-    for _ in 1..*NUM_SCORE_CLUSTERS {
-      for (i, &point) in scores.iter().enumerate() {
-        let dist = distance(point, *centroids.last().unwrap());
-        distances[i] = distances[i].min(dist);
-      }
-
-      let sum: f64 = distances.iter().sum();
-      let target = if sum > EPSILON {
-        // LMAO RUST LIBRARIES
-        rng.gen_range(0.0..sum)
-      } else {
-        0.0
-      };
-      let mut cumulative_sum = 0.0;
-
-      for (i, &d) in distances.iter().enumerate() {
-        cumulative_sum += d;
-        if cumulative_sum >= target {
-          centroids.push(scores[i]);
-          break;
-        }
-      }
-    }
-
-    let mut assignments = vec![0.0; scores.len()];
-    let mut changed = true;
-
-    for _ in 0..*KMEANS_ITERATIONS {
-      if !changed {
-        break;
-      }
-      changed = false;
-
-      for (i, &point) in scores.iter().enumerate() {
-        let (closest, _) = centroids
-          .iter()
-          .enumerate()
-          .map(|(j, &centroid)| (j as f64, distance(point, centroid)))
-          .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
-          .unwrap();
-
-        if assignments[i] != closest {
-          assignments[i] = closest;
-          changed = true;
-        }
-      }
-
-      let mut new_centroids = vec![0.0; *NUM_SCORE_CLUSTERS];
-      let mut counts = vec![0; *NUM_SCORE_CLUSTERS];
-
-      for (i, &assignment) in assignments.iter().enumerate() {
-        let cluster_idx = assignment as usize;
-        new_centroids[cluster_idx] += scores[i];
-        counts[cluster_idx] += 1;
-      }
-
-      let mut total_shift = 0.0;
-      for (i, centroid) in new_centroids.iter_mut().enumerate() {
-        if counts[i] > 0 {
-          let new_centroid = *centroid / counts[i] as f64;
-          total_shift += (new_centroid - centroids[i]).powi(2);
-          centroids[i] = new_centroid;
-        } else {
-          *centroid = scores[rng.gen_range(0..scores.len())];
-        }
-      }
-
-      if total_shift < *KMEANS_TOLERANCE {
-        break;
-      }
-    }
-
-    //  Find clusters' bounds
-
-    let mut bounds: Vec<Weight> = vec![0.0; *NUM_SCORE_CLUSTERS - 1];
-
-    scores.sort_by(|a, b| a.total_cmp(b));
-    centroids.sort_by(|a, b| a.total_cmp(b));
-    assignments.sort_by(|a, b| a.total_cmp(b));
-
-    for i in 1..centroids.len() {
-      let mut left = scores[0];
-      let mut right = scores[scores.len() - 1];
-
-      for k in 1..assignments.len() {
-        let middle = (assignments[k - 1] + assignments[k]) * 0.5;
-        if middle >= centroids[i - 1] && middle <= centroids[i] {
-          left = scores[k - 1];
-          right = scores[k];
-          break;
-        }
-      }
-
-      bounds[i - 1] = (left + right) * 0.5;
-    }
-
-    bounds
+    calculate_clusters_bounds_with_kmeans(scores)
   }
 
   fn clusters_from(
     &mut self,
     context: &str,
-  ) -> &mut Vec<ClusterGroupBounds> {
+  ) -> &mut Vec<ScoreClustersByKind> {
     log_trace!("clusters_from: {:?}", context);
 
     if !self.cached_score_clusters.contains_key(context) {
@@ -952,11 +968,12 @@ impl AugMultiGraph {
     &mut self,
     context: &str,
     ego: NodeId,
+    kind: NodeKind,
   ) {
-    log_trace!("update_node_score_clustering: {} ", ego);
+    log_trace!("update_node_score_clustering: {} {:?}", ego, kind);
 
     let time = self.time_begin.elapsed().as_secs() as u64;
-    let bounds = self.calculate_score_clusters_bounds(context, ego);
+    let bounds = self.calculate_score_clusters_bounds(context, ego, kind);
 
     if ego >= self.node_count {
       log_error!(
@@ -971,8 +988,27 @@ impl AugMultiGraph {
     let clusters = self.clusters_from(context);
 
     clusters.resize(node_count, Default::default());
-    clusters[ego].updated_sec = time;
-    clusters[ego].bounds = bounds;
+
+    match kind {
+      NodeKind::User => {
+        clusters[ego].users.updated_sec = time;
+        clusters[ego].users.bounds = bounds;
+      },
+
+      NodeKind::Beacon => {
+        clusters[ego].beacons.updated_sec = time;
+        clusters[ego].beacons.bounds = bounds;
+      },
+
+      NodeKind::Comment => {
+        clusters[ego].comments.updated_sec = time;
+        clusters[ego].comments.bounds = bounds;
+      },
+
+      _ => {
+        log_error!("(update_node_score_clustering) Unknown node kind");
+      },
+    };
   }
 
   fn update_all_nodes_score_clustering(&mut self) {
@@ -980,7 +1016,21 @@ impl AugMultiGraph {
 
     for (context, _) in self.contexts.clone() {
       for node_id in 0..self.node_count {
-        self.update_node_score_clustering(context.as_str(), node_id);
+        self.update_node_score_clustering(
+          context.as_str(),
+          node_id,
+          NodeKind::User,
+        );
+        self.update_node_score_clustering(
+          context.as_str(),
+          node_id,
+          NodeKind::Beacon,
+        );
+        self.update_node_score_clustering(
+          context.as_str(),
+          node_id,
+          NodeKind::Comment,
+        );
       }
     }
   }
@@ -998,12 +1048,17 @@ impl AugMultiGraph {
 
     clusters.resize(node_count, Default::default());
 
-    if !clusters[ego].bounds.is_empty() {
+    if !clusters[ego].users.bounds.is_empty()
+      && !clusters[ego].users.bounds.is_empty()
+      && !clusters[ego].users.bounds.is_empty()
+    {
       return;
     }
 
     log_verbose!("Init score clustering for node {} in {:?}", ego, context);
-    self.update_node_score_clustering(context, ego);
+    self.update_node_score_clustering(context, ego, NodeKind::User);
+    self.update_node_score_clustering(context, ego, NodeKind::Beacon);
+    self.update_node_score_clustering(context, ego, NodeKind::Comment);
   }
 
   fn apply_score_clustering(
@@ -1011,17 +1066,18 @@ impl AugMultiGraph {
     context: &str,
     ego: NodeId,
     score: Weight,
+    kind: NodeKind,
   ) -> (Weight, Cluster) {
     log_trace!("apply_score_clustering: {:?} {} {}", context, ego, score);
 
     if ego >= self.node_count {
       log_error!("(apply_score_clustering) Node does not exist: {}", ego);
-      return (score, 0.0);
+      return (score, 0);
     }
 
     if self.node_info_from_id(ego).kind != NodeKind::User {
       //  We apply score clustering only for user nodes.
-      return (score, 0.0);
+      return (score, 0);
     }
 
     self.init_node_score_clustering(context, ego);
@@ -1030,26 +1086,43 @@ impl AugMultiGraph {
 
     let clusters = self.clusters_from(context);
 
-    if elapsed_secs >= clusters[ego].updated_sec + *SCORE_CLUSTERS_TIMEOUT {
+    let updated_sec = match kind {
+      NodeKind::User => clusters[ego].users.updated_sec,
+      NodeKind::Beacon => clusters[ego].beacons.updated_sec,
+      NodeKind::Comment => clusters[ego].comments.updated_sec,
+      _ => {
+        log_error!("(apply_score_clustering) Unknown node kind.");
+        return (score, 0);
+      },
+    };
+
+    if elapsed_secs >= updated_sec + *SCORE_CLUSTERS_TIMEOUT {
       log_verbose!("Recalculate clustering for node {} in {:?}", ego, context);
-      self.update_node_score_clustering(context, ego);
+      self.update_node_score_clustering(context, ego, kind);
     }
 
     let clusters = self.clusters_from(context);
 
-    let bounds = &clusters[ego].bounds;
+    let bounds = match kind {
+      NodeKind::User => &clusters[ego].users.bounds,
+      NodeKind::Beacon => &clusters[ego].beacons.bounds,
+      NodeKind::Comment => &clusters[ego].comments.bounds,
+      _ => {
+        log_error!("(apply_score_clustering) Unknown node kind.");
+        return (score, 0);
+      },
+    };
 
     if bounds.is_empty() {
       //  Default cluster value when there's no clustering data available.
-      return (score, 0.5);
+      return (score, *NUM_SCORE_CLUSTERS as Cluster);
     }
 
-    let step = 1.0 / (bounds.len() as f64);
-
-    let mut cluster = 0.0;
+    let step = 1;
+    let mut cluster = (*NUM_SCORE_CLUSTERS - bounds.len()) as Cluster;
 
     for bound in bounds {
-      if score < *bound + EPSILON {
+      if score < *bound - EPSILON {
         break;
       }
 
@@ -1070,10 +1143,11 @@ impl AugMultiGraph {
       .fetch_all_raw_scores(context, ego_id)
       .iter()
       .map(|(dst_id, score)| {
+        let kind = self.node_info_from_id(*dst_id).kind;
         (
           *dst_id,
           *score,
-          self.apply_score_clustering(context, ego_id, *score).1,
+          self.apply_score_clustering(context, ego_id, *score, kind).1,
         )
       })
       .collect()
@@ -1088,7 +1162,8 @@ impl AugMultiGraph {
     log_trace!("fetch_score: {:?} {} {}", context, ego_id, dst_id);
 
     let score = self.fetch_raw_score(context, ego_id, dst_id);
-    self.apply_score_clustering(context, ego_id, score)
+    let kind = self.node_info_from_id(dst_id).kind;
+    self.apply_score_clustering(context, ego_id, score, kind)
   }
 
   fn fetch_score_reversed(
@@ -1103,8 +1178,9 @@ impl AugMultiGraph {
       Some(score) => self.with_zero_opinion(context, dst_id, score),
       None => self.fetch_raw_score(context, ego_id, dst_id),
     };
+    let kind = self.node_info_from_id(dst_id).kind;
 
-    self.apply_score_clustering(context, ego_id, score)
+    self.apply_score_clustering(context, ego_id, score, kind)
   }
 
   fn fetch_user_score_reversed(
@@ -1123,7 +1199,7 @@ impl AugMultiGraph {
       Some(x) => {
         if x.pos_edges.len() + x.neg_edges.len() == 0 {
           log_error!("(fetch_user_score_reversed) Non-user node has no owner");
-          (0.0, 0.0)
+          (0.0, 0)
         } else {
           if x.pos_edges.len() + x.neg_edges.len() != 1 {
             log_error!(
@@ -1143,7 +1219,7 @@ impl AugMultiGraph {
 
       None => {
         log_error!("(fetch_user_score_reversed) Node does not exist");
-        (0.0, 0.0)
+        (0.0, 0)
       },
     }
   }
@@ -1285,22 +1361,22 @@ impl AugMultiGraph {
     context: &str,
     ego: &str,
     dst: &str,
-  ) -> Vec<(String, String, Weight, Weight, Weight, Weight)> {
+  ) -> Vec<(String, String, Weight, Weight, Cluster, Cluster)> {
     log_info!("CMD read_node_score: {:?} {:?} {:?}", context, ego, dst);
 
     if !self.contexts.contains_key(context) {
       log_error!("(read_node_score) Context does not exist: {:?}", context);
-      return [(ego.to_string(), dst.to_string(), 0.0, 0.0, 0.0, 0.0)].to_vec();
+      return [(ego.to_string(), dst.to_string(), 0.0, 0.0, 0, 0)].to_vec();
     }
 
     if !self.node_exists(ego) {
       log_error!("(read_node_score) Node does not exist: {:?}", ego);
-      return [(ego.to_string(), dst.to_string(), 0.0, 0.0, 0.0, 0.0)].to_vec();
+      return [(ego.to_string(), dst.to_string(), 0.0, 0.0, 0, 0)].to_vec();
     }
 
     if !self.node_exists(dst) {
       log_error!("(read_node_score) Node does not exist: {:?}", dst);
-      return [(ego.to_string(), dst.to_string(), 0.0, 0.0, 0.0, 0.0)].to_vec();
+      return [(ego.to_string(), dst.to_string(), 0.0, 0.0, 0, 0)].to_vec();
     }
 
     let ego_id = self.find_or_add_node_by_name(ego);
@@ -1362,11 +1438,6 @@ impl AugMultiGraph {
 
     if !self.contexts.contains_key(context) {
       log_error!("(read_scores) Context does not exist: {:?}", context);
-      return vec![];
-    }
-
-    if !self.node_exists(ego) {
-      log_error!("(read_scores) Node does not exist: {:?}", ego);
       return vec![];
     }
 
@@ -1541,7 +1612,7 @@ impl AugMultiGraph {
     positive_only: bool,
     index: u32,
     count: u32,
-  ) -> Vec<(String, String, Weight, Weight, Cluster)> {
+  ) -> Vec<(String, String, Weight, Weight, Weight, Cluster, Cluster)> {
     log_info!(
       "CMD read_graph: {:?} {:?} {:?} {} {} {}",
       context,
@@ -1867,6 +1938,8 @@ impl AugMultiGraph {
       .skip(index as usize)
       .take(count as usize)
       .map(|(src_id, dst_id, weight_of_dst)| {
+        let (score_value_of_dst, score_cluster_of_dst) =
+          self.fetch_score(context, ego_id, dst_id);
         let (score_value_of_ego, score_cluster_of_ego) =
           self.fetch_user_score_reversed(context, ego_id, dst_id);
 
@@ -1874,7 +1947,9 @@ impl AugMultiGraph {
           self.node_info_from_id(src_id).name.clone(),
           self.node_info_from_id(dst_id).name.clone(),
           weight_of_dst,
+          score_value_of_dst,
           score_value_of_ego,
+          score_cluster_of_dst,
           score_cluster_of_ego,
         )
       })
@@ -1953,7 +2028,7 @@ impl AugMultiGraph {
     &mut self,
     context: &str,
     ego: &str,
-  ) -> Vec<(String, String, Weight, Weight, Weight, Weight)> {
+  ) -> Vec<(String, String, Weight, Weight, Cluster, Cluster)> {
     log_info!("CMD read_mutual_scores: {:?} {:?}", context, ego);
 
     if !self.contexts.contains_key(context) {
@@ -1961,14 +2036,10 @@ impl AugMultiGraph {
       return vec![];
     }
 
-    if !self.node_exists(ego) {
-      log_error!("(read_mutual_scores) Node does not exist: {:?}", ego);
-      return vec![];
-    }
-
     let ego_id = self.find_or_add_node_by_name(ego);
     let ranks = self.fetch_all_scores(context, ego_id);
-    let mut v = Vec::<(String, String, Weight, Weight, Weight, Weight)>::new();
+    let mut v =
+      Vec::<(String, String, Weight, Weight, Cluster, Cluster)>::new();
 
     v.reserve_exact(ranks.len());
 
@@ -2185,7 +2256,7 @@ impl AugMultiGraph {
 //  ================================================
 
 impl AugMultiGraph {
-  fn reduced_graph(&mut self) -> Vec<(NodeId, NodeId, Weight)> {
+  pub fn reduced_graph(&mut self) -> Vec<(NodeId, NodeId, Weight)> {
     log_trace!("reduced_graph");
 
     let users: Vec<NodeId> = self
@@ -2244,7 +2315,7 @@ impl AugMultiGraph {
     result
   }
 
-  fn top_nodes(&mut self) -> Vec<(NodeId, f64)> {
+  pub fn top_nodes(&mut self) -> Vec<(NodeId, f64)> {
     log_trace!("top_nodes");
 
     let reduced = self.reduced_graph();
@@ -2287,13 +2358,17 @@ impl AugMultiGraph {
 
     self.recalculate_all(0);
     let nodes = self.top_nodes();
+
+    //  Drop all walks and make sure to empty caches.
     self.recalculate_all(0);
+    self.cached_scores = vec![];
+    self.cached_walks = vec![];
 
     self.zero_opinion.resize(0, 0.0);
     self.zero_opinion.reserve(nodes.len());
 
     for (node_id, amount) in nodes.iter() {
-      if *node_id > self.zero_opinion.len() {
+      if *node_id >= self.zero_opinion.len() {
         self.zero_opinion.resize(*node_id + 1, 0.0);
       }
       self.zero_opinion[*node_id] = *amount;
