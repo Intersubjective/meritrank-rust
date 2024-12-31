@@ -2278,7 +2278,7 @@ fn mutual_scores_cluster_single_score_uncontexted() {
   println!("{:?}", res);
 
   assert_eq!(res.len(), 2);
-  assert!(res[0].4 == 5);
+  assert!(res[0].4 == 100);
   assert!(res[1].4 == 1);
 }
 
@@ -2293,7 +2293,7 @@ fn mutual_scores_cluster_single_score_contexted() {
   println!("{:?}", res);
 
   assert_eq!(res.len(), 2);
-  assert!(res[0].4 == 5);
+  assert!(res[0].4 == 100);
   assert!(res[1].4 == 1);
 }
 
@@ -2345,12 +2345,10 @@ fn mutual_scores_clustering() {
   ) in res.iter()
   {
     assert!(*cluster_of_dst >= 1);
-    assert!(*cluster_of_dst <= 5);
+    assert!(*cluster_of_dst <= 100);
     assert!(*cluster_of_src >= 1);
-    assert!(*cluster_of_src <= 5);
+    assert!(*cluster_of_src <= 100);
   }
-
-  //  TODO: Add asserts for specific score cluster values.
 }
 
 #[test]
@@ -2382,19 +2380,19 @@ fn five_scores_clustering() {
 
   assert_eq!(res.len(), 5);
 
-  assert!(res[0].4 <= 5);
-  assert!(res[0].4 >= 3);
+  assert!(res[0].4 <= 100);
+  assert!(res[0].4 >= 40);
 
-  assert!(res[1].4 <= 5);
-  assert!(res[1].4 >= 2);
+  assert!(res[1].4 <= 100);
+  assert!(res[1].4 >= 20);
 
-  assert!(res[2].4 <= 5);
+  assert!(res[2].4 <= 100);
   assert!(res[2].4 >= 1);
 
-  assert!(res[3].4 <= 4);
+  assert!(res[3].4 <= 80);
   assert!(res[3].4 >= 1);
 
-  assert!(res[4].4 <= 3);
+  assert!(res[4].4 <= 60);
   assert!(res[4].4 >= 1);
 }
 
@@ -2422,9 +2420,9 @@ fn separate_clusters_without_users() {
 
   assert_eq!(res.len(), 3);
 
-  assert_eq!(res[0].4, 5);
-  assert_eq!(res[1].4, 5);
-  assert_eq!(res[2].4, 5);
+  assert_eq!(res[0].4, 100);
+  assert_eq!(res[1].4, 100);
+  assert_eq!(res[2].4, 100);
 }
 
 #[test]
@@ -2452,6 +2450,6 @@ fn separate_clusters_self_score() {
 
   assert_eq!(res.len(), 2);
 
-  assert_eq!(res[0].4, 5);
+  assert_eq!(res[0].4, 100);
   assert_eq!(res[1].4, 1);
 }

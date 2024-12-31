@@ -3,7 +3,6 @@ use petgraph::{
   graph::{DiGraph, NodeIndex},
   visit::EdgeRef,
 };
-use rand::{thread_rng, Rng};
 use simple_pagerank::Pagerank;
 use std::{
   any::Any, collections::HashMap, env::var, string::ToString, sync::atomic::Ordering, time::Instant
@@ -70,11 +69,12 @@ lazy_static::lazy_static! {
     pub static ref FILTER_MAX_SIZE: usize = parse_env_with_default("MERITRANK_FILTER_MAX_SIZE", 8192);
     pub static ref SCORES_CACHE_SIZE: usize = parse_env_with_default("MERITRANK_SCORES_CACHE_SIZE", 1024 * 10);
     pub static ref WALKS_CACHE_SIZE: usize = parse_env_with_default("MERITRANK_WALKS_CACHE_SIZE", 1024);
-    pub static ref NUM_SCORE_CLUSTERS: usize = parse_env_with_default("MERITRANK_NUM_SCORE_CLUSTERS", 5);
     pub static ref SCORE_CLUSTERS_TIMEOUT: u64 = parse_env_with_default("MERITRANK_SCORE_CLUSTERS_TIMEOUT", 60 * 60 * 6);
     pub static ref KMEANS_TOLERANCE: f64 = parse_env_with_default("MERITRANK_KMEANS_TOLERANCE", 0.01);
     pub static ref KMEANS_ITERATIONS: usize = parse_env_with_default("MERITRANK_KMEANS_ITERATIONS", 200);
 }
+
+pub const NUM_SCORE_QUANTILES: usize = 100;
 
 //  ================================================================
 //
@@ -114,10 +114,19 @@ pub struct CachedWalk {
   pub ego:     NodeId,
 }
 
-#[derive(PartialEq, Clone, Default)]
+#[derive(PartialEq, Clone)]
 pub struct ClusterGroupBounds {
   pub updated_sec: u64,
-  pub bounds:      Vec<Weight>,
+  pub bounds:      [Weight; NUM_SCORE_QUANTILES - 1],
+}
+
+impl Default for ClusterGroupBounds {
+  fn default() -> ClusterGroupBounds {
+    ClusterGroupBounds {
+      updated_sec: 0,
+      bounds:      [0.0; NUM_SCORE_QUANTILES - 1],
+    }
+  }
 }
 
 #[derive(PartialEq, Clone, Default)]
@@ -356,119 +365,38 @@ impl AugMultiGraph {
 
 //  ================================================================
 //
-//    K-means
+//    Quantiles
 //
 //  ================================================================
 
-fn calculate_clusters_bounds_with_kmeans(
+fn bounds_are_empty(bounds: &[Weight; NUM_SCORE_QUANTILES - 1]) -> bool {
+  return bounds[0] == 0.0 && bounds[bounds.len() - 1] == 0.0;
+}
+
+fn calculate_quantiles_bounds(
   mut scores: Vec<Weight>
-) -> Vec<Weight> {
-  let distance = |a: f64, b: f64| (a - b).abs();
-
-  //  K-means
-
-  let mut rng = thread_rng();
-  let mut centroids = Vec::with_capacity(*NUM_SCORE_CLUSTERS);
-  let mut distances: Vec<f64> = vec![f64::MAX; scores.len()];
-  centroids.push(scores[rng.gen_range(0..scores.len())]);
-
-  for _ in 1..*NUM_SCORE_CLUSTERS {
-    for (i, &point) in scores.iter().enumerate() {
-      let dist = distance(point, *centroids.last().unwrap());
-      distances[i] = distances[i].min(dist);
-    }
-
-    let sum: f64 = distances.iter().sum();
-    let target = if sum > EPSILON {
-      // LMAO RUST LIBRARIES
-      rng.gen_range(0.0..sum)
-    } else {
-      0.0
-    };
-    let mut cumulative_sum = 0.0;
-
-    for (i, &d) in distances.iter().enumerate() {
-      cumulative_sum += d;
-      if cumulative_sum >= target {
-        centroids.push(scores[i]);
-        break;
-      }
-    }
+) -> [Weight; NUM_SCORE_QUANTILES - 1] {
+  if scores.is_empty() {
+    return [0.0; NUM_SCORE_QUANTILES - 1];
   }
 
-  let mut assignments = vec![0.0; scores.len()];
-  let mut changed = true;
-
-  for _ in 0..*KMEANS_ITERATIONS {
-    if !changed {
-      break;
-    }
-    changed = false;
-
-    for (i, &point) in scores.iter().enumerate() {
-      let (closest, _) = centroids
-        .iter()
-        .enumerate()
-        .map(|(j, &centroid)| (j as f64, distance(point, centroid)))
-        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
-        .unwrap();
-
-      if assignments[i] != closest {
-        assignments[i] = closest;
-        changed = true;
-      }
-    }
-
-    let mut new_centroids = vec![0.0; *NUM_SCORE_CLUSTERS];
-    let mut counts = vec![0; *NUM_SCORE_CLUSTERS];
-
-    for (i, &assignment) in assignments.iter().enumerate() {
-      let cluster_idx = assignment as usize;
-      new_centroids[cluster_idx] += scores[i];
-      counts[cluster_idx] += 1;
-    }
-
-    let mut total_shift = 0.0;
-    for (i, centroid) in new_centroids.iter_mut().enumerate() {
-      if counts[i] > 0 {
-        let new_centroid = *centroid / counts[i] as f64;
-        total_shift += (new_centroid - centroids[i]).powi(2);
-        centroids[i] = new_centroid;
-      } else {
-        *centroid = scores[rng.gen_range(0..scores.len())];
-      }
-    }
-
-    if total_shift < *KMEANS_TOLERANCE {
-      break;
-    }
+  if scores.len() == 1 {
+    let bound = scores[0] - EPSILON - EPSILON;
+    return [bound; NUM_SCORE_QUANTILES - 1];
   }
 
-  //  Find clusters' bounds
+  scores.sort_by(|a, b| b.total_cmp(a));
 
-  let mut bounds: Vec<Weight> = vec![0.0; *NUM_SCORE_CLUSTERS - 1];
+  let mut bounds = [0.0; NUM_SCORE_QUANTILES - 1];
 
-  scores.sort_by(|a, b| a.total_cmp(b));
-  centroids.sort_by(|a, b| a.total_cmp(b));
-  assignments.sort_by(|a, b| a.total_cmp(b));
+  for i in 0..bounds.len() {
+    let n = std::cmp::min(
+      (((i * scores.len()) as f64) / ((bounds.len() + 1) as f64)).floor()
+        as usize,
+      scores.len() - 2,
+    );
 
-  let mut last = 0.0;
-
-  for i in 1..centroids.len() {
-    let mut left = scores[0];
-    let mut right = scores[scores.len() - 1];
-
-    for k in 1..assignments.len() {
-      if assignments[k - 1] < last + EPSILON && assignments[k] > last + EPSILON
-      {
-        last = assignments[k];
-        left = scores[k - 1];
-        right = scores[k];
-        break;
-      }
-    }
-
-    bounds[i - 1] = (left + right) * 0.5;
+    bounds[bounds.len() - i - 1] = (scores[n] + scores[n + 1]) / 2.0;
   }
 
   bounds
@@ -913,12 +841,8 @@ impl AugMultiGraph {
     context: &str,
     ego: NodeId,
     kind: NodeKind,
-  ) -> Vec<Weight> {
+  ) -> [Weight; NUM_SCORE_QUANTILES - 1] {
     log_trace!("calculate_score_clusters_bounds: {}", ego);
-
-    if *NUM_SCORE_CLUSTERS <= 1 {
-      return vec![];
-    }
 
     let mut scores: Vec<Weight> = self
       .all_neighbors(context, ego)
@@ -935,10 +859,10 @@ impl AugMultiGraph {
     }
 
     if scores.is_empty() {
-      return vec![];
+      return [0.0; NUM_SCORE_QUANTILES - 1];
     }
 
-    calculate_clusters_bounds_with_kmeans(scores)
+    calculate_quantiles_bounds(scores)
   }
 
   fn clusters_from(
@@ -1048,17 +972,21 @@ impl AugMultiGraph {
 
     clusters.resize(node_count, Default::default());
 
-    if !clusters[ego].users.bounds.is_empty()
-      && !clusters[ego].users.bounds.is_empty()
-      && !clusters[ego].users.bounds.is_empty()
-    {
-      return;
+    let users_empty = bounds_are_empty(&clusters[ego].users.bounds);
+    let beacons_empty = bounds_are_empty(&clusters[ego].beacons.bounds);
+    let comments_empty = bounds_are_empty(&clusters[ego].comments.bounds);
+
+    if users_empty {
+      self.update_node_score_clustering(context, ego, NodeKind::User);
     }
 
-    log_verbose!("Init score clustering for node {} in {:?}", ego, context);
-    self.update_node_score_clustering(context, ego, NodeKind::User);
-    self.update_node_score_clustering(context, ego, NodeKind::Beacon);
-    self.update_node_score_clustering(context, ego, NodeKind::Comment);
+    if beacons_empty {
+      self.update_node_score_clustering(context, ego, NodeKind::Beacon);
+    }
+
+    if comments_empty {
+      self.update_node_score_clustering(context, ego, NodeKind::Comment);
+    }
   }
 
   fn apply_score_clustering(
@@ -1113,13 +1041,12 @@ impl AugMultiGraph {
       },
     };
 
-    if bounds.is_empty() {
-      //  Default cluster value when there's no clustering data available.
-      return (score, *NUM_SCORE_CLUSTERS as Cluster);
+    if bounds_are_empty(&bounds) {
+      return (score, 0);
     }
 
     let step = 1;
-    let mut cluster = (*NUM_SCORE_CLUSTERS - bounds.len()) as Cluster;
+    let mut cluster = 1;
 
     for bound in bounds {
       if score < *bound - EPSILON {

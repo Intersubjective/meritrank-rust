@@ -12,7 +12,6 @@ NNG server for [PSQL Connector](/psql-connector/README.md) with embedded Rust [M
 - `MERITRANK_FILTER_MAX_SIZE` - default `8192`
 - `MERITRANK_SCORES_CACHE_SIZE` - default `10240`
 - `MERITRANK_WALKS_CACHE_SIZE` - default `1024`
-- `MERITRANK_NUM_SCORE_CLUSTERS` - default `5`
 - `MERITRANK_SCORE_CLUSTERS_TIMEOUT` - in seconds, default `21600` (6 hours)
 - `MERITRANK_KMEANS_TOLERANCE` - default `0.01`
 - `MERITRANK_KMEANS_ITERATIONS` - default `200`
