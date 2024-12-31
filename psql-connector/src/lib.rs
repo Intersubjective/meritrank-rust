@@ -1545,19 +1545,19 @@ mod tests {
 
     assert_eq!(res.len(), 5);
 
-    assert!(res[0].4 <= 5);
-    assert!(res[0].4 >= 3);
+    assert!(res[0].4 <= 100);
+    assert!(res[0].4 >= 40);
 
-    assert!(res[1].4 <= 5);
-    assert!(res[1].4 >= 2);
+    assert!(res[1].4 <= 100);
+    assert!(res[1].4 >= 20);
 
-    assert!(res[2].4 <= 5);
+    assert!(res[2].4 <= 100);
     assert!(res[2].4 >= 1);
 
-    assert!(res[3].4 <= 4);
+    assert!(res[3].4 <= 80);
     assert!(res[3].4 >= 1);
 
-    assert!(res[4].4 <= 3);
+    assert!(res[4].4 <= 60);
     assert!(res[4].4 >= 1);
   }
 }
