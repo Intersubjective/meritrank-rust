@@ -3,6 +3,7 @@ pub mod log;
 pub mod operations;
 pub mod protocol;
 pub mod service;
+pub mod vsids;
 
 #[cfg(test)]
 mod tests;

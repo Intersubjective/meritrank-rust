@@ -5,10 +5,10 @@ use petgraph::{
 };
 use simple_pagerank::Pagerank;
 use std::{
-  collections::HashMap, env::var, string::ToString, sync::atomic::Ordering,
-  time::Instant,
+  any::Any, collections::HashMap, env::var, string::ToString, sync::atomic::Ordering, time::Instant
 };
 
+use crate::vsids;
 use crate::astar::*;
 use crate::log::*;
 use crate::log_error;
@@ -154,6 +154,8 @@ pub struct AugMultiGraph {
   pub dummy_info:     NodeInfo,
   pub dummy_graph:    MeritRank,
   pub dummy_clusters: Vec<ScoreClustersByKind>,
+  
+  pub vsids:          Option<vsids::VSIDSManager>,
 }
 
 //  ================================================================
@@ -440,6 +442,7 @@ impl AugMultiGraph {
       dummy_info:            Default::default(),
       dummy_graph:           MeritRank::new(Graph::new()),
       dummy_clusters:        vec![],
+      vsids:                 Some(vsids::VSIDSManager::new()),
     }
   }
 
@@ -1444,25 +1447,57 @@ impl AugMultiGraph {
   }
 
   pub fn write_put_edge(
-    &mut self,
-    context: &str,
-    src: &str,
-    dst: &str,
-    amount: f64,
-    _index: i64,
+      &mut self,
+      context: &str,
+      src: &str,
+      dst: &str,
+      amount: f64,
+      index: i64,
   ) {
-    log_info!(
-      "CMD write_put_edge: {:?} {:?} {:?} {}",
-      context,
-      src,
-      dst,
-      amount
-    );
+      log_info!(
+          "CMD write_put_edge: {:?} {:?} {:?} {} seq={}",
+          context,
+          src,
+          dst,
+          amount,
+          index
+      );
 
-    let src_id = self.find_or_add_node_by_name(src);
-    let dst_id = self.find_or_add_node_by_name(dst);
+      if index < 0 {
+          log_info!(
+              "Negative index detected: context={}, src={}, dst={}, index={}. Converting to 0.",
+              context, src, dst, index
+          );
+      }
 
-    self.set_edge(context, src_id, dst_id, amount);
+      // Convert index to a non-negative sequence number
+      let seq = index.max(0) as u32;
+
+      // If VSIDSManager is available, calculate the updated weight
+      let actual_amount = if let Some(vsids) = &mut self.vsids {
+          if let Some(current_weight) = vsids.get_weight(context, src, dst) {
+              log_info!(
+                  "Current weight before update: context={}, src={}, dst={}, weight={}",
+                  context, src, dst, current_weight
+              );
+          }
+
+          let new_weight = vsids.update_weight(context, src, dst, amount, seq);
+
+          log_info!(
+              "VSIDS updated weight: context={}, src={}, dst={}, base_amount={}, seq={}, actual_weight={}",
+              context, src, dst, amount, seq, new_weight
+          );
+
+          new_weight
+      } else {
+          amount
+      };
+
+      let src_id = self.find_or_add_node_by_name(src);
+      let dst_id = self.find_or_add_node_by_name(dst);
+
+      self.set_edge(context, src_id, dst_id, actual_amount);
   }
 
   pub fn write_delete_edge(
