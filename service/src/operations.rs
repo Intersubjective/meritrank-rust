@@ -1463,13 +1463,20 @@ impl AugMultiGraph {
           index
       );
 
+      if index < 0 {
+          log_info!(
+              "Negative index detected: context={}, src={}, dst={}, index={}. Converting to 0.",
+              context, src, dst, index
+          );
+      }
+
       // Convert index to a non-negative sequence number
       let seq = index.max(0) as u32;
 
       // If VSIDSManager is available, calculate the updated weight
       let actual_amount = if let Some(vsids) = &mut self.vsids {
           if let Some(current_weight) = vsids.get_weight(context, src, dst) {
-              println!(
+              log_info!(
                   "Current weight before update: context={}, src={}, dst={}, weight={}",
                   context, src, dst, current_weight
               );
@@ -1477,7 +1484,7 @@ impl AugMultiGraph {
 
           let new_weight = vsids.update_weight(context, src, dst, amount, seq);
 
-          println!(
+          log_info!(
               "VSIDS updated weight: context={}, src={}, dst={}, base_amount={}, seq={}, actual_weight={}",
               context, src, dst, amount, seq, new_weight
           );
