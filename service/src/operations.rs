@@ -979,7 +979,8 @@ impl AugMultiGraph {
 
     if users_empty {
       self.update_node_score_clustering(context, ego, NodeKind::User);
-
+    }
+      
     if beacons_empty {
       self.update_node_score_clustering(context, ego, NodeKind::Beacon);
     }
