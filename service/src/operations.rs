@@ -5,10 +5,10 @@ use petgraph::{
 };
 use simple_pagerank::Pagerank;
 use std::{
-  any::Any, collections::HashMap, env::var, string::ToString, sync::atomic::Ordering, time::Instant
+  any::Any, collections::HashMap, env::var, string::ToString,
+  sync::atomic::Ordering, time::Instant,
 };
 
-use crate::vsids;
 use crate::astar::*;
 use crate::log::*;
 use crate::log_error;
@@ -16,6 +16,7 @@ use crate::log_info;
 use crate::log_trace;
 use crate::log_verbose;
 use crate::log_warning;
+use crate::vsids;
 
 pub use meritrank_core::Weight;
 pub type Cluster = i32;
@@ -103,28 +104,28 @@ pub struct NodeInfo {
 #[derive(PartialEq, Clone, Default)]
 pub struct CachedScore {
   pub context: String,
-  pub ego:     NodeId,
-  pub dst:     NodeId,
-  pub score:   Weight,
+  pub ego: NodeId,
+  pub dst: NodeId,
+  pub score: Weight,
 }
 
 #[derive(PartialEq, Eq, Clone, Default)]
 pub struct CachedWalk {
   pub context: String,
-  pub ego:     NodeId,
+  pub ego: NodeId,
 }
 
 #[derive(PartialEq, Clone)]
 pub struct ClusterGroupBounds {
   pub updated_sec: u64,
-  pub bounds:      [Weight; NUM_SCORE_QUANTILES - 1],
+  pub bounds: [Weight; NUM_SCORE_QUANTILES - 1],
 }
 
 impl Default for ClusterGroupBounds {
   fn default() -> ClusterGroupBounds {
     ClusterGroupBounds {
       updated_sec: 0,
-      bounds:      [0.0; NUM_SCORE_QUANTILES - 1],
+      bounds: [0.0; NUM_SCORE_QUANTILES - 1],
     }
   }
 }
@@ -132,8 +133,8 @@ impl Default for ClusterGroupBounds {
 #[derive(PartialEq, Clone, Default)]
 pub struct ScoreClustersByKind {
   //  FIXME Refactor this to be more general.
-  pub users:    ClusterGroupBounds,
-  pub beacons:  ClusterGroupBounds,
+  pub users: ClusterGroupBounds,
+  pub beacons: ClusterGroupBounds,
   pub comments: ClusterGroupBounds,
 }
 
@@ -141,21 +142,21 @@ pub struct ScoreClustersByKind {
 //
 #[derive(Clone)]
 pub struct AugMultiGraph {
-  pub node_count:            usize,
-  pub node_infos:            Vec<NodeInfo>,
-  pub node_ids:              HashMap<String, NodeId>,
-  pub contexts:              HashMap<String, MeritRank>,
-  pub cached_scores:         Vec<CachedScore>,
-  pub cached_walks:          Vec<CachedWalk>,
-  pub zero_opinion:          Vec<Weight>,
-  pub time_begin:            Instant,
+  pub node_count: usize,
+  pub node_infos: Vec<NodeInfo>,
+  pub node_ids: HashMap<String, NodeId>,
+  pub contexts: HashMap<String, MeritRank>,
+  pub cached_scores: Vec<CachedScore>,
+  pub cached_walks: Vec<CachedWalk>,
+  pub zero_opinion: Vec<Weight>,
+  pub time_begin: Instant,
   pub cached_score_clusters: HashMap<String, Vec<ScoreClustersByKind>>,
 
-  pub dummy_info:     NodeInfo,
-  pub dummy_graph:    MeritRank,
+  pub dummy_info: NodeInfo,
+  pub dummy_graph: MeritRank,
   pub dummy_clusters: Vec<ScoreClustersByKind>,
-  
-  pub vsids:          Option<vsids::VSIDSManager>,
+
+  pub vsids: Option<vsids::VSIDSManager>,
 }
 
 //  ================================================================
@@ -430,19 +431,19 @@ impl AugMultiGraph {
     log_trace!("AugMultiGraph::new");
 
     AugMultiGraph {
-      node_count:            0,
-      node_infos:            Vec::new(),
-      node_ids:              HashMap::new(),
-      contexts:              HashMap::new(),
-      cached_scores:         vec![],
-      cached_walks:          vec![],
-      zero_opinion:          vec![],
-      time_begin:            Instant::now(),
+      node_count: 0,
+      node_infos: Vec::new(),
+      node_ids: HashMap::new(),
+      contexts: HashMap::new(),
+      cached_scores: vec![],
+      cached_walks: vec![],
+      zero_opinion: vec![],
+      time_begin: Instant::now(),
       cached_score_clusters: HashMap::new(),
-      dummy_info:            Default::default(),
-      dummy_graph:           MeritRank::new(Graph::new()),
-      dummy_clusters:        vec![],
-      vsids:                 Some(vsids::VSIDSManager::new()),
+      dummy_info: Default::default(),
+      dummy_graph: MeritRank::new(Graph::new()),
+      dummy_clusters: vec![],
+      vsids: Some(vsids::VSIDSManager::new()),
     }
   }
 
@@ -1167,8 +1168,8 @@ impl AugMultiGraph {
       self.node_count += 1;
       self.node_infos.resize(self.node_count, NodeInfo::default());
       self.node_infos[node_id] = NodeInfo {
-        kind:       kind_from_name(&node_name),
-        name:       node_name.to_string(),
+        kind: kind_from_name(&node_name),
+        name: node_name.to_string(),
         seen_nodes: Default::default(),
       };
       self.node_ids.insert(node_name.to_string(), node_id);
@@ -1478,7 +1479,10 @@ impl AugMultiGraph {
           if let Some(current_weight) = vsids.get_weight(context, src, dst) {
               log_info!(
                   "Current weight before update: context={}, src={}, dst={}, weight={}",
-                  context, src, dst, current_weight
+                  context,
+                  src,
+                  dst,
+                  current_weight
               );
           }
 
@@ -1496,7 +1500,6 @@ impl AugMultiGraph {
 
       let src_id = self.find_or_add_node_by_name(src);
       let dst_id = self.find_or_add_node_by_name(dst);
-
       self.set_edge(context, src_id, dst_id, actual_amount);
   }
 
@@ -1698,13 +1701,13 @@ impl AugMultiGraph {
                   }
 
                   neighbor = Some(Link::<NodeId, Weight> {
-                    neighbor:       *n,
+                    neighbor: *n,
                     exact_distance: if w.abs() < EPSILON {
                       1_000_000.0
                     } else {
                       1.0 / w
                     },
-                    estimate:       0.0,
+                    estimate: 0.0,
                   });
                 }
               },

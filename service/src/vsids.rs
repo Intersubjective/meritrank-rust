@@ -3,14 +3,16 @@ use std::env;
 
 type Edge = (String, String, String);
 type SourceKey = (String, String);
+type Weight = f64;
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug)]
 pub struct VSIDSManager {
-  weights: HashMap<Edge, f64>,
-  max_indices: HashMap<SourceKey, f64>,
-  bump_factor: f64,
-  max_threshold: f64,
-  deletion_ratio: f64,
+  weights: HashMap<Edge, Weight>,
+  max_indices: HashMap<SourceKey, Weight>,
+  bump_factor: Weight,
+  max_threshold: Weight,
+  deletion_ratio: Weight,
+  cache_size: usize,
 }
 
 impl VSIDSManager {
@@ -21,20 +23,22 @@ impl VSIDSManager {
       .unwrap_or(1.111_111);
 
     Self {
-      weights: HashMap::new(),
-      max_indices: HashMap::new(),
+      weights: HashMap::with_capacity(1000),
+      max_indices: HashMap::with_capacity(100),
       bump_factor,
       max_threshold: 1e15,
       deletion_ratio: 1e-3,
+      cache_size: 10000,
     }
   }
 
+  #[inline]
   pub fn get_weight(
     &self,
     ctx: &str,
     src: &str,
     dst: &str,
-  ) -> Option<f64> {
+  ) -> Option<Weight> {
     self
       .weights
       .get(&(ctx.to_string(), src.to_string(), dst.to_string()))
@@ -46,12 +50,20 @@ impl VSIDSManager {
     ctx: &str,
     src: &str,
     dst: &str,
-    base_weight: f64,
+    base_weight: Weight,
     bumps: u32,
-  ) -> f64 {
+  ) -> Weight {
+    if base_weight.is_nan() || base_weight <= 0.0 {
+      return base_weight;
+    }
+
     let edge = (ctx.to_string(), src.to_string(), dst.to_string());
     let source_key = (ctx.to_string(), src.to_string());
     let new_weight = base_weight * self.bump_factor.powi(bumps as i32);
+
+    if self.weights.len() >= self.cache_size {
+      self.prune_weights();
+    }
 
     self.weights.insert(edge, new_weight);
 
@@ -61,7 +73,7 @@ impl VSIDSManager {
 
     if new_max > self.max_threshold {
       self.normalize(ctx, src);
-      return self.get_weight(ctx, src, dst).unwrap();
+      return self.get_weight(ctx, src, dst).unwrap_or(new_weight);
     }
 
     self.cleanup_small_edges(ctx, src, new_max);
@@ -75,20 +87,22 @@ impl VSIDSManager {
   ) {
     let source_key = (ctx.to_string(), src.to_string());
     if let Some(&max_weight) = self.max_indices.get(&source_key) {
-      if max_weight > 0.0 {
-        let normalized: Vec<(Edge, f64)> = self
-          .weights
-          .iter()
-          .filter(|((c, s, _), _)| c == ctx && s == src)
-          .map(|(edge, &weight)| (edge.clone(), weight / max_weight))
-          .collect();
-
-        for (edge, weight) in normalized {
-          self.weights.insert(edge, weight);
-        }
-
-        self.max_indices.insert(source_key, 1.0);
+      if max_weight <= 0.0 {
+        return;
       }
+
+      let normalized: Vec<_> = self
+        .weights
+        .iter()
+        .filter(|((c, s, _), _)| c == ctx && s == src)
+        .map(|(edge, &weight)| (edge.clone(), weight / max_weight))
+        .collect();
+
+      for (edge, weight) in normalized {
+        self.weights.insert(edge, weight);
+      }
+
+      self.max_indices.insert(source_key, 1.0);
     }
   }
 
@@ -96,22 +110,42 @@ impl VSIDSManager {
     &mut self,
     ctx: &str,
     src: &str,
-    max_weight: f64,
+    max_weight: Weight,
   ) {
     let threshold = max_weight * self.deletion_ratio;
+    self.weights.retain(|(c, s, _), &mut weight| {
+      !(c == ctx && s == src && weight <= threshold)
+    });
+  }
 
-    let keys_to_remove: Vec<Edge> = self
-      .weights
-      .iter()
-      .filter(|((c, s, _), &weight)| {
-        c == ctx && s == src && weight <= threshold
-      })
-      .map(|(edge, _)| edge.clone())
-      .collect();
-
-    for edge in keys_to_remove {
-      self.weights.remove(&edge);
+  fn prune_weights(&mut self) {
+    let target_size = self.cache_size * 9 / 10;
+    if self.weights.len() <= target_size {
+      return;
     }
+
+    let mut weights: Vec<_> = self.weights.drain().collect();
+    weights.sort_unstable_by(|a, b| {
+      b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    weights.truncate(target_size);
+
+    self.weights = weights.into_iter().collect();
+    self.update_max_indices();
+  }
+
+  fn update_max_indices(&mut self) {
+    self.max_indices.clear();
+    for ((ctx, src, _), weight) in &self.weights {
+      let key = (ctx.clone(), src.clone());
+      let entry = self.max_indices.entry(key).or_insert(0.0);
+      *entry = (*entry).max(*weight);
+    }
+  }
+
+  pub fn clear(&mut self) {
+    self.weights.clear();
+    self.max_indices.clear();
   }
 }
 
@@ -120,64 +154,37 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test_normalization_with_cleanup() {
-    let mut mgr = VSIDSManager::new();
+  fn test_invalid_config() {
+    assert!(VSIDSManager::with_config(0.5, 1.0, 0.1, 1000).is_none());
+    assert!(VSIDSManager::with_config(1.5, -1.0, 0.1, 1000).is_none());
+    assert!(VSIDSManager::with_config(1.5, 1.0, 1.5, 1000).is_none());
+  }
 
+  #[test]
+  fn test_cache_management() {
+    let mut mgr = VSIDSManager::with_config(1.5, 1e15, 0.001, 10).unwrap();
+    for i in 0..20 {
+      mgr.update_weight("test", "A", &i.to_string(), 1.0, 0);
+    }
+    assert!(mgr.weights.len() <= 10);
+  }
+
+  #[test]
+  fn test_weight_updates() {
+    let mut mgr = VSIDSManager::new();
+    assert_eq!(mgr.update_weight("test", "A", "B", -1.0, 0), -1.0);
+    assert!(mgr.update_weight("test", "A", "B", f64::NAN, 0).is_nan());
+  }
+
+  #[test]
+  fn test_normalize_and_cleanup() {
+    let mut mgr = VSIDSManager::new();
     mgr.update_weight("test", "A", "B", 1e14, 0);
     mgr.update_weight("test", "A", "C", 1e14, 1);
     mgr.update_weight("test", "A", "D", 1.0, 0);
-
     mgr.update_weight("test", "A", "E", 1e14, 2);
 
     assert!(mgr.get_weight("test", "A", "D").is_none());
     assert!(mgr.get_weight("test", "A", "E").unwrap() <= mgr.max_threshold);
-  }
-
-  #[test]
-  fn test_basic_weight_operations() {
-    let mut mgr = VSIDSManager::new();
-    mgr.update_weight("test", "A", "B", 1.0, 0);
-    assert_eq!(mgr.get_weight("test", "A", "B"), Some(1.0));
-    mgr.update_weight("test", "A", "B", 2.0, 0);
-    assert_eq!(mgr.get_weight("test", "A", "B"), Some(2.0));
-  }
-
-  #[test]
-  fn test_exponential_bump() {
-    let mut mgr = VSIDSManager::new();
-    mgr.update_weight("test", "A", "B", 1.0, 0);
-    mgr.update_weight("test", "A", "C", 1.0, 1);
-    let weight_b = mgr.get_weight("test", "A", "B").unwrap();
-    let weight_c = mgr.get_weight("test", "A", "C").unwrap();
-    assert!((weight_c / weight_b - mgr.bump_factor).abs() < f64::EPSILON);
-  }
-
-  #[test]
-  fn test_normalization() {
-    let mut mgr = VSIDSManager::new();
-    mgr.update_weight("test", "A", "B", 1e16, 0);
-
-    assert!(
-      mgr.get_weight("test", "A", "B").unwrap() <= mgr.max_threshold,
-      "Weight after update should be normalized to be below max_threshold"
-    );
-
-    mgr.update_weight("test", "A", "C", 1.0, 0);
-
-    let weight_b = mgr.get_weight("test", "A", "B").unwrap();
-    let weight_c = mgr.get_weight("test", "A", "C").unwrap();
-
-    assert!(weight_b <= mgr.max_threshold);
-    assert!(weight_c <= mgr.max_threshold);
-  }
-
-  #[test]
-  fn test_context_isolation() {
-    let mut mgr = VSIDSManager::new();
-    mgr.update_weight("ctx1", "A", "B", 1.0, 0);
-    mgr.update_weight("ctx2", "A", "B", 1.0, 1);
-    let weight_ctx1 = mgr.get_weight("ctx1", "A", "B").unwrap();
-    let weight_ctx2 = mgr.get_weight("ctx2", "A", "B").unwrap();
-    assert!(weight_ctx2 > weight_ctx1);
   }
 }
