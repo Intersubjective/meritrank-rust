@@ -118,14 +118,14 @@ pub struct CachedWalk {
 #[derive(PartialEq, Clone)]
 pub struct ClusterGroupBounds {
   pub updated_sec: u64,
-  pub bounds: [Weight; NUM_SCORE_QUANTILES - 1],
+  pub bounds:      [Weight; NUM_SCORE_QUANTILES - 1],
 }
 
 impl Default for ClusterGroupBounds {
   fn default() -> ClusterGroupBounds {
     ClusterGroupBounds {
       updated_sec: 0,
-      bounds: [0.0; NUM_SCORE_QUANTILES - 1],
+      bounds:      [0.0; NUM_SCORE_QUANTILES - 1],
     }
   }
 }
@@ -979,7 +979,6 @@ impl AugMultiGraph {
 
     if users_empty {
       self.update_node_score_clustering(context, ego, NodeKind::User);
-    }
 
     if beacons_empty {
       self.update_node_score_clustering(context, ego, NodeKind::Beacon);
