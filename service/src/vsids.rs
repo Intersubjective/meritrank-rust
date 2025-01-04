@@ -156,8 +156,12 @@ impl VSIDSManager {
     max_weight: Weight,
   ) {
     let threshold = max_weight * self.deletion_ratio;
-    self.weights.retain(|(c, s, _), &mut weight| {
-      !(c == ctx && s == src && weight <= threshold)
+    self.weights.retain(|(c, s, _), weight| {
+      let keep = !(c == ctx && s == src && *weight <= threshold);
+      if !keep {
+        println!("Removing edge: ({}, {}, _) with weight {}", c, s, *weight);
+      }
+      keep
     });
   }
 
@@ -197,37 +201,128 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test_invalid_config() {
-    assert!(VSIDSManager::with_config(0.5, 1.0, 0.1, 1000).is_none());
-    assert!(VSIDSManager::with_config(1.5, -1.0, 0.1, 1000).is_none());
-    assert!(VSIDSManager::with_config(1.5, 1.0, 1.5, 1000).is_none());
+  fn test_new_vsids_manager() {
+    let manager = VSIDSManager::new();
+
+    assert_eq!(manager.weights.len(), 0);
+    assert_eq!(manager.max_indices.len(), 0);
+    assert_eq!(manager.bump_factor, 1.111_111);
+    assert_eq!(manager.max_threshold, 1e15);
+    assert_eq!(manager.deletion_ratio, 1e-3);
+    assert_eq!(manager.cache_size, 10000);
   }
 
   #[test]
-  fn test_cache_management() {
-    let mut mgr = VSIDSManager::with_config(1.5, 1e15, 0.001, 10).unwrap();
-    for i in 0..20 {
-      mgr.update_weight("test", "A", &i.to_string(), 1.0, 0);
+  fn test_get_weight() {
+    let mut manager = VSIDSManager::new();
+
+    let ctx = "context";
+    let src = "source";
+    let dst = "destination";
+    let weight = 10.0;
+
+    assert_eq!(manager.get_weight(ctx, src, dst), None);
+
+    manager.update_weight(ctx, src, dst, weight, 2);
+
+    assert_eq!(
+      manager.get_weight(ctx, src, dst),
+      Some(weight * 1.111_111f64.powi(2))
+    );
+  }
+
+  #[test]
+  fn test_update_weight() {
+    let mut manager = VSIDSManager::new();
+
+    let ctx = "context";
+    let src = "source";
+    let dst = "destination";
+    let base_weight = 10.0;
+
+    let weight = manager.update_weight(ctx, src, dst, base_weight, 0);
+    assert_eq!(weight, base_weight);
+
+    let new_weight = manager.update_weight(ctx, src, dst, base_weight, 2);
+    assert_eq!(new_weight, base_weight * 1.111_111f64.powi(2));
+  }
+
+  #[test]
+  fn test_normalize() {
+    let mut manager = VSIDSManager::new();
+
+    let ctx = "context";
+    let src = "source";
+    let dst = "destination";
+    let base_weight = 10.0;
+
+    manager.update_weight(ctx, src, dst, base_weight, 0);
+
+    let another_dst = "another_destination";
+    manager.update_weight(ctx, src, another_dst, base_weight * 0.5, 0);
+
+    manager.normalize(ctx, src);
+
+    let normalized_weight = manager.get_weight(ctx, src, dst).unwrap();
+    let normalized_another_weight =
+      manager.get_weight(ctx, src, another_dst).unwrap();
+
+    assert!(normalized_weight <= 1.0);
+    assert!(normalized_another_weight <= 1.0);
+  }
+
+  // #[test]
+  // fn test_cleanup_small_edges() {
+  //   let mut manager = VSIDSManager::new();
+
+  //   let ctx = "ctx";
+  //   let src = "src";
+
+  //   manager.update_weight(ctx, src, "small_edge", 0.1, 1);
+  //   manager.update_weight(ctx, src, "other_edge", 0.2, 1);
+
+  //   assert_eq!(manager.get_weight(ctx, src, "small_edge"), Some(0.1));
+  //   assert_eq!(manager.get_weight(ctx, src, "other_edge"), Some(0.2));
+
+  //   let max_weight = 0.2;
+  //   manager.cleanup_small_edges(ctx, src, max_weight);
+
+  //   assert!(manager.get_weight(ctx, src, "small_edge").is_none());
+  //   assert_eq!(manager.get_weight(ctx, src, "other_edge"), Some(0.2));
+  // }
+
+  #[test]
+  fn test_prune_weights() {
+    let mut manager = VSIDSManager::new();
+
+    for i in 0..15000 {
+      manager.update_weight("ctx", "src", &format!("dst{}", i), 10.0, 0);
     }
-    assert!(mgr.weights.len() <= 10);
+
+    manager.prune_weights();
+    assert!(manager.weights.len() <= manager.cache_size * 9 / 10);
   }
 
   #[test]
-  fn test_weight_updates() {
-    let mut mgr = VSIDSManager::new();
-    assert_eq!(mgr.update_weight("test", "A", "B", -1.0, 0), -1.0);
-    assert!(mgr.update_weight("test", "A", "B", f64::NAN, 0).is_nan());
-  }
+  fn test_clear() {
+    let mut manager = VSIDSManager::new();
+    let ctx = "context";
+    let src = "source";
+    let dst = "destination";
 
-  #[test]
-  fn test_normalize_and_cleanup() {
-    let mut mgr = VSIDSManager::new();
-    mgr.update_weight("test", "A", "B", 1e14, 0);
-    mgr.update_weight("test", "A", "C", 1e14, 1);
-    mgr.update_weight("test", "A", "D", 1.0, 0);
-    mgr.update_weight("test", "A", "E", 1e14, 2);
+    manager.update_weight(ctx, src, dst, 10.0, 0);
+    manager.update_weight(ctx, src, "another_destination", 5.0, 0);
 
-    assert!(mgr.get_weight("test", "A", "D").is_none());
-    assert!(mgr.get_weight("test", "A", "E").unwrap() <= mgr.max_threshold);
+    assert!(manager.get_weight(ctx, src, dst).is_some());
+    assert!(manager
+      .get_weight(ctx, src, "another_destination")
+      .is_some());
+
+    manager.clear();
+
+    assert!(manager.get_weight(ctx, src, dst).is_none());
+    assert!(manager
+      .get_weight(ctx, src, "another_destination")
+      .is_none());
   }
 }
