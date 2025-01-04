@@ -1,6 +1,49 @@
 use std::collections::HashMap;
 use std::env;
 
+//////////////////////////////////////////////////////////
+//   VSIDS (Variable State Independent Decaying Sum)    //
+//======================================================//
+//                                                      //
+// VSIDS is necessary because originally, MeritRank     //
+// was designed to work for a network with a stable     //
+// number of nodes and edges, without a "time" aspect.  //
+// As new nodes and edges are repeatedly added, the     //
+// total sum of the weights of outgoing edges keeps     //
+// increasing. This results in a diminishing impact     //
+// on not only the newly added edges but also on the    //
+// older edges, causing the entropy to dominate.        //
+//                                                      //
+// In this implementation, the `VSIDSManager` is        //
+// responsible for managing edge weights in a graph-    //
+// like structure. It adjusts the weights of edges      //
+// based on a configurable bump factor and performs     //
+// essential operations such as normalizing weights,    //
+// pruning insignificant edges, and cleaning up         //
+// outdated data to maintain efficiency.                //
+//                                                      //
+// The algorithm uses an exponential decay mechanism    //
+// to handle the inflation problem of edge weights,     //
+// where each time an edge is updated, the other        //
+// edges outgoing from the same node are decayed by     //
+// a factor. This helps to prioritize the most recent   //
+// updates, ensuring that the "importance" of edges     //
+// remains dynamic and reflects current relevance.      //
+//                                                      //
+// Key features include:                                //
+// - Dynamic weight adjustment based on updates         //
+// - Decay of older edges to prevent "weight inflation" //
+// - Normalization when weight thresholds are reached   //
+// - Pruning and cleanup strategies to ensure memory    //
+//   efficiency and avoid excessive growth in data      //
+// - Handling of floating point limits through          //
+//   renormalization.                                   //
+//                                                      //
+// The decay mechanism in VSIDS helps mitigate this     //
+// issue by adjusting the weight of edges over time,    //
+// ensuring the newer edges retain more relevance.      //
+//////////////////////////////////////////////////////////
+
 type Edge = (String, String, String);
 type SourceKey = (String, String);
 type Weight = f64;
