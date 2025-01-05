@@ -107,7 +107,6 @@ impl VSIDSManager {
     let new_weight = base_weight * self.bump_factor.powi(bumps as i32);
     let src_key = (ctx.to_string(), src_id.to_string());
 
-    // Update max_indices with the new weight if it's larger
     let current_max = self.max_indices.get(&src_key).copied().unwrap_or(0.0);
     if new_weight.abs() > current_max {
       self.max_indices.insert(src_key.clone(), new_weight.abs());
@@ -115,7 +114,6 @@ impl VSIDSManager {
 
     if new_weight.abs() > self.max_threshold {
       if let Some(max_weight) = self.max_indices.get(&src_key).copied() {
-        // Normalize all existing edges
         for &(dst, weight) in edges_data {
           let normalized_weight = weight / max_weight;
           ops.push(GraphOp::SetEdge {
@@ -125,12 +123,10 @@ impl VSIDSManager {
             weight: normalized_weight,
           });
         }
-        // Reset max index after normalization
         self.max_indices.insert(src_key.clone(), 1.0);
       }
     }
 
-    // Check for small edges that need deletion
     if let Some(&max_weight) = self.max_indices.get(&src_key) {
       let threshold = max_weight * self.deletion_ratio;
       for &(dst, weight) in edges_data {
@@ -247,7 +243,7 @@ mod tests {
 
     let (_, _) = vsids.update_weight(&[], "test", 1, 2, 1.0, 0);
 
-    let small_weight = vsids.deletion_ratio / 2.0; // Guaranteed to be below threshold
+    let small_weight = vsids.deletion_ratio / 2.0;
     let edges_data = vec![(2, small_weight)];
 
     let (_, ops) = vsids.update_weight(&edges_data, "test", 1, 3, 1.0, 0);
