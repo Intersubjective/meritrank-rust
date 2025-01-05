@@ -1,5 +1,7 @@
+use crate::operations::AugMultiGraph;
 use std::collections::HashMap;
 use std::env;
+use std::sync::{Arc, RwLock};
 
 //////////////////////////////////////////////////////////
 //   VSIDS (Variable State Independent Decaying Sum)    //
@@ -47,6 +49,22 @@ use std::env;
 type Edge = (String, String, String);
 type SourceKey = (String, String);
 type Weight = f64;
+pub type NodeId = usize;
+
+#[derive(Debug)]
+pub enum GraphOp {
+  SetEdge {
+    context: String,
+    src_id: NodeId,
+    dst_id: NodeId,
+    weight: f64,
+  },
+  RemoveEdge {
+    context: String,
+    src_id: NodeId,
+    dst_id: NodeId,
+  },
+}
 
 #[derive(Clone, Debug)]
 pub struct VSIDSManager {
@@ -55,7 +73,6 @@ pub struct VSIDSManager {
   bump_factor: Weight,
   max_threshold: Weight,
   deletion_ratio: Weight,
-  cache_size: usize,
 }
 
 impl VSIDSManager {
@@ -71,258 +88,66 @@ impl VSIDSManager {
       bump_factor,
       max_threshold: 1e15,
       deletion_ratio: 1e-3,
-      cache_size: 10000,
     }
-  }
-
-  #[inline]
-  pub fn get_weight(
-    &self,
-    ctx: &str,
-    src: &str,
-    dst: &str,
-  ) -> Option<Weight> {
-    self
-      .weights
-      .get(&(ctx.to_string(), src.to_string(), dst.to_string()))
-      .copied()
   }
 
   pub fn update_weight(
     &mut self,
+    edges_data: &[(NodeId, f64)],
     ctx: &str,
-    src: &str,
-    dst: &str,
-    base_weight: Weight,
+    src_id: NodeId,
+    dst_id: NodeId,
+    base_weight: f64,
     bumps: u32,
-  ) -> Weight {
+  ) -> (f64, Vec<GraphOp>) {
     if base_weight.is_nan() || base_weight <= 0.0 {
-      return base_weight;
+      return (base_weight, vec![]);
     }
 
-    let edge = (ctx.to_string(), src.to_string(), dst.to_string());
-    let source_key = (ctx.to_string(), src.to_string());
+    let mut ops = Vec::new();
+
     let new_weight = base_weight * self.bump_factor.powi(bumps as i32);
+    let src_key = (ctx.to_string(), src_id.to_string());
 
-    if self.weights.len() >= self.cache_size {
-      self.prune_weights();
+    if new_weight > self.max_threshold {
+      if let Some(max_weight) = self.max_indices.get(&src_key).copied() {
+        for &(dst, weight) in edges_data {
+          let normalized_weight = weight / max_weight;
+          ops.push(GraphOp::SetEdge {
+            context: ctx.to_string(),
+            src_id,
+            dst_id,
+            weight: normalized_weight,
+          });
+        }
+
+        self.max_indices.insert(src_key.clone(), 1.0);
+      }
     }
 
-    self.weights.insert(edge, new_weight);
+    if let Some(&max_weight) =
+      self.max_indices.get(&(ctx.to_string(), src_id.to_string()))
+    {
+      let threshold = max_weight * self.deletion_ratio;
 
-    let current_max = self.max_indices.get(&source_key).copied().unwrap_or(0.0);
-    let new_max = new_weight.max(current_max);
-    self.max_indices.insert(source_key.clone(), new_max);
-
-    if new_max > self.max_threshold {
-      self.normalize(ctx, src);
-      return self.get_weight(ctx, src, dst).unwrap_or(new_weight);
+      for &(dst, weight) in edges_data {
+        if weight <= threshold {
+          ops.push(GraphOp::RemoveEdge {
+            context: ctx.to_string(),
+            src_id,
+            dst_id: dst,
+          });
+        }
+      }
     }
 
-    self.cleanup_small_edges(ctx, src, new_max);
-    new_weight
-  }
-
-  fn normalize(
-    &mut self,
-    ctx: &str,
-    src: &str,
-  ) {
-    let source_key = (ctx.to_string(), src.to_string());
-    if let Some(&max_weight) = self.max_indices.get(&source_key) {
-      if max_weight <= 0.0 {
-        return;
-      }
-
-      let normalized: Vec<_> = self
-        .weights
-        .iter()
-        .filter(|((c, s, _), _)| c == ctx && s == src)
-        .map(|(edge, &weight)| (edge.clone(), weight / max_weight))
-        .collect();
-
-      for (edge, weight) in normalized {
-        self.weights.insert(edge, weight);
-      }
-
-      self.max_indices.insert(source_key, 1.0);
-    }
-  }
-
-  fn cleanup_small_edges(
-    &mut self,
-    ctx: &str,
-    src: &str,
-    max_weight: Weight,
-  ) {
-    let threshold = max_weight * self.deletion_ratio;
-    self.weights.retain(|(c, s, _), weight| {
-      let keep = !(c == ctx && s == src && *weight <= threshold);
-      if !keep {
-        println!("Removing edge: ({}, {}, _) with weight {}", c, s, *weight);
-      }
-      keep
+    ops.push(GraphOp::SetEdge {
+      context: ctx.to_string(),
+      src_id,
+      dst_id,
+      weight: new_weight,
     });
-  }
 
-  fn prune_weights(&mut self) {
-    let target_size = self.cache_size * 9 / 10;
-    if self.weights.len() <= target_size {
-      return;
-    }
-
-    let mut weights: Vec<_> = self.weights.drain().collect();
-    weights.sort_unstable_by(|a, b| {
-      b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-    });
-    weights.truncate(target_size);
-
-    self.weights = weights.into_iter().collect();
-    self.update_max_indices();
-  }
-
-  fn update_max_indices(&mut self) {
-    self.max_indices.clear();
-    for ((ctx, src, _), weight) in &self.weights {
-      let key = (ctx.clone(), src.clone());
-      let entry = self.max_indices.entry(key).or_insert(0.0);
-      *entry = (*entry).max(*weight);
-    }
-  }
-
-  pub fn clear(&mut self) {
-    self.weights.clear();
-    self.max_indices.clear();
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn test_new_vsids_manager() {
-    let manager = VSIDSManager::new();
-
-    assert_eq!(manager.weights.len(), 0);
-    assert_eq!(manager.max_indices.len(), 0);
-    assert_eq!(manager.bump_factor, 1.111_111);
-    assert_eq!(manager.max_threshold, 1e15);
-    assert_eq!(manager.deletion_ratio, 1e-3);
-    assert_eq!(manager.cache_size, 10000);
-  }
-
-  #[test]
-  fn test_get_weight() {
-    let mut manager = VSIDSManager::new();
-
-    let ctx = "context";
-    let src = "source";
-    let dst = "destination";
-    let weight = 10.0;
-
-    assert_eq!(manager.get_weight(ctx, src, dst), None);
-
-    manager.update_weight(ctx, src, dst, weight, 2);
-
-    assert_eq!(
-      manager.get_weight(ctx, src, dst),
-      Some(weight * 1.111_111f64.powi(2))
-    );
-  }
-
-  #[test]
-  fn test_update_weight() {
-    let mut manager = VSIDSManager::new();
-
-    let ctx = "context";
-    let src = "source";
-    let dst = "destination";
-    let base_weight = 10.0;
-
-    let weight = manager.update_weight(ctx, src, dst, base_weight, 0);
-    assert_eq!(weight, base_weight);
-
-    let new_weight = manager.update_weight(ctx, src, dst, base_weight, 2);
-    assert_eq!(new_weight, base_weight * 1.111_111f64.powi(2));
-  }
-
-  #[test]
-  fn test_normalize() {
-    let mut manager = VSIDSManager::new();
-
-    let ctx = "context";
-    let src = "source";
-    let dst = "destination";
-    let base_weight = 10.0;
-
-    manager.update_weight(ctx, src, dst, base_weight, 0);
-
-    let another_dst = "another_destination";
-    manager.update_weight(ctx, src, another_dst, base_weight * 0.5, 0);
-
-    manager.normalize(ctx, src);
-
-    let normalized_weight = manager.get_weight(ctx, src, dst).unwrap();
-    let normalized_another_weight =
-      manager.get_weight(ctx, src, another_dst).unwrap();
-
-    assert!(normalized_weight <= 1.0);
-    assert!(normalized_another_weight <= 1.0);
-  }
-
-  // #[test]
-  // fn test_cleanup_small_edges() {
-  //   let mut manager = VSIDSManager::new();
-
-  //   let ctx = "ctx";
-  //   let src = "src";
-
-  //   manager.update_weight(ctx, src, "small_edge", 0.1, 1);
-  //   manager.update_weight(ctx, src, "other_edge", 0.2, 1);
-
-  //   assert_eq!(manager.get_weight(ctx, src, "small_edge"), Some(0.1));
-  //   assert_eq!(manager.get_weight(ctx, src, "other_edge"), Some(0.2));
-
-  //   let max_weight = 0.2;
-  //   manager.cleanup_small_edges(ctx, src, max_weight);
-
-  //   assert!(manager.get_weight(ctx, src, "small_edge").is_none());
-  //   assert_eq!(manager.get_weight(ctx, src, "other_edge"), Some(0.2));
-  // }
-
-  #[test]
-  fn test_prune_weights() {
-    let mut manager = VSIDSManager::new();
-
-    for i in 0..15000 {
-      manager.update_weight("ctx", "src", &format!("dst{}", i), 10.0, 0);
-    }
-
-    manager.prune_weights();
-    assert!(manager.weights.len() <= manager.cache_size * 9 / 10);
-  }
-
-  #[test]
-  fn test_clear() {
-    let mut manager = VSIDSManager::new();
-    let ctx = "context";
-    let src = "source";
-    let dst = "destination";
-
-    manager.update_weight(ctx, src, dst, 10.0, 0);
-    manager.update_weight(ctx, src, "another_destination", 5.0, 0);
-
-    assert!(manager.get_weight(ctx, src, dst).is_some());
-    assert!(manager
-      .get_weight(ctx, src, "another_destination")
-      .is_some());
-
-    manager.clear();
-
-    assert!(manager.get_weight(ctx, src, dst).is_none());
-    assert!(manager
-      .get_weight(ctx, src, "another_destination")
-      .is_none());
+    (new_weight, ops)
   }
 }

@@ -16,7 +16,7 @@ use crate::log_info;
 use crate::log_trace;
 use crate::log_verbose;
 use crate::log_warning;
-use crate::vsids;
+use crate::vsids::{GraphOp, VSIDSManager};
 
 pub use meritrank_core::Weight;
 pub type Cluster = i32;
@@ -118,14 +118,14 @@ pub struct CachedWalk {
 #[derive(PartialEq, Clone)]
 pub struct ClusterGroupBounds {
   pub updated_sec: u64,
-  pub bounds:      [Weight; NUM_SCORE_QUANTILES - 1],
+  pub bounds: [Weight; NUM_SCORE_QUANTILES - 1],
 }
 
 impl Default for ClusterGroupBounds {
   fn default() -> ClusterGroupBounds {
     ClusterGroupBounds {
       updated_sec: 0,
-      bounds:      [0.0; NUM_SCORE_QUANTILES - 1],
+      bounds: [0.0; NUM_SCORE_QUANTILES - 1],
     }
   }
 }
@@ -156,7 +156,7 @@ pub struct AugMultiGraph {
   pub dummy_graph: MeritRank,
   pub dummy_clusters: Vec<ScoreClustersByKind>,
 
-  pub vsids: Option<vsids::VSIDSManager>,
+  pub vsids: Option<VSIDSManager>,
 }
 
 //  ================================================================
@@ -443,7 +443,7 @@ impl AugMultiGraph {
       dummy_info: Default::default(),
       dummy_graph: MeritRank::new(Graph::new()),
       dummy_clusters: vec![],
-      vsids: Some(vsids::VSIDSManager::new()),
+      vsids: Some(VSIDSManager::new()),
     }
   }
 
@@ -980,7 +980,7 @@ impl AugMultiGraph {
     if users_empty {
       self.update_node_score_clustering(context, ego, NodeKind::User);
     }
-      
+
     if beacons_empty {
       self.update_node_score_clustering(context, ego, NodeKind::Beacon);
     }
@@ -1448,59 +1448,78 @@ impl AugMultiGraph {
   }
 
   pub fn write_put_edge(
-      &mut self,
-      context: &str,
-      src: &str,
-      dst: &str,
-      amount: f64,
-      index: i64,
+    &mut self,
+    context: &str,
+    src: &str,
+    dst: &str,
+    amount: f64,
+    index: i64,
   ) {
-      log_info!(
-          "CMD write_put_edge: {:?} {:?} {:?} {} seq={}",
-          context,
-          src,
-          dst,
-          amount,
-          index
-      );
+    log_info!(
+      "CMD write_put_edge: {:?} {:?} {:?} {} seq={}",
+      context,
+      src,
+      dst,
+      amount,
+      index
+    );
 
-      if index < 0 {
-          log_info!(
-              "Negative index detected: context={}, src={}, dst={}, index={}. Converting to 0.",
-              context, src, dst, index
-          );
+    if index < 0 {
+      log_info!(
+            "Negative index detected: context={}, src={}, dst={}, index={}. Converting to 0.",
+            context, src, dst, index
+        );
+    }
+
+    let seq = index.max(0) as u32;
+    let src_id = self.find_or_add_node_by_name(src);
+    let dst_id = self.find_or_add_node_by_name(dst);
+
+    let edges_data = if let Some(vsids) = &self.vsids {
+      self
+        .all_neighbors(context, src_id) // Вызываем метод напрямую на `self`
+        .into_iter()
+        .map(|(dst, weight)| (dst, weight))
+        .collect::<Vec<_>>()
+    } else {
+      vec![]
+    };
+
+    if let Some(vsids) = &mut self.vsids {
+      let (new_weight, ops) =
+        vsids.update_weight(&edges_data, context, src_id, dst_id, amount, seq);
+
+      // Execute all graph operations
+      for op in ops {
+        match op {
+          GraphOp::SetEdge {
+            context,
+            src_id,
+            dst_id,
+            weight,
+          } => {
+            self.set_edge(&context, src_id, dst_id, weight);
+          },
+          GraphOp::RemoveEdge {
+            context,
+            src_id,
+            dst_id,
+          } => {
+            self.write_delete_edge(&context, src, dst, weight);
+          },
+        }
       }
 
-      // Convert index to a non-negative sequence number
-      let seq = index.max(0) as u32;
-
-      // If VSIDSManager is available, calculate the updated weight
-      let actual_amount = if let Some(vsids) = &mut self.vsids {
-          if let Some(current_weight) = vsids.get_weight(context, src, dst) {
-              log_info!(
-                  "Current weight before update: context={}, src={}, dst={}, weight={}",
-                  context,
-                  src,
-                  dst,
-                  current_weight
-              );
-          }
-
-          let new_weight = vsids.update_weight(context, src, dst, amount, seq);
-
-          log_info!(
-              "VSIDS updated weight: context={}, src={}, dst={}, base_amount={}, seq={}, actual_weight={}",
-              context, src, dst, amount, seq, new_weight
-          );
-
-          new_weight
-      } else {
-          amount
-      };
-
-      let src_id = self.find_or_add_node_by_name(src);
-      let dst_id = self.find_or_add_node_by_name(dst);
-      self.set_edge(context, src_id, dst_id, actual_amount);
+      log_info!(
+        "Final weight set: context={}, src={}, dst={}, actual_amount={}",
+        context,
+        src,
+        dst,
+        new_weight
+      );
+    } else {
+      log_error!("VSIDSManager is not initialized.");
+    }
   }
 
   pub fn write_delete_edge(
