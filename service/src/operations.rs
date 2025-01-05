@@ -1477,7 +1477,7 @@ impl AugMultiGraph {
 
     let edges_data = if let Some(vsids) = &self.vsids {
       self
-        .all_neighbors(context, src_id) // Вызываем метод напрямую на `self`
+        .all_neighbors(context, src_id)
         .into_iter()
         .map(|(dst, weight)| (dst, weight))
         .collect::<Vec<_>>()
@@ -1505,7 +1505,7 @@ impl AugMultiGraph {
             src_id,
             dst_id,
           } => {
-            self.write_delete_edge(&context, src, dst, weight);
+            self.write_delete_edge(&context, src, dst, -1);
           },
         }
       }
