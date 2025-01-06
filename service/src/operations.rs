@@ -1463,14 +1463,12 @@ impl AugMultiGraph {
       amount,
       index
     );
-
     if index < 0 {
       log_info!(
-            "Negative index detected: context={}, src={}, dst={}, index={}. Converting to 0.",
-            context, src, dst, index
-        );
+                "Negative index detected: context={}, src={}, dst={}, index={}. Converting to 0.",
+                context, src, dst, index
+            );
     }
-
     let seq = index.max(0) as u32;
     let src_id = self.find_or_add_node_by_name(src);
     let dst_id = self.find_or_add_node_by_name(dst);
@@ -1505,7 +1503,9 @@ impl AugMultiGraph {
             src_id,
             dst_id,
           } => {
-            self.write_delete_edge(&context, src, dst, -1);
+            let src_name = self.node_info_from_id(src_id).name.clone();
+            let dst_name = self.node_info_from_id(dst_id).name.clone();
+            self.write_delete_edge(&context, &src_name, &dst_name, -1);
           },
         }
       }

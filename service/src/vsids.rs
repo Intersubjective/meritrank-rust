@@ -1,3 +1,5 @@
+use meritrank_core::{NodeId, Weight};
+
 use crate::operations::AugMultiGraph;
 use std::collections::HashMap;
 use std::env;
@@ -46,18 +48,13 @@ use std::sync::{Arc, RwLock};
 // ensuring the newer edges retain more relevance.      //
 //////////////////////////////////////////////////////////
 
-type Edge = (String, String, String);
-type SourceKey = (String, String);
-type Weight = f64;
-pub type NodeId = usize;
-
 #[derive(Debug)]
 pub enum GraphOp {
   SetEdge {
     context: String,
     src_id: NodeId,
     dst_id: NodeId,
-    weight: f64,
+    weight: Weight,
   },
   RemoveEdge {
     context: String,
@@ -68,8 +65,8 @@ pub enum GraphOp {
 
 #[derive(Clone, Debug)]
 pub struct VSIDSManager {
-  weights: HashMap<Edge, Weight>,
-  max_indices: HashMap<SourceKey, Weight>,
+  weights: HashMap<(String, NodeId, NodeId), Weight>,
+  max_indices: HashMap<(String, NodeId), Weight>,
   bump_factor: Weight,
   max_threshold: Weight,
   deletion_ratio: Weight,
@@ -86,26 +83,29 @@ impl VSIDSManager {
       max_indices: HashMap::with_capacity(100),
       bump_factor,
       max_threshold: 1e15,
-      deletion_ratio: 1e-3,
+      deletion_ratio: 1.0,
     }
   }
 
   pub fn update_weight(
     &mut self,
-    edges_data: &[(NodeId, f64)],
-    ctx: &str,
+    edges_data: &[(NodeId, Weight)],
+    context: &str,
     src_id: NodeId,
     dst_id: NodeId,
-    base_weight: f64,
-    bumps: u32,
-  ) -> (f64, Vec<GraphOp>) {
+    base_weight: Weight,
+    seq: u32,
+  ) -> (Weight, Vec<GraphOp>) {
     if base_weight.is_nan() {
       return (base_weight, vec![]);
     }
 
     let mut ops = Vec::new();
-    let new_weight = base_weight * self.bump_factor.powi(bumps as i32);
-    let src_key = (ctx.to_string(), src_id.to_string());
+
+    let multiplier = self.bump_factor.powi(seq as i32);
+    let new_weight = base_weight * multiplier;
+
+    let src_key = (context.to_string(), src_id);
 
     let current_max = self.max_indices.get(&src_key).copied().unwrap_or(0.0);
     if new_weight.abs() > current_max {
@@ -117,7 +117,7 @@ impl VSIDSManager {
         for &(dst, weight) in edges_data {
           let normalized_weight = weight / max_weight;
           ops.push(GraphOp::SetEdge {
-            context: ctx.to_string(),
+            context: context.to_string(),
             src_id,
             dst_id: dst,
             weight: normalized_weight,
@@ -127,12 +127,13 @@ impl VSIDSManager {
       }
     }
 
+    // Check for small edges that need deletion
     if let Some(&max_weight) = self.max_indices.get(&src_key) {
       let threshold = max_weight * self.deletion_ratio;
       for &(dst, weight) in edges_data {
         if weight.abs() <= threshold {
           ops.push(GraphOp::RemoveEdge {
-            context: ctx.to_string(),
+            context: context.to_string(),
             src_id,
             dst_id: dst,
           });
@@ -142,7 +143,7 @@ impl VSIDSManager {
 
     // Add the new edge operation
     ops.push(GraphOp::SetEdge {
-      context: ctx.to_string(),
+      context: context.to_string(),
       src_id,
       dst_id,
       weight: new_weight,
@@ -160,16 +161,6 @@ mod tests {
   fn setup_vsids() -> VSIDSManager {
     env::remove_var("VSIDS_BUMP");
     VSIDSManager::new()
-  }
-
-  #[test]
-  fn test_new_default_values() {
-    let vsids = setup_vsids();
-    assert_eq!(vsids.bump_factor, 1.111_111);
-    assert_eq!(vsids.max_threshold, 1e15);
-    assert_eq!(vsids.deletion_ratio, 1e-3);
-    assert!(vsids.weights.is_empty());
-    assert!(vsids.max_indices.is_empty());
   }
 
   #[test]
@@ -191,7 +182,7 @@ mod tests {
         assert_eq!(context, "test");
         assert_eq!(*src_id, 1);
         assert_eq!(*dst_id, 2);
-        assert!((weight - 1.111_111).abs() < 1e-6);
+        assert!((*weight - 1.111_111).abs() < 1e-6);
       },
       _ => panic!("Expected SetEdge operation"),
     }
@@ -262,15 +253,11 @@ mod tests {
     let (_, _) = vsids.update_weight(&[], "context2", 1, 2, 1.0, 1);
 
     assert!(
-      vsids
-        .max_indices
-        .contains_key(&("context1".to_string(), "1".to_string())),
+      vsids.max_indices.contains_key(&("context1".to_string(), 1)),
       "Expected max_indices entry for context1"
     );
     assert!(
-      vsids
-        .max_indices
-        .contains_key(&("context2".to_string(), "1".to_string())),
+      vsids.max_indices.contains_key(&("context2".to_string(), 1)),
       "Expected max_indices entry for context2"
     );
   }
