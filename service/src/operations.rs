@@ -1463,12 +1463,14 @@ impl AugMultiGraph {
       amount,
       index
     );
+
     if index < 0 {
       log_info!(
-                "Negative index detected: context={}, src={}, dst={}, index={}. Converting to 0.",
-                context, src, dst, index
-            );
+            "Negative index detected: context={}, src={}, dst={}, index={}. Converting to 0.",
+            context, src, dst, index
+        );
     }
+
     let seq = index.max(0) as u32;
     let src_id = self.find_or_add_node_by_name(src);
     let dst_id = self.find_or_add_node_by_name(dst);

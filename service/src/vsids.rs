@@ -83,7 +83,7 @@ impl VSIDSManager {
       max_indices: HashMap::with_capacity(100),
       bump_factor,
       max_threshold: 1e15,
-      deletion_ratio: 1.0,
+      deletion_ratio: 1e-3,
     }
   }
 
@@ -101,10 +101,7 @@ impl VSIDSManager {
     }
 
     let mut ops = Vec::new();
-
-    let multiplier = self.bump_factor.powi(seq as i32);
-    let new_weight = base_weight * multiplier;
-
+    let new_weight = base_weight * self.bump_factor.powi(seq as i32);
     let src_key = (context.to_string(), src_id);
 
     let current_max = self.max_indices.get(&src_key).copied().unwrap_or(0.0);
