@@ -65,7 +65,6 @@ pub enum GraphOp {
 
 #[derive(Clone, Debug)]
 pub struct VSIDSManager {
-  weights: HashMap<(String, NodeId, NodeId), Weight>,
   max_indices: HashMap<(String, NodeId), Weight>,
   bump_factor: Weight,
   max_threshold: Weight,
@@ -79,7 +78,6 @@ impl VSIDSManager {
       .and_then(|v| v.parse().ok())
       .unwrap_or(1.111_111);
     Self {
-      weights: HashMap::with_capacity(1000),
       max_indices: HashMap::with_capacity(100),
       bump_factor,
       max_threshold: 1e15,

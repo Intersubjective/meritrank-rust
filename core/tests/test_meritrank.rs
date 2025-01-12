@@ -176,4 +176,39 @@ mod tests {
     //rank.print_walks();
   }
 
+
+#[test]
+fn test_node_data_get_outgoing_edges() {
+    let mut graph = Graph::new();
+
+    // Create nodes
+    let node0 = graph.get_new_nodeid();
+    let node1 = graph.get_new_nodeid();
+    let node2 = graph.get_new_nodeid();
+    let node3 = graph.get_new_nodeid();
+
+    // Add edges
+    graph.set_edge(node0, node1, 1.0).unwrap();
+    graph.set_edge(node0, node2, -2.0).unwrap();
+    graph.set_edge(node0, node3, 3.0).unwrap();
+
+    // Get the NodeData for node0
+    let node_data = graph.get_node_data(node0).unwrap();
+
+    // Collect outgoing edges into a vector
+    let outgoing_edges: Vec<(NodeId, f64)> = node_data.get_outgoing_edges().collect();
+
+    // Sort the edges for consistent comparison
+    let mut sorted_edges = outgoing_edges;
+    sorted_edges.sort_by(|a, b| a.0.cmp(&b.0));
+
+    // Expected edges (sorted by NodeId)
+    let expected_edges = vec![
+        (node1, 1.0),
+        (node2, -2.0),
+        (node3, 3.0),
+    ];
+
+    assert_eq!(sorted_edges, expected_edges);
+}
 }
