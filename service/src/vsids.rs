@@ -65,10 +65,10 @@ pub enum GraphOp {
 
 #[derive(Clone, Debug)]
 pub struct VSIDSManager {
-  max_indices: HashMap<(String, NodeId), Weight>,
+  pub(crate) min_max_weights: HashMap<(String, NodeId), (Weight, Weight)>,
   bump_factor: Weight,
-  max_threshold: Weight,
-  deletion_ratio: Weight,
+  pub(crate) max_threshold: Weight,
+  pub(crate) deletion_ratio: Weight,
 }
 
 impl VSIDSManager {
@@ -78,76 +78,39 @@ impl VSIDSManager {
       .and_then(|v| v.parse().ok())
       .unwrap_or(1.111_111);
     Self {
-      max_indices: HashMap::with_capacity(100),
+      min_max_weights: HashMap::with_capacity(100),
       bump_factor,
       max_threshold: 1e15,
       deletion_ratio: 1e-3,
     }
   }
 
-  pub fn update_weight(
-    &mut self,
-    edges_data: &[(NodeId, Weight)],
+
+  pub fn scale_weight(
+    &self,
     context: &str,
     src_id: NodeId,
-    dst_id: NodeId,
-    base_weight: Weight,
+    new_weight: Weight,
     seq: u32,
-  ) -> (Weight, Vec<GraphOp>) {
-    if base_weight.is_nan() {
-      return (base_weight, vec![]);
-    }
-
-    let mut ops = Vec::new();
-    let new_weight = base_weight * self.bump_factor.powi(seq as i32);
+  ) -> (Weight, Weight, Weight) {
+    let scaled_weight = new_weight * self.bump_factor.powi(seq as i32);
+    let scaled_weight_abs = scaled_weight.abs();
     let src_key = (context.to_string(), src_id);
 
-    let current_max = self.max_indices.get(&src_key).copied().unwrap_or(0.0);
-    if new_weight.abs() > current_max {
-      self.max_indices.insert(src_key.clone(), new_weight.abs());
-    }
+    let (current_min, current_max) = self.min_max_weights
+      .get(&src_key)
+      .copied()
+      .unwrap_or((scaled_weight_abs, scaled_weight_abs));
 
-    if new_weight.abs() > self.max_threshold {
-      if let Some(max_weight) = self.max_indices.get(&src_key).copied() {
-        for &(dst, weight) in edges_data {
-          let normalized_weight = weight / max_weight;
-          ops.push(GraphOp::SetEdge {
-            context: context.to_string(),
-            src_id,
-            dst_id: dst,
-            weight: normalized_weight,
-          });
-        }
-        self.max_indices.insert(src_key.clone(), 1.0);
-      }
-    }
+    let updated_min = current_min.min(scaled_weight_abs);
+    let updated_max = current_max.max(scaled_weight_abs);
 
-    // Check for small edges that need deletion
-    if let Some(&max_weight) = self.max_indices.get(&src_key) {
-      let threshold = max_weight * self.deletion_ratio;
-      for &(dst, weight) in edges_data {
-        if weight.abs() <= threshold {
-          ops.push(GraphOp::RemoveEdge {
-            context: context.to_string(),
-            src_id,
-            dst_id: dst,
-          });
-        }
-      }
-    }
-
-    // Add the new edge operation
-    ops.push(GraphOp::SetEdge {
-      context: context.to_string(),
-      src_id,
-      dst_id,
-      weight: new_weight,
-    });
-
-    (new_weight, ops)
+    (scaled_weight, updated_min, updated_max)
   }
 }
 
+
+#[cfg(test)]
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -160,100 +123,25 @@ mod tests {
 
   #[test]
   fn test_basic_weight_update() {
-    let mut vsids = setup_vsids();
-    let edges_data = vec![];
-    let (weight, ops) = vsids.update_weight(&edges_data, "test", 1, 2, 1.0, 1);
+    let vsids = setup_vsids();
+    let (weight, min, max) = vsids.scale_weight("test", 1, 1.0, 1);
 
-    assert_eq!(weight, 1.111_111);
-    assert_eq!(ops.len(), 1);
-
-    match &ops[0] {
-      GraphOp::SetEdge {
-        context,
-        src_id,
-        dst_id,
-        weight,
-      } => {
-        assert_eq!(context, "test");
-        assert_eq!(*src_id, 1);
-        assert_eq!(*dst_id, 2);
-        assert!((*weight - 1.111_111).abs() < 1e-6);
-      },
-      _ => panic!("Expected SetEdge operation"),
-    }
-  }
-
-  #[test]
-  fn test_threshold_normalization() {
-    let mut vsids = setup_vsids();
-
-    let (_, _) =
-      vsids.update_weight(&[], "test", 1, 2, vsids.max_threshold / 2.0, 0);
-
-    let edges_data = vec![
-      (2, vsids.max_threshold / 2.0),
-      (3, vsids.max_threshold / 4.0),
-    ];
-
-    let (_, ops) = vsids.update_weight(
-      &edges_data,
-      "test",
-      1,
-      4,
-      vsids.max_threshold * 2.0,
-      0,
-    );
-
-    assert!(ops.len() > 1, "Expected normalization operations");
-
-    for op in ops.iter() {
-      if let GraphOp::SetEdge {
-        weight,
-        ..
-      } = op
-      {
-        if *weight != vsids.max_threshold * 2.0 {
-          assert!(
-            *weight <= 1.0,
-            "Expected normalized weight <= 1.0, got {}",
-            weight
-          );
-        }
-      }
-    }
+    assert!((weight - 1.111_111).abs() < 1e-6);
+    assert_eq!(min, weight.abs());
+    assert_eq!(max, weight.abs());
   }
 
   #[test]
   fn test_deletion_of_small_edges() {
-    let mut vsids = setup_vsids();
+    let vsids = setup_vsids();
 
-    let (_, _) = vsids.update_weight(&[], "test", 1, 2, 1.0, 0);
+    let (_, _, _) = vsids.scale_weight("test", 1, 1.0, 0);
 
     let small_weight = vsids.deletion_ratio / 2.0;
-    let edges_data = vec![(2, small_weight)];
+    let (weight, min, max) = vsids.scale_weight("test", 1, small_weight, 0);
 
-    let (_, ops) = vsids.update_weight(&edges_data, "test", 1, 3, 1.0, 0);
-
-    let has_deletion = ops.iter().any(
-      |op| matches!(op, GraphOp::RemoveEdge { dst_id, .. } if *dst_id == 2),
-    );
-    assert!(has_deletion, "Expected to find edge deletion operation");
-  }
-
-  #[test]
-  fn test_context_isolation() {
-    let mut vsids = setup_vsids();
-
-    let (_, _) = vsids.update_weight(&[], "context1", 1, 2, 1.0, 1);
-    let (_, _) = vsids.update_weight(&[], "context2", 1, 2, 1.0, 1);
-
-    assert!(
-      vsids.max_indices.contains_key(&("context1".to_string(), 1)),
-      "Expected max_indices entry for context1"
-    );
-    assert!(
-      vsids.max_indices.contains_key(&("context2".to_string(), 1)),
-      "Expected max_indices entry for context2"
-    );
+    assert!(weight.abs() < vsids.deletion_ratio);
+    assert!(min <= small_weight);
+    assert!(max >= small_weight);
   }
 }

@@ -151,9 +151,7 @@ pub struct AugMultiGraph {
   pub zero_opinion: Vec<Weight>,
   pub time_begin: Instant,
   pub cached_score_clusters: HashMap<String, Vec<ScoreClustersByKind>>,
-
-
-  pub vsids: Option<VSIDSManager>,
+  pub vsids: VSIDSManager,
 }
 
 //  ================================================================
@@ -437,7 +435,7 @@ impl AugMultiGraph {
       zero_opinion: vec![],
       time_begin: Instant::now(),
       cached_score_clusters: HashMap::new(),
-      vsids: Some(VSIDSManager::new()),
+      vsids: VSIDSManager::new(),
     }
   }
 
@@ -480,25 +478,29 @@ impl AugMultiGraph {
     self.node_ids.get(node_name).is_some()
   }
 
-  pub fn node_info_from_id(&self, node_id: NodeId) -> &NodeInfo {
+  pub fn node_info_from_id(
+    &self,
+    node_id: NodeId,
+  ) -> &NodeInfo {
     log_trace!("node_info_from_id: {}", node_id);
 
     self.node_infos.get(node_id).unwrap_or_else(|| {
       log_error!("(node_info_from_id) Node does not exist: {:?}", node_id);
       // Create a new NodeInfo with default values
-      static DEFAULT_NODE_INFO: once_cell::sync::Lazy<NodeInfo> = once_cell::sync::Lazy::new(|| NodeInfo::default());
+      static DEFAULT_NODE_INFO: once_cell::sync::Lazy<NodeInfo> =
+        once_cell::sync::Lazy::new(|| NodeInfo::default());
       &DEFAULT_NODE_INFO
     })
   }
 
   pub fn is_user_edge(
-      &self,
-      src: NodeId,
-      dst: NodeId,
+    &self,
+    src: NodeId,
+    dst: NodeId,
   ) -> bool {
-      log_trace!("is_user_edge: {} {}", src, dst);
-      self.node_info_from_id(src).kind == NodeKind::User
-          && self.node_info_from_id(dst).kind == NodeKind::User
+    log_trace!("is_user_edge: {} {}", src, dst);
+    self.node_info_from_id(src).kind == NodeKind::User
+      && self.node_info_from_id(dst).kind == NodeKind::User
   }
 
   pub fn create_context_if_does_not_exist(
@@ -546,17 +548,23 @@ impl AugMultiGraph {
     self.contexts.insert(context.to_string(), graph);
   }
 
-  pub fn graph_from_ctx_mut(&mut self, context: &str) -> &mut MeritRank {
-      log_trace!("graph_from_ctx_mut: {:?}", context);
+  pub fn graph_from_ctx_mut(
+    &mut self,
+    context: &str,
+  ) -> &mut MeritRank {
+    log_trace!("graph_from_ctx_mut: {:?}", context);
 
-      self.create_context_if_does_not_exist(context);
+    self.create_context_if_does_not_exist(context);
 
-      self.contexts.get_mut(context).unwrap_or_else(|| {
+    self.contexts.get_mut(context).unwrap_or_else(|| {
           panic!("Failed to get context '{}' after creation attempt. This is likely a bug in the create_context_if_does_not_exist function.", context)
       })
   }
 
-  pub fn graph_from_ctx(&mut self, context: &str) -> &MeritRank {
+  pub fn graph_from_ctx(
+    &mut self,
+    context: &str,
+  ) -> &MeritRank {
     log_trace!("graph_from_ctx: {:?}", context);
 
     self.create_context_if_does_not_exist(context);
@@ -565,7 +573,6 @@ impl AugMultiGraph {
       panic!("Failed to get context '{}' after creation attempt. This is likely a bug in the create_context_if_does_not_exist function.", context)
     })
   }
-
 
   pub fn edge_weight(
     &mut self,
@@ -736,7 +743,10 @@ impl AugMultiGraph {
         },
       }
     } else {
-      match self.graph_from_ctx_mut(context).calculate(ego_id, *NUM_WALK) {
+      match self
+        .graph_from_ctx_mut(context)
+        .calculate(ego_id, *NUM_WALK)
+      {
         Ok(()) => {
           self.cache_walk_add(context, ego_id);
         },
@@ -761,31 +771,34 @@ impl AugMultiGraph {
   }
 
   fn fetch_raw_score(
-      &mut self,
-      context: &str,
-      ego_id: NodeId,
-      dst_id: NodeId,
+    &mut self,
+    context: &str,
+    ego_id: NodeId,
+    dst_id: NodeId,
   ) -> Weight {
-      log_trace!("fetch_raw_score");
+    log_trace!("fetch_raw_score");
 
-      if !self.cache_walk_get(context, ego_id) {
-          if let Err(e) = self.graph_from_ctx_mut(context).calculate(ego_id, *NUM_WALK) {
-              log_error!("(fetch_raw_score) Failed to calculate: {}", e);
-              return 0.0;
-          }
-          self.cache_walk_add(context, ego_id);
+    if !self.cache_walk_get(context, ego_id) {
+      if let Err(e) = self
+        .graph_from_ctx_mut(context)
+        .calculate(ego_id, *NUM_WALK)
+      {
+        log_error!("(fetch_raw_score) Failed to calculate: {}", e);
+        return 0.0;
       }
+      self.cache_walk_add(context, ego_id);
+    }
 
-      match self.graph_from_ctx(context).get_node_score(ego_id, dst_id) {
-          Ok(score) => {
-              self.cache_score_add(context, ego_id, dst_id, score);
-              self.with_zero_opinion(context, dst_id, score)
-          },
-          Err(e) => {
-              log_error!("(fetch_raw_score) Failed to get node score: {}", e);
-              0.0
-          },
-      }
+    match self.graph_from_ctx(context).get_node_score(ego_id, dst_id) {
+      Ok(score) => {
+        self.cache_score_add(context, ego_id, dst_id, score);
+        self.with_zero_opinion(context, dst_id, score)
+      },
+      Err(e) => {
+        log_error!("(fetch_raw_score) Failed to get node score: {}", e);
+        0.0
+      },
+    }
   }
 
   fn calculate_score_clusters_bounds(
@@ -818,18 +831,19 @@ impl AugMultiGraph {
   }
 
   fn clusters_from(
-      &mut self,
-      context: &str,
+    &mut self,
+    context: &str,
   ) -> &mut Vec<ScoreClustersByKind> {
-      log_trace!("clusters_from: {:?}", context);
+    log_trace!("clusters_from: {:?}", context);
 
-      if !self.cached_score_clusters.contains_key(context) {
-          self.cached_score_clusters
-              .insert(context.to_string(), vec![]);
-      }
+    if !self.cached_score_clusters.contains_key(context) {
+      self
+        .cached_score_clusters
+        .insert(context.to_string(), vec![]);
+    }
 
-      // We can safely unwrap here because we've just ensured the key exists
-      self.cached_score_clusters.get_mut(context).unwrap()
+    // We can safely unwrap here because we've just ensured the key exists
+    self.cached_score_clusters.get_mut(context).unwrap()
   }
 
   fn update_node_score_clustering(
@@ -1142,7 +1156,6 @@ impl AugMultiGraph {
     log_trace!("set_edge: {:?} {:?} {:?} {}", context, src, dst, amount);
 
     if self.is_user_edge(src, dst) {
-
       // TODO: move this to the initializer
       self.graph_from_ctx("");
       if !context.is_empty() {
@@ -1400,75 +1413,83 @@ impl AugMultiGraph {
   ) {
     log_info!(
       "CMD write_put_edge: {:?} {:?} {:?} {} seq={}",
-      context,
-      src,
-      dst,
-      amount,
-      index
+      context,src,dst,amount,index
     );
 
     if index < 0 {
       log_info!(
-            "Negative index detected: context={}, src={}, dst={}, index={}. Converting to 0.",
-            context, src, dst, index
-        );
+              "Negative index detected: context={}, src={}, dst={}, index={}. Converting to 0.",
+              context, src, dst, index
+          );
     }
 
     let seq = index.max(0) as u32;
     let src_id = self.find_or_add_node_by_name(src);
     let dst_id = self.find_or_add_node_by_name(dst);
+    let (new_weight_scaled, mut min_weight, mut max_weight) =
+      self.vsids.scale_weight(context, src_id, amount, seq);
 
-    let edges_data = if let Some(vsids) = &self.vsids {
-      self
+    //TODO: update min_weight and max_weight
+
+    // Check for small edges that need deletion
+    let threshold = max_weight * self.vsids.deletion_ratio;
+    if min_weight <= threshold {
+      // This means there is at least one edge to delete,
+      // but maybe there is more, so we check everything.
+      // In principle, we could have optimized this by storing the edges sorted.
+      min_weight = max_weight;
+      let (edges_to_delete, new_min_weight) = self
         .graph_from_ctx(context)
         .graph
         .get_node_data(src_id)
         .unwrap()
         .get_outgoing_edges()
-        .into_iter()
-        .map(|(dst, weight)| (dst, weight))
-        .collect::<Vec<_>>()
-    } else {
-      vec![]
-    };
+        .fold((Vec::new(), min_weight), |(mut to_delete, min), (dst, weight)| {
+          let abs_weight = weight.abs();
+          if abs_weight <= threshold {
+            to_delete.push(dst);
+            (to_delete, min)
+          } else {
+            (to_delete, min.min(abs_weight))
+          }
+        });
 
-    if let Some(vsids) = &mut self.vsids {
-      let (new_weight, ops) =
-        vsids.update_weight(&edges_data, context, src_id, dst_id, amount, seq);
+      min_weight = new_min_weight;
 
-      // Execute all graph operations
-      for op in ops {
-        match op {
-          GraphOp::SetEdge {
-            context,
-            src_id,
-            dst_id,
-            weight,
-          } => {
-            self.set_edge(&context, src_id, dst_id, weight);
-          },
-          GraphOp::RemoveEdge {
-            context,
-            src_id,
-            dst_id,
-          } => {
-            let src_name = self.node_info_from_id(src_id).name.clone();
-            let dst_name = self.node_info_from_id(dst_id).name.clone();
-            self.write_delete_edge(&context, &src_name, &dst_name, -1);
-          },
-        }
+      for dst_id in edges_to_delete {
+          self.set_edge(context, src_id, dst_id, 0.0);
       }
-
-      log_info!(
-        "Final weight set: context={}, src={}, dst={}, actual_amount={}",
-        context,
-        src,
-        dst,
-        new_weight
-      );
-    } else {
-      log_error!("VSIDSManager is not initialized.");
     }
+
+    // Rescale all weights if necessary
+    if new_weight_scaled.abs() > self.vsids.max_threshold {
+        let normalized_edges: Vec<(NodeId, Weight)> = self
+            .graph_from_ctx(context)
+            .graph
+            .get_node_data(src_id)
+            .unwrap()
+            .get_outgoing_edges()
+            .map(|(dst_id, weight)| (dst_id, weight / max_weight))
+            .collect();
+
+        let graph = self.graph_from_ctx_mut(context);
+        for (dst_id, rescale_weight) in normalized_edges {
+            graph.set_edge(src_id, dst_id, rescale_weight);
+        }
+      // Note that we actually divide the weight here to keep the sign
+      let rescaled_new_weight = new_weight_scaled/max_weight;
+      self.set_edge(context, src_id, dst_id, rescaled_new_weight);
+      log_info!(
+          "Rescale performed: context={}, src={}, dst={}, normalized_new_weight={}",
+          context,src,dst, rescaled_new_weight);
+      max_weight = 1.0;
+    }else{
+      self.set_edge(context, src_id, dst_id, new_weight_scaled);
+      log_info!(
+          "Edge updated without rescale: context={}, src={}, dst={}, new_weight_scaled={}",
+          context,src,dst,new_weight_scaled);
+    }
+    self.vsids.min_max_weights.insert((context.to_string(), src_id), (min_weight, max_weight));
   }
 
   pub fn write_delete_edge(
@@ -1491,31 +1512,37 @@ impl AugMultiGraph {
   }
 
   pub fn write_delete_node(
-      &mut self,
-      context: &str,
-      node: &str,
-      _index: i64,
+    &mut self,
+    context: &str,
+    node: &str,
+    _index: i64,
   ) {
-      log_info!("CMD write_delete_node: {:?} {:?}", context, node);
+    log_info!("CMD write_delete_node: {:?} {:?}", context, node);
 
-      if !self.node_exists(node) {
-          return;
-      }
+    if !self.node_exists(node) {
+      return;
+    }
 
-      let id = self.find_or_add_node_by_name(node);
+    let id = self.find_or_add_node_by_name(node);
 
-      // Collect the outgoing edges first
-      let outgoing_edges: Vec<NodeId> = self
-          .graph_from_ctx(context)
-          .graph
-          .get_node_data(id)
-          .map(|data| data.get_outgoing_edges().into_iter().map(|(n, _)| n).collect())
-          .unwrap();
+    // Collect the outgoing edges first
+    let outgoing_edges: Vec<NodeId> = self
+      .graph_from_ctx(context)
+      .graph
+      .get_node_data(id)
+      .map(|data| {
+        data
+          .get_outgoing_edges()
+          .into_iter()
+          .map(|(n, _)| n)
+          .collect()
+      })
+      .unwrap();
 
-      // Then remove the edges
-      for n in outgoing_edges {
-          self.set_edge(context, id, n, 0.0);
-      }
+    // Then remove the edges
+    for n in outgoing_edges {
+      self.set_edge(context, id, n, 0.0);
+    }
   }
 
   pub fn read_graph(
@@ -1871,38 +1898,38 @@ impl AugMultiGraph {
   }
 
   pub fn read_connected(
-      &mut self,
-      context: &str,
-      ego: &str,
+    &mut self,
+    context: &str,
+    ego: &str,
   ) -> Vec<(String, String)> {
-      log_info!("CMD read_connected: {:?} {:?}", context, ego);
+    log_info!("CMD read_connected: {:?} {:?}", context, ego);
 
-      if !self.contexts.contains_key(context) {
-          log_error!("(read_connected) Context does not exist: {:?}", context);
-          return vec![];
-      }
+    if !self.contexts.contains_key(context) {
+      log_error!("(read_connected) Context does not exist: {:?}", context);
+      return vec![];
+    }
 
-      if !self.node_exists(ego) {
-          log_error!("(read_connected) Node does not exist: {:?}", ego);
-          return vec![];
-      }
+    if !self.node_exists(ego) {
+      log_error!("(read_connected) Node does not exist: {:?}", ego);
+      return vec![];
+    }
 
-      let src_id = self.find_or_add_node_by_name(ego);
+    let src_id = self.find_or_add_node_by_name(ego);
 
-      let outgoing_edges: Vec<_> = self
-          .graph_from_ctx(context)
-          .graph
-          .get_node_data(src_id)
-          .unwrap()
-          .get_outgoing_edges()
-          .collect();
+    let outgoing_edges: Vec<_> = self
+      .graph_from_ctx(context)
+      .graph
+      .get_node_data(src_id)
+      .unwrap()
+      .get_outgoing_edges()
+      .collect();
 
-      outgoing_edges
-          .into_iter()
-          .map(|(dst_id, _)| {
-              (ego.to_string(), self.node_info_from_id(dst_id).name.clone())
-          })
-          .collect()
+    outgoing_edges
+      .into_iter()
+      .map(|(dst_id, _)| {
+        (ego.to_string(), self.node_info_from_id(dst_id).name.clone())
+      })
+      .collect()
   }
 
   pub fn read_node_list(&self) -> Vec<(String,)> {
@@ -1939,7 +1966,8 @@ impl AugMultiGraph {
         .graph
         .get_node_data(src_id)
         .unwrap()
-        .get_outgoing_edges() {
+        .get_outgoing_edges()
+      {
         match infos.get(dst_id) {
           Some(x) => v.push((src_name.to_string(), x.name.clone(), weight)),
           None => log_error!("(read_edges) Node does not exist: {}", dst_id),
