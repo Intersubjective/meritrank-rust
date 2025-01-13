@@ -841,23 +841,13 @@ impl AugMultiGraph {
   ) -> [Weight; NUM_SCORE_QUANTILES - 1] {
     log_trace!("calculate_score_clusters_bounds: {}", ego);
 
-    let mut scores: Vec<Weight> = self
-      .all_neighbors(context, ego)
-      .into_iter()
-      .filter(|(dst, _)| self.node_info_from_id(*dst).kind == kind)
+    let scores: Vec<Weight> = (0..self.node_count)
+      .filter(|dst| self.node_info_from_id(*dst).kind == kind)
       .collect::<Vec<_>>()
       .into_iter()
-      .map(|(dst, _)| self.fetch_raw_score(context, ego, dst))
+      .map(|dst| self.fetch_raw_score(context, ego, dst))
       .filter(|score| *score >= EPSILON)
       .collect();
-
-    if self.node_info_from_id(ego).kind == kind {
-      //  Add self score
-      let self_score = self.fetch_raw_score(context, ego, ego);
-      if self_score >= EPSILON {
-        scores.push(self_score);
-      }
-    }
 
     if scores.is_empty() {
       return [0.0; NUM_SCORE_QUANTILES - 1];
