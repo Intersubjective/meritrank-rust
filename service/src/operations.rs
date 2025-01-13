@@ -848,11 +848,15 @@ impl AugMultiGraph {
       .collect::<Vec<_>>()
       .into_iter()
       .map(|(dst, _)| self.fetch_raw_score(context, ego, dst))
+      .filter(|score| *score >= EPSILON)
       .collect();
 
     if self.node_info_from_id(ego).kind == kind {
       //  Add self score
-      scores.push(self.fetch_raw_score(context, ego, ego));
+      let self_score = self.fetch_raw_score(context, ego, ego);
+      if self_score >= EPSILON {
+        scores.push(self_score);
+      }
     }
 
     if scores.is_empty() {
@@ -994,6 +998,11 @@ impl AugMultiGraph {
     kind: NodeKind,
   ) -> (Weight, Cluster) {
     log_trace!("apply_score_clustering: {:?} {} {}", context, ego, score);
+
+    if score < EPSILON {
+      //  Clusterize only positive scores.
+      return (score, 0);
+    }
 
     if ego >= self.node_count {
       log_error!("(apply_score_clustering) Node does not exist: {}", ego);

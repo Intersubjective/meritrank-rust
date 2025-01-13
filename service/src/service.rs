@@ -332,20 +332,13 @@ fn decode_and_handle_request(
 
   let command = decode_request(request)?;
 
-  if command.context.is_empty() {
-    log_trace!(
-      "decoded command `{}` in NULL with payload {:?}",
-      command.id,
-      command.payload
-    );
-  } else {
-    log_trace!(
-      "decoded command `{}` in `{}` with payload {:?}",
-      command.id,
-      command.context,
-      command.payload
-    );
-  }
+  log_trace!(
+    "decoded command `{}` in {:?}, blocking {:?}, with payload {:?}",
+    command.id,
+    command.context,
+    command.blocking,
+    command.payload
+  );
 
   if !command.context.is_empty()
     && (command.id == CMD_VERSION

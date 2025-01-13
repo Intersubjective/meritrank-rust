@@ -2453,3 +2453,10 @@ fn separate_clusters_self_score() {
   assert_eq!(res[0].4, 100);
   assert_eq!(res[1].4, 1);
 }
+
+#[test]
+fn regression_delete_self_reference_panic() {
+  let mut graph = AugMultiGraph::new();
+  graph.write_put_edge("", "Ud57e58e4b20d", "U000000000000", 1.0, -1);
+  graph.write_delete_edge("", "U000000000000", "U000000000000", -1);
+}
