@@ -690,9 +690,7 @@ impl AugMultiGraph {
   ) -> Weight {
     log_trace!("with_zero_opinion: {:?} {} {}", context, dst_id, score);
 
-    if context.is_empty()
-      && self.node_info_from_id(dst_id).kind == NodeKind::User
-    {
+    if context.is_empty() {
       let zero_score = match self.zero_opinion.get(dst_id) {
         Some(x) => *x,
         None => 0.0,
@@ -729,11 +727,7 @@ impl AugMultiGraph {
             res[id].0 = id;
           }
         }
-        if self.node_info_from_id(*id).kind == NodeKind::User {
-          res[*id].1 += (1.0 - k) * score;
-        } else {
-          res[*id].1 = *score;
-        }
+        res[*id].1 += (1.0 - k) * score;
       }
 
       return res
@@ -851,6 +845,10 @@ impl AugMultiGraph {
 
     if scores.is_empty() {
       return [0.0; NUM_SCORE_QUANTILES - 1];
+    }
+
+    for x in scores.iter() {
+      println!("{}", x);
     }
 
     calculate_quantiles_bounds(scores)
