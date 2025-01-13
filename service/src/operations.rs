@@ -841,19 +841,13 @@ impl AugMultiGraph {
   ) -> [Weight; NUM_SCORE_QUANTILES - 1] {
     log_trace!("calculate_score_clusters_bounds: {}", ego);
 
-    let mut scores: Vec<Weight> = self
-      .all_neighbors(context, ego)
-      .into_iter()
-      .filter(|(dst, _)| self.node_info_from_id(*dst).kind == kind)
+    let scores: Vec<Weight> = (0..self.node_count)
+      .filter(|dst| self.node_info_from_id(*dst).kind == kind)
       .collect::<Vec<_>>()
       .into_iter()
-      .map(|(dst, _)| self.fetch_raw_score(context, ego, dst))
+      .map(|dst| self.fetch_raw_score(context, ego, dst))
+      .filter(|score| *score >= EPSILON)
       .collect();
-
-    if self.node_info_from_id(ego).kind == kind {
-      //  Add self score
-      scores.push(self.fetch_raw_score(context, ego, ego));
-    }
 
     if scores.is_empty() {
       return [0.0; NUM_SCORE_QUANTILES - 1];
@@ -994,6 +988,11 @@ impl AugMultiGraph {
     kind: NodeKind,
   ) -> (Weight, Cluster) {
     log_trace!("apply_score_clustering: {:?} {} {}", context, ego, score);
+
+    if score < EPSILON {
+      //  Clusterize only positive scores.
+      return (score, 0);
+    }
 
     if ego >= self.node_count {
       log_error!("(apply_score_clustering) Node does not exist: {}", ego);
@@ -1193,6 +1192,11 @@ impl AugMultiGraph {
     amount: f64,
   ) {
     log_trace!("set_edge: {:?} {:?} {:?} {}", context, src, dst, amount);
+
+    if src == dst {
+      log_error!("(set_edge) Self-reference is not allowed.");
+      return;
+    }
 
     if self.is_user_edge(src, dst) {
       //  Create context if does not exist
