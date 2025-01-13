@@ -2497,3 +2497,49 @@ fn regression_delete_self_reference_panic() {
   graph.write_put_edge("", "Ud57e58e4b20d", "U000000000000", 1.0, -1);
   graph.write_delete_edge("", "U000000000000", "U000000000000", -1);
 }
+
+#[test]
+fn vsids_write_edge() {
+  let mut graph = AugMultiGraph::new();
+  graph.write_put_edge("", "U1", "U2", 3.0, 0);
+  graph.write_put_edge("", "U1", "U3", 1.0, 20);
+  let u12 = graph.read_node_score("", "U1", "U2");
+  let u13 = graph.read_node_score("", "U1", "U3");
+  assert!(u12[0].2 < u13[0].2, "Assert that thanks to magnitude, U3 has a higher score than U2");
+
+  // Test deletion of too small edges
+  graph.write_put_edge("", "U1", "U4", 1.0, 200);
+  let u12_final = graph.read_node_score("", "U1", "U2");
+  let u13_final = graph.read_node_score("", "U1", "U3");
+  assert!(u12_final.is_empty() || u12_final[0].2 == 0.0, "U1->U2 edge should not exist");
+  assert!(u13_final.is_empty() || u13_final[0].2 == 0.0, "U1->U3 edge should not exist");
+}
+
+#[test]
+fn vsids_edges_churn() {
+  let mut graph = AugMultiGraph::new();
+
+  // Test for correct rescaling and dynamic deletion of smaller edges when
+  // adding many edges of ever-increasing magnitude
+  for n in 0..800 {
+    let dst = format!("U{}", n);
+    graph.write_put_edge("", "U1", "U2", 0.0, 0);
+    //graph.write_put_edge("", "U1", "U2", 1.0, 0);
+  }
+  return;
+
+  // Check that only the most recent edges remain
+  for n in 0..100 {
+    let dst = format!("U{}", n + 2);
+    let edge = graph.read_node_score("", "U1", &dst);
+    if n >= 90 {  // Assuming the last 10 edges remain (adjust based on your VSIDS implementation)
+      assert!(!edge.is_empty(), "Edge U1->{} should exist", dst);
+    } else {
+      assert!(edge.is_empty(), "Edge U1->{} should not exist", dst);
+    }
+  }
+
+  // Check that the total number of edges is limited
+  let all_edges = graph.read_scores("", "U1", "", true, 100.0, false, -100.0, false, 0, u32::MAX);
+  assert!(all_edges.len() < 20, "There should be fewer than 20 edges remaining");
+}

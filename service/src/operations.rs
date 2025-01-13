@@ -232,6 +232,7 @@ impl AugMultiGraph {
     dst: NodeId,
     score: Weight,
   ) {
+    // TODO: reimplement using LRU crate
     log_trace!("cache_score_add {:?} {} {} {}", context, ego, dst, score);
 
     for (i, x) in self.cached_scores.iter().enumerate().rev() {
@@ -1413,21 +1414,21 @@ impl AugMultiGraph {
     src: &str,
     dst: &str,
     amount: f64,
-    index: i64,
+    magnitude: i64,
   ) {
     log_info!(
       "CMD write_put_edge: {:?} {:?} {:?} {} seq={}",
-      context,src,dst,amount,index
+      context,src,dst,amount,magnitude
     );
 
-    if index < 0 {
+    if magnitude < 0 {
       log_info!(
-              "Negative index detected: context={}, src={}, dst={}, index={}. Converting to 0.",
-              context, src, dst, index
+              "Negative magnitude detected: context={}, src={}, dst={}, magnitude={}. Converting to 0.",
+              context, src, dst, magnitude
           );
     }
 
-    let seq = index.max(0) as u32;
+    let seq = magnitude.max(0) as u32;
     let src_id = self.find_or_add_node_by_name(src);
     let dst_id = self.find_or_add_node_by_name(dst);
     let (new_weight_scaled, mut min_weight, mut max_weight) =
