@@ -1203,6 +1203,11 @@ impl AugMultiGraph {
   ) {
     log_trace!("set_edge: {:?} {:?} {:?} {}", context, src, dst, amount);
 
+    if src == dst {
+      log_error!("(set_edge) Self-reference is not allowed.");
+      return;
+    }
+
     if self.is_user_edge(src, dst) {
       //  Create context if does not exist
 
