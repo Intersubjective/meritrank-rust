@@ -2397,6 +2397,43 @@ fn five_scores_clustering() {
 }
 
 #[test]
+fn three_scores_chain_clustering() {
+  let mut graph = AugMultiGraph::new();
+
+  graph.write_put_edge("", "U1", "U2", 2.0, -1);
+  graph.write_put_edge("", "U2", "U3", 3.0, -1);
+  graph.write_put_edge("", "U3", "U1", 4.0, -1);
+
+  //  We will get 3 score values including self-score.
+
+  let res: Vec<_> = graph.read_scores(
+    "",
+    "U1",
+    "",
+    true,
+    100.0,
+    false,
+    -100.0,
+    false,
+    0,
+    u32::MAX,
+  );
+
+  println!("{:?}", res);
+
+  assert_eq!(res.len(), 3);
+
+  assert!(res[0].4 <= 100);
+  assert!(res[0].4 >= 40);
+
+  assert!(res[1].4 <= 80);
+  assert!(res[1].4 >= 20);
+
+  assert!(res[2].4 <= 60);
+  assert!(res[2].4 >= 1);
+}
+
+#[test]
 fn separate_clusters_without_users() {
   let mut graph = AugMultiGraph::new();
 
@@ -2452,4 +2489,11 @@ fn separate_clusters_self_score() {
 
   assert_eq!(res[0].4, 100);
   assert_eq!(res[1].4, 1);
+}
+
+#[test]
+fn regression_delete_self_reference_panic() {
+  let mut graph = AugMultiGraph::new();
+  graph.write_put_edge("", "Ud57e58e4b20d", "U000000000000", 1.0, -1);
+  graph.write_delete_edge("", "U000000000000", "U000000000000", -1);
 }
