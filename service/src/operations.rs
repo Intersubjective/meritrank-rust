@@ -1,3 +1,4 @@
+use lru::LruCache;
 use meritrank_core::{constants::EPSILON, Graph, MeritRank, NodeId};
 use petgraph::{
   graph::{DiGraph, NodeIndex},
@@ -101,20 +102,6 @@ pub struct NodeInfo {
   pub seen_nodes: Vec<u64>,
 }
 
-#[derive(PartialEq, Clone, Default)]
-pub struct CachedScore {
-  pub context: String,
-  pub ego: NodeId,
-  pub dst: NodeId,
-  pub score: Weight,
-}
-
-#[derive(PartialEq, Eq, Clone, Default)]
-pub struct CachedWalk {
-  pub context: String,
-  pub ego: NodeId,
-}
-
 #[derive(PartialEq, Clone)]
 pub struct ClusterGroupBounds {
   pub updated_sec: u64,
@@ -146,8 +133,8 @@ pub struct AugMultiGraph {
   pub node_infos: Vec<NodeInfo>,
   pub node_ids: HashMap<String, NodeId>,
   pub contexts: HashMap<String, MeritRank>,
-  pub cached_scores: Vec<CachedScore>,
-  pub cached_walks: Vec<CachedWalk>,
+  pub score_cache: LruCache<(String, NodeId, NodeId), Weight>,
+  pub cached_walks: LruCache<(String, NodeId), ()>,
   pub zero_opinion: Vec<Weight>,
   pub time_begin: Instant,
   pub cached_score_clusters: HashMap<String, Vec<ScoreClustersByKind>>,
@@ -162,6 +149,7 @@ pub struct AugMultiGraph {
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
+use std::num::NonZeroUsize;
 
 pub fn bloom_filter_bits(
   size: usize,
@@ -232,38 +220,8 @@ impl AugMultiGraph {
     dst: NodeId,
     score: Weight,
   ) {
-    // TODO: reimplement using LRU crate
     log_trace!("cache_score_add {:?} {} {} {}", context, ego, dst, score);
-
-    for (i, x) in self.cached_scores.iter().enumerate().rev() {
-      if x.ego == ego && x.dst == dst && x.context == context {
-        self.cached_scores.remove(i);
-        self.cached_scores.push(CachedScore {
-          context: context.to_string(),
-          ego,
-          dst,
-          score,
-        });
-        return;
-      }
-    }
-
-    if self.cached_scores.len() >= *SCORES_CACHE_SIZE {
-      log_trace!(
-        "drop score {:?}, {} -> {}",
-        self.cached_scores[0].context,
-        self.cached_scores[0].ego,
-        self.cached_scores[0].dst
-      );
-      self.cached_scores.remove(0);
-    }
-
-    self.cached_scores.push(CachedScore {
-      context: context.to_string(),
-      ego,
-      dst,
-      score,
-    });
+    self.score_cache.put((context.to_string(), ego, dst), score);
   }
 
   pub fn cache_score_get(
@@ -273,22 +231,10 @@ impl AugMultiGraph {
     dst: NodeId,
   ) -> Option<Weight> {
     log_trace!("cache_score_get {:?} {} {}", context, ego, dst);
-
-    for (i, x) in self.cached_scores.iter().enumerate().rev() {
-      if x.ego == ego && x.dst == dst && x.context == context {
-        let score = x.score;
-        self.cached_scores.remove(i);
-        self.cached_scores.push(CachedScore {
-          context: context.to_string(),
-          ego,
-          dst,
-          score,
-        });
-        return Some(score);
-      }
-    }
-
-    return None;
+    self
+      .score_cache
+      .get(&(context.to_string(), ego, dst))
+      .copied()
   }
 
   pub fn cache_walk_add(
@@ -298,44 +244,24 @@ impl AugMultiGraph {
   ) {
     log_trace!("cache_walk_add {:?} {}", context, ego);
 
-    for (i, x) in self.cached_walks.iter().enumerate().rev() {
-      if x.ego == ego && x.context == context {
-        self.cached_walks.remove(i);
-        self.cached_walks.push(CachedWalk {
-          context: context.to_string(),
-          ego,
-        });
-        return;
+    let cached_walk = (context.to_string(), ego);
+
+    if let Some(((old_context, old_ego), _)) =
+      self.cached_walks.push(cached_walk, ())
+    {
+      if !(old_context == context && old_ego == ego) {
+        log_trace!("drop walks {:?}, {}", old_context, old_ego);
+
+        // HACK!!!
+        // We "drop" the walks by recalculating the node with 0.
+        match self.graph_from_ctx_mut(&old_context).calculate(old_ego, 0) {
+          Ok(()) => {},
+          Err(e) => {
+            log_error!("(cache_walk_add) {}", e);
+          },
+        }
       }
     }
-
-    if self.cached_walks.len() >= *WALKS_CACHE_SIZE {
-      log_trace!(
-        "drop walks {:?}, {}",
-        self.cached_walks[0].context,
-        self.cached_walks[0].ego
-      );
-
-      //  HACK!!!
-      //  We "drop" the walks by recalculating the node with 0.
-      let drop_walk = self.cached_walks[0].clone(); // RUST!!!
-      match self
-        .graph_from_ctx_mut(drop_walk.context.as_str())
-        .calculate(drop_walk.ego, 0)
-      {
-        Ok(()) => {},
-        Err(e) => {
-          log_error!("(cache_walk_add) {}", e);
-        },
-      }
-
-      self.cached_walks.remove(0);
-    }
-
-    self.cached_walks.push(CachedWalk {
-      context: context.to_string(),
-      ego,
-    });
   }
 
   pub fn cache_walk_get(
@@ -344,19 +270,7 @@ impl AugMultiGraph {
     ego: NodeId,
   ) -> bool {
     log_trace!("cache_walk_get");
-
-    for (i, x) in self.cached_walks.iter().enumerate().rev() {
-      if x.ego == ego && x.context == context {
-        self.cached_walks.remove(i);
-        self.cached_walks.push(CachedWalk {
-          context: context.to_string(),
-          ego,
-        });
-        return true;
-      }
-    }
-
-    return false;
+    self.cached_walks.get(&(context.to_string(), ego)).is_some()
   }
 }
 
@@ -431,8 +345,12 @@ impl AugMultiGraph {
       node_infos: Vec::new(),
       node_ids: HashMap::new(),
       contexts: HashMap::new(),
-      cached_scores: vec![],
-      cached_walks: vec![],
+      score_cache: LruCache::new(
+        NonZeroUsize::new(*SCORES_CACHE_SIZE).unwrap(),
+      ),
+      cached_walks: LruCache::new(
+        NonZeroUsize::new(*WALKS_CACHE_SIZE).unwrap(),
+      ),
       zero_opinion: vec![],
       time_begin: Instant::now(),
       cached_score_clusters: HashMap::new(),
@@ -450,7 +368,7 @@ impl AugMultiGraph {
     self.node_infos = other.node_infos.clone();
     self.node_ids = other.node_ids.clone();
     self.contexts = other.contexts.clone();
-    self.cached_scores = other.cached_scores.clone();
+    self.score_cache = other.score_cache.clone();
     self.cached_walks = other.cached_walks.clone();
     self.zero_opinion = other.zero_opinion.clone();
     self.time_begin = other.time_begin.clone();
@@ -464,8 +382,10 @@ impl AugMultiGraph {
     self.node_infos = vec![];
     self.node_ids = HashMap::new();
     self.contexts = HashMap::new();
-    self.cached_scores = vec![];
-    self.cached_walks = vec![];
+    self.score_cache =
+      LruCache::new(NonZeroUsize::new(*SCORES_CACHE_SIZE).unwrap());
+    self.cached_walks =
+      LruCache::new(NonZeroUsize::new(*WALKS_CACHE_SIZE).unwrap());
     self.zero_opinion = vec![];
     self.time_begin = Instant::now();
     self.cached_score_clusters = HashMap::new();
@@ -2332,8 +2252,10 @@ impl AugMultiGraph {
 
     //  Drop all walks and make sure to empty caches.
     self.recalculate_all(0);
-    self.cached_scores = vec![];
-    self.cached_walks = vec![];
+    self.score_cache =
+      LruCache::new(NonZeroUsize::new(*SCORES_CACHE_SIZE).unwrap());
+    self.cached_walks =
+      LruCache::new(NonZeroUsize::new(*WALKS_CACHE_SIZE).unwrap());
 
     self.zero_opinion.resize(0, 0.0);
     self.zero_opinion.reserve(nodes.len());
