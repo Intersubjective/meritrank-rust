@@ -65,9 +65,9 @@ pub enum GraphOp {
 
 #[derive(Clone, Debug)]
 pub struct VSIDSManager {
-  pub(crate) min_max_weights: HashMap<(String, NodeId), (Weight, Weight)>,
+  pub(crate) min_max_weights: HashMap<(String, NodeId), (Weight, Weight, u32)>,
   pub(crate) bump_factor: Weight,
-  pub(crate) max_threshold: Weight,
+  pub(crate) rescale_threshold: Weight,
   pub(crate) deletion_ratio: Weight,
 }
 
@@ -80,7 +80,7 @@ impl VSIDSManager {
     Self {
       min_max_weights: HashMap::with_capacity(100),
       bump_factor,
-      max_threshold: 1e15,
+      rescale_threshold: 1e15,
       deletion_ratio: 1e-3,
     }
   }
@@ -91,21 +91,38 @@ impl VSIDSManager {
     context: &str,
     src_id: NodeId,
     new_weight: Weight,
-    seq: u32,
-  ) -> (Weight, Weight, Weight) {
-    let scaled_weight = new_weight * self.bump_factor.powi(seq as i32);
-    let scaled_weight_abs = scaled_weight.abs();
+    new_magnitude: u32,
+  ) -> (Weight, Weight, Weight, u32, f64) {
     let src_key = (context.to_string(), src_id);
-
-    let (current_min, current_max) = self.min_max_weights
+    let (current_min, current_max, current_mag_scale) = self.min_max_weights
       .get(&src_key)
       .copied()
-      .unwrap_or((scaled_weight_abs, scaled_weight_abs));
+      .unwrap_or((f64::MAX, 0.0, 0));
 
-    let updated_min = current_min.min(scaled_weight_abs);
-    let updated_max = current_max.max(scaled_weight_abs);
+    let new_scale_factor = self.bump_factor.powi(new_magnitude as i32 - current_mag_scale as i32);
+    let mut scaled_weight = new_weight * new_scale_factor;
+    let scaled_weight_abs = scaled_weight.abs();
 
-    (scaled_weight, updated_min, updated_max)
+    let current_scale_factor = self.bump_factor.powi(current_mag_scale as i32);
+
+    let mut updated_min = current_min.min(scaled_weight_abs);
+    let mut updated_max = current_max.max(scaled_weight_abs);
+    let mut rescale_factor= 1.0;
+    let mut updated_mag_scale = current_mag_scale;
+    if scaled_weight_abs > self.rescale_threshold {
+      // Have to rescale everything, so reuse the new weight unscaled
+      scaled_weight = new_weight;
+      updated_min = current_min / current_scale_factor;
+      updated_max = new_weight;
+      updated_mag_scale = new_magnitude;
+      rescale_factor = current_scale_factor;
+    };
+
+    (scaled_weight,
+     updated_min,
+     updated_max,
+     updated_mag_scale,
+     rescale_factor)
   }
 }
 
@@ -124,7 +141,7 @@ mod tests {
   #[test]
   fn test_basic_weight_update() {
     let vsids = setup_vsids();
-    let (weight, min, max) = vsids.scale_weight("test", 1, 1.0, 1);
+    let (weight, min, max, _, _) = vsids.scale_weight("test", 1, 1.0, 1);
 
     assert!((weight - 1.111_111).abs() < 1e-6);
     assert_eq!(min, weight.abs());
@@ -135,13 +152,16 @@ mod tests {
   fn test_deletion_of_small_edges() {
     let vsids = setup_vsids();
 
-    let (_, _, _) = vsids.scale_weight("test", 1, 1.0, 0);
+    let (_, _, _, _, _) = vsids.scale_weight("test", 1, 1.0, 0);
 
     let small_weight = vsids.deletion_ratio / 2.0;
-    let (weight, min, max) = vsids.scale_weight("test", 1, small_weight, 0);
+    let (weight, min, max, _, _) = vsids.scale_weight("test", 1, small_weight, 0);
 
     assert!(weight.abs() < vsids.deletion_ratio);
     assert!(min <= small_weight);
     assert!(max >= small_weight);
-  }
+}
+
+
+
 }

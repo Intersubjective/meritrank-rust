@@ -1416,7 +1416,11 @@ impl AugMultiGraph {
   ) {
     log_info!(
       "CMD write_put_edge: {:?} {:?} {:?} {} seq={}",
-      context,src,dst,new_weight,magnitude
+      context,
+      src,
+      dst,
+      new_weight,
+      magnitude
     );
 
     if magnitude < 0 {
@@ -1429,68 +1433,80 @@ impl AugMultiGraph {
     let mag_clamped = magnitude.max(0) as u32;
     let src_id = self.find_or_add_node_by_name(src);
     let dst_id = self.find_or_add_node_by_name(dst);
-    let (new_weight_scaled, mut min_weight, mut max_weight) =
-      self.vsids.scale_weight(context, src_id, new_weight, mag_clamped);
+    let (
+      new_weight_scaled,
+      mut new_min_weight,
+      mut new_max_weight,
+      mut new_mag_scale,
+      rescale_factor,
+    ) = self
+      .vsids
+      .scale_weight(context, src_id, new_weight, mag_clamped);
 
     // Check for small edges that need deletion
-    let threshold = max_weight * self.vsids.deletion_ratio;
-    if min_weight <= threshold {
+    let edge_deletion_threshold = new_max_weight * self.vsids.deletion_ratio;
+    let can_delete_at_least_one_edge =
+      new_min_weight <= edge_deletion_threshold;
+    let must_rescale = rescale_factor > 1.0;
+    // TODO: handle rewriting existing node case
+    if can_delete_at_least_one_edge || must_rescale {
       // This means there is at least one edge to delete,
       // but maybe there is more, so we check everything.
       // In principle, we could have optimized this by storing the edges in a sorted heap structure.
-      min_weight = max_weight;
-      let (edges_to_delete, new_min_weight) = self
+      //new_min_weight = new_max_weight;
+      let (edges_to_modify, new_min_weight_from_scan) = self
         .graph_from_ctx(context)
         .graph
         .get_node_data(src_id)
         .unwrap()
         .get_outgoing_edges()
-        .fold((Vec::new(), min_weight), |(mut to_delete, min), (dst, weight)| {
-          let abs_weight = weight.abs();
-          if abs_weight <= threshold {
-            to_delete.push(dst);
-            (to_delete, min)
-          } else {
-            (to_delete, min.min(abs_weight))
-          }
-        });
+        .fold(
+          (Vec::new(), new_min_weight),
+          |(mut to_modify, min), (dest, weight)| {
+            let abs_weight = if must_rescale {
+              weight.abs() / rescale_factor
+            } else {
+              weight.abs()
+            };
 
-      min_weight = new_min_weight;
+            if abs_weight <= edge_deletion_threshold {
+              to_modify.push((dest, 0.0));
+              (to_modify, min)
+            } else {
+              if must_rescale {
+                to_modify.push((dest, weight / rescale_factor));
+              }
+              (to_modify, min.min(abs_weight))
+            }
+          },
+        );
+      new_min_weight = new_min_weight_from_scan;
 
-      for dst_id in edges_to_delete {
-          self.set_edge(context, src_id, dst_id, 0.0);
+      for (dst_id, weight) in edges_to_modify {
+        log_info!(
+          "Rescale/delete node: context={}, src={}, dst={}, new_weight={}",
+          context,
+          self.node_info_from_id(src_id).name,
+          self.node_info_from_id(dst_id).name,
+          weight
+        );
+        self.set_edge(context, src_id, dst_id, weight);
       }
     }
-
-    // Rescale all weights if necessary
-    if new_weight_scaled.abs() > self.vsids.max_threshold {
-        let normalized_edges: Vec<(NodeId, Weight)> = self
-            .graph_from_ctx(context)
-            .graph
-            .get_node_data(src_id)
-            .unwrap()
-            .get_outgoing_edges()
-            .map(|(dst_id, weight)| (dst_id, weight / max_weight))
-            .collect();
-
-        let graph = self.graph_from_ctx_mut(context);
-        for (dst_id, rescale_weight) in normalized_edges {
-            graph.set_edge(src_id, dst_id, rescale_weight);
-        }
-      // Note that we actually divide the weight here to keep the sign
-      let rescaled_new_weight = new_weight_scaled/max_weight;
-      self.set_edge(context, src_id, dst_id, rescaled_new_weight);
+    self.set_edge(context, src_id, dst_id, new_weight_scaled);
+    if must_rescale {
       log_info!(
           "Rescale performed: context={}, src={}, dst={}, normalized_new_weight={}",
-          context,src,dst, rescaled_new_weight);
-      max_weight = 1.0;
-    }else{
-      self.set_edge(context, src_id, dst_id, new_weight_scaled);
+          context,src,dst, new_weight_scaled);
+    } else {
       log_info!(
           "Edge updated without rescale: context={}, src={}, dst={}, new_weight_scaled={}",
           context,src,dst,new_weight_scaled);
     }
-    self.vsids.min_max_weights.insert((context.to_string(), src_id), (min_weight, max_weight));
+    self.vsids.min_max_weights.insert(
+      (context.to_string(), src_id),
+      (new_min_weight, new_max_weight, new_mag_scale),
+    );
   }
 
   pub fn write_delete_edge(

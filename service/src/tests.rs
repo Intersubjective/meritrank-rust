@@ -2759,6 +2759,7 @@ fn regression_beacons_clustering() {
 #[test]
 fn vsids_write_edge() {
   let mut graph = AugMultiGraph::new();
+  graph.write_put_edge("", "U1", "U4", 3.0, -1);
   graph.write_put_edge("", "U1", "U2", 3.0, 0);
   graph.write_put_edge("", "U1", "U3", 1.0, 20);
   let u12 = graph.read_node_score("", "U1", "U2");
@@ -2776,7 +2777,7 @@ fn vsids_write_edge() {
 #[test]
 fn vsids_edges_churn() {
   let mut graph = AugMultiGraph::new();
-  graph.vsids.bump_factor = 10.0;
+  graph.vsids.bump_factor = 2.0;
 
   // Test for correct rescaling and dynamic deletion of smaller edges when
   // adding many edges of ever-increasing magnitude
@@ -2786,17 +2787,13 @@ fn vsids_edges_churn() {
   }
 
   // Check that only the most recent edges remain
-  for n in 0..100 {
+  for n in 0..1000 {
     let dst = format!("U{}", n + 2);
-    let edge = graph.read_node_score("", "U1", &dst);
-    if n >= 90 {  // Assuming the last 10 edges remain (adjust based on your VSIDS implementation)
-      assert!(!edge.is_empty(), "Edge U1->{} should exist", dst);
+    let edge = graph.edge_weight_normalized("", *graph.node_ids.get("U1").unwrap(), *graph.node_ids.get(&dst).unwrap());
+    if n >= 990 {  // Assuming the last 10 edges remain
+      assert!(edge >0.0 , "Edge U1->{} should exist", dst);
     } else {
-      assert!(edge.is_empty(), "Edge U1->{} should not exist", dst);
+      assert_eq!(edge, 0.0, "Edge U1->{} should not exist", dst);
     }
   }
-
-  // Check that the total number of edges is limited
-  let all_edges = graph.read_scores("", "U1", "", true, 100.0, false, -100.0, false, 0, u32::MAX);
-  assert!(all_edges.len() < 20, "There should be fewer than 20 edges remaining");
 }
