@@ -1413,12 +1413,12 @@ impl AugMultiGraph {
     context: &str,
     src: &str,
     dst: &str,
-    amount: f64,
+    new_weight: f64,
     magnitude: i64,
   ) {
     log_info!(
       "CMD write_put_edge: {:?} {:?} {:?} {} seq={}",
-      context,src,dst,amount,magnitude
+      context,src,dst,new_weight,magnitude
     );
 
     if magnitude < 0 {
@@ -1428,20 +1428,18 @@ impl AugMultiGraph {
           );
     }
 
-    let seq = magnitude.max(0) as u32;
+    let mag_clamped = magnitude.max(0) as u32;
     let src_id = self.find_or_add_node_by_name(src);
     let dst_id = self.find_or_add_node_by_name(dst);
     let (new_weight_scaled, mut min_weight, mut max_weight) =
-      self.vsids.scale_weight(context, src_id, amount, seq);
-
-    //TODO: update min_weight and max_weight
+      self.vsids.scale_weight(context, src_id, new_weight, mag_clamped);
 
     // Check for small edges that need deletion
     let threshold = max_weight * self.vsids.deletion_ratio;
     if min_weight <= threshold {
       // This means there is at least one edge to delete,
       // but maybe there is more, so we check everything.
-      // In principle, we could have optimized this by storing the edges sorted.
+      // In principle, we could have optimized this by storing the edges in a sorted heap structure.
       min_weight = max_weight;
       let (edges_to_delete, new_min_weight) = self
         .graph_from_ctx(context)

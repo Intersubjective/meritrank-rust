@@ -2518,15 +2518,14 @@ fn vsids_write_edge() {
 #[test]
 fn vsids_edges_churn() {
   let mut graph = AugMultiGraph::new();
+  graph.vsids.bump_factor = 10.0;
 
   // Test for correct rescaling and dynamic deletion of smaller edges when
   // adding many edges of ever-increasing magnitude
-  for n in 0..800 {
-    let dst = format!("U{}", n);
-    graph.write_put_edge("", "U1", "U2", 0.0, 0);
-    //graph.write_put_edge("", "U1", "U2", 1.0, 0);
+  for n in 0..1000 {
+    let dst = format!("U{}", n+2);
+    graph.write_put_edge("", "U1", &*dst, 1.0, n);
   }
-  return;
 
   // Check that only the most recent edges remain
   for n in 0..100 {
