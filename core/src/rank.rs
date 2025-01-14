@@ -1,4 +1,5 @@
 use integer_hasher::IntMap;
+use log::error;
 use rand::prelude::*;
 
 use crate::constants::{ASSERT, EPSILON, OPTIMIZE_INVALIDATION};
@@ -132,6 +133,14 @@ impl MeritRank {
       .edge_weight(src, dest)
       .expect("Node should exist!")
       .unwrap_or(0.0);
+
+    if new_weight.is_nan() {
+      panic!("Trying to set NaN weight for edge from {} to {}", src, dest);
+    }
+    if new_weight.is_infinite() {
+      panic!("Trying to set infinite weight for edge from {} to {}", src, dest);
+    }
+
     if old_weight.abs() > EPSILON && new_weight.abs() > EPSILON {
       self.set_edge_(src, dest, 0.0);
     }

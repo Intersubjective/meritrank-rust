@@ -1,3 +1,4 @@
+use std::num::FpCategory::Nan;
 use indexmap::IndexMap;
 use integer_hasher::BuildIntHasher;
 
@@ -148,6 +149,14 @@ impl Graph {
     }
     if self.edge_weight(from, to)?.is_some() {
       self.remove_edge(from, to).unwrap();
+    }
+    if weight.is_nan() {
+      error!("Trying to set NaN weight for edge from {} to {}", from, to);
+      return Err(MeritRankError::NaNWeightEncountered);
+    }
+    if weight.is_infinite() {
+      error!("Trying to set infinite weight for edge from {} to {}", from, to);
+      return Err(MeritRankError::InfWeightEncountered);
     }
 
     let node = self

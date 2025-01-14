@@ -1,6 +1,8 @@
 /// Errors that can occur in the MeritRank implementation.
 #[derive(Debug, Clone)]
 pub enum MeritRankError {
+  InfWeightEncountered,
+  NaNWeightEncountered,
   ZeroWeightEncountered,
   NodeDoesNotExist,
   SelfReferenceNotAllowed,
@@ -23,6 +25,12 @@ impl Display for MeritRankError {
     f: &mut Formatter<'_>,
   ) -> Result {
     match self {
+      MeritRankError::InfWeightEncountered=> {
+        write!(f, "Edge with infinite weights are not allowed")
+      },
+      MeritRankError::NaNWeightEncountered=> {
+        write!(f, "Edge with NaN weights are not allowed")
+      },
       MeritRankError::ZeroWeightEncountered => {
         write!(f, "Edge with zero weights are not allowed")
       },
