@@ -1,3 +1,4 @@
+use std::num::FpCategory::Nan;
 use indexmap::IndexMap;
 use integer_hasher::BuildIntHasher;
 
@@ -28,11 +29,23 @@ pub struct NodeData {
 }
 
 impl NodeData {
-  // Return a random neighbor and whether it's from positive or negative edges
-  pub fn random_neighbor(
+
+pub fn get_outgoing_edges(&self) -> impl Iterator<Item = (NodeId, Weight)> + '_ {
+    self.pos_edges
+        .iter()
+        .map(|(&node_id, &weight)| (node_id, weight))
+        .chain(
+            self.neg_edges
+                .iter()
+                .map(|(&node_id, &weight)| (node_id, -weight))
+        )
+}
+
+// Return a random neighbor and whether it's from positive or negative edges
+pub fn random_neighbor(
     &mut self,
     positive_only: bool,
-  ) -> Option<(NodeId, bool)> {
+) -> Option<(NodeId, bool)> {
     if positive_only {
       if self.pos_edges.is_empty() {
         return None;
@@ -136,6 +149,14 @@ impl Graph {
     }
     if self.edge_weight(from, to)?.is_some() {
       self.remove_edge(from, to).unwrap();
+    }
+    if weight.is_nan() {
+      error!("Trying to set NaN weight for edge from {} to {}", from, to);
+      return Err(MeritRankError::NaNWeightEncountered);
+    }
+    if weight.is_infinite() {
+      error!("Trying to set infinite weight for edge from {} to {}", from, to);
+      return Err(MeritRankError::InfWeightEncountered);
     }
 
     let node = self

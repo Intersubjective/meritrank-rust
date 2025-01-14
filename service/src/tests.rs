@@ -2755,3 +2755,45 @@ fn regression_beacons_clustering() {
     assert!(x.4 <= percentile + 25);
   }
 }
+
+#[test]
+fn vsids_write_edge() {
+  let mut graph = AugMultiGraph::new();
+  graph.write_put_edge("", "U1", "U4", 3.0, -1);
+  graph.write_put_edge("", "U1", "U2", 3.0, 0);
+  graph.write_put_edge("", "U1", "U3", 1.0, 20);
+  let u12 = graph.read_node_score("", "U1", "U2");
+  let u13 = graph.read_node_score("", "U1", "U3");
+  assert!(u12[0].2 < u13[0].2, "Assert that thanks to magnitude, U3 has a higher score than U2");
+
+  // Test deletion of too small edges
+  graph.write_put_edge("", "U1", "U4", 1.0, 200);
+  let u12_final = graph.read_node_score("", "U1", "U2");
+  let u13_final = graph.read_node_score("", "U1", "U3");
+  assert!(u12_final.is_empty() || u12_final[0].2 == 0.0, "U1->U2 edge should not exist");
+  assert!(u13_final.is_empty() || u13_final[0].2 == 0.0, "U1->U3 edge should not exist");
+}
+
+#[test]
+fn vsids_edges_churn() {
+  let mut graph = AugMultiGraph::new();
+  graph.vsids.bump_factor = 2.0;
+
+  // Test for correct rescaling and dynamic deletion of smaller edges when
+  // adding many edges of ever-increasing magnitude
+  for n in 0..1000 {
+    let dst = format!("U{}", n+2);
+    graph.write_put_edge("", "U1", &*dst, 1.0, n);
+  }
+
+  // Check that only the most recent edges remain
+  for n in 0..1000 {
+    let dst = format!("U{}", n + 2);
+    let edge = graph.edge_weight_normalized("", *graph.node_ids.get("U1").unwrap(), *graph.node_ids.get(&dst).unwrap());
+    if n >= 990 {  // Assuming the last 10 edges remain
+      assert!(edge >0.0 , "Edge U1->{} should exist", dst);
+    } else {
+      assert_eq!(edge, 0.0, "Edge U1->{} should not exist", dst);
+    }
+  }
+}
