@@ -336,6 +336,26 @@ impl Default for AugMultiGraph {
   }
 }
 
+fn create_score_cache() -> LruCache<(String, NodeId, NodeId), Weight> {
+    match NonZeroUsize::new(*SCORES_CACHE_SIZE) {
+        Some(size) => LruCache::new(size),
+        None => {
+            log_error!("Failed to create score cache with size, exiting: {}", *SCORES_CACHE_SIZE);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn create_cached_walks() -> LruCache<(String, NodeId), ()> {
+    match NonZeroUsize::new(*WALKS_CACHE_SIZE) {
+        Some(size) => LruCache::new(size),
+        None => {
+            log_error!("Failed to create walks cache with size, exiting: {}", *WALKS_CACHE_SIZE);
+            std::process::exit(1);
+        }
+    }
+}
+
 impl AugMultiGraph {
   pub fn new() -> AugMultiGraph {
     log_trace!("AugMultiGraph::new");
@@ -345,12 +365,8 @@ impl AugMultiGraph {
       node_infos: Vec::new(),
       node_ids: HashMap::new(),
       contexts: HashMap::new(),
-      score_cache: LruCache::new(
-        NonZeroUsize::new(*SCORES_CACHE_SIZE).unwrap(),
-      ),
-      cached_walks: LruCache::new(
-        NonZeroUsize::new(*WALKS_CACHE_SIZE).unwrap(),
-      ),
+      score_cache: create_score_cache(),
+      cached_walks: create_cached_walks(),
       zero_opinion: vec![],
       time_begin: Instant::now(),
       cached_score_clusters: HashMap::new(),
@@ -382,10 +398,8 @@ impl AugMultiGraph {
     self.node_infos = vec![];
     self.node_ids = HashMap::new();
     self.contexts = HashMap::new();
-    self.score_cache =
-      LruCache::new(NonZeroUsize::new(*SCORES_CACHE_SIZE).unwrap());
-    self.cached_walks =
-      LruCache::new(NonZeroUsize::new(*WALKS_CACHE_SIZE).unwrap());
+    self.score_cache = create_score_cache();
+    self.cached_walks = create_cached_walks();
     self.zero_opinion = vec![];
     self.time_begin = Instant::now();
     self.cached_score_clusters = HashMap::new();
@@ -2252,10 +2266,8 @@ impl AugMultiGraph {
 
     //  Drop all walks and make sure to empty caches.
     self.recalculate_all(0);
-    self.score_cache =
-      LruCache::new(NonZeroUsize::new(*SCORES_CACHE_SIZE).unwrap());
-    self.cached_walks =
-      LruCache::new(NonZeroUsize::new(*WALKS_CACHE_SIZE).unwrap());
+    self.score_cache = create_score_cache();
+    self.cached_walks = create_cached_walks();
 
     self.zero_opinion.resize(0, 0.0);
     self.zero_opinion.reserve(nodes.len());
