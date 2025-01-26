@@ -93,13 +93,20 @@ impl MeritRank {
     ego: NodeId,
     limit: Option<usize>,
   ) -> Result<Vec<(NodeId, Weight)>, MeritRankError> {
-    let counter = self
+    let pos_counter = self
       .pos_hits
       .get(&ego)
       .ok_or(MeritRankError::NodeIsNotCalculated)?;
 
-    let mut peer_scores: Vec<_> = counter
-      .keys()
+    let neg_counter = self
+      .neg_hits
+      .get(&ego)
+      .ok_or(MeritRankError::NodeIsNotCalculated)?;
+
+    let combined_counter = pos_counter.keys().chain(neg_counter.keys()).collect::<std::collections::HashSet<_>>();
+
+    let mut peer_scores: Vec<_> = combined_counter
+      .into_iter()
       .map(|&peer| self.get_node_score(ego, peer).map(|score| (peer, score)))
       .collect::<Result<_, _>>()?;
 

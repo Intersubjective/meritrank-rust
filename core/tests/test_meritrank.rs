@@ -176,6 +176,23 @@ mod tests {
     //rank.print_walks();
   }
 
+  #[test]
+  fn test_return_strictly_negative_scores() {
+    let walk_count = 100;
+    let mut rank = MeritRank::new(Graph::new());
+    rank.get_new_nodeid();
+    rank.get_new_nodeid();
+    rank.get_new_nodeid();
+    rank.set_edge(0, 1, 1.0);
+    rank.set_edge(0, 2, -1.0);
+    rank.calculate(0, walk_count).unwrap();
+    let result = rank.get_ranks(0, None).unwrap();
+
+    assert_eq!(result.len(), 3);
+    assert!(result[2].1<0.0);
+
+  }
+
 
 #[test]
 fn test_node_data_get_outgoing_edges() {

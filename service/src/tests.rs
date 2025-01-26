@@ -1316,6 +1316,7 @@ fn new_user_with_recalculate() {
   put_testing_edges_2(&mut graph);
 
   graph.write_recalculate_zero();
+  graph.write_put_edge("", "U1", "U7a8d8324441d", -1000.0, -1);
 
   //  read_scores should return zero opinion data even if the node doesn't exist
 
@@ -1335,6 +1336,35 @@ fn new_user_with_recalculate() {
   let n = res.len();
 
   assert!(n > 2);
+}
+
+#[test]
+fn user_with_recalculate_negative_score() {
+  let mut graph = AugMultiGraph::new();
+
+  graph.write_put_edge("", "U2", "U3", 1.0, -1);
+
+  graph.write_recalculate_zero();
+  graph.write_put_edge("", "U1", "U3", -1000.0, -1);
+
+
+  let res: Vec<_> = graph.read_scores(
+    "",
+    "U1",
+    "U",
+    true,
+    100.0,
+    false,
+    -100.0,
+    false,
+    0,
+    u32::MAX,
+  );
+
+  let n = res.len();
+
+  //  The negative opinion of the user should have affected the score of U3
+  assert!(n == 3);
 }
 
 #[test]
