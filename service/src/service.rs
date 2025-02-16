@@ -1,4 +1,8 @@
+use crate::log_error;
+use crate::log_info;
+use crate::log_warning;
 use nng::{Aio, AioResult, Context, Protocol, Socket};
+use std::sync::MutexGuard;
 use std::{
   env::var,
   ops::DerefMut,
@@ -6,10 +10,6 @@ use std::{
   sync::atomic::Ordering,
   sync::{Arc, Condvar, Mutex},
 };
-use std::sync::MutexGuard;
-use crate::log_error;
-use crate::log_info;
-use crate::log_warning;
 // use crate::log_verbose;
 use crate::log::*;
 use crate::log_trace;
@@ -17,20 +17,19 @@ use crate::operations::*;
 use crate::protocol::*;
 use std::time::SystemTime;
 
-
 fn requires_empty_context(command_id: &str) -> bool {
   matches!(
-        command_id,
-        CMD_VERSION
-            | CMD_LOG_LEVEL
-            | CMD_RESET
-            | CMD_RECALCULATE_ZERO
-            | CMD_RECALCULATE_CLUSTERING
-            | CMD_NODE_LIST
-            | CMD_READ_NEW_EDGES_FILTER
-            | CMD_WRITE_NEW_EDGES_FILTER
-            | CMD_FETCH_NEW_EDGES
-    )
+    command_id,
+    CMD_VERSION
+      | CMD_LOG_LEVEL
+      | CMD_RESET
+      | CMD_RECALCULATE_ZERO
+      | CMD_RECALCULATE_CLUSTERING
+      | CMD_NODE_LIST
+      | CMD_READ_NEW_EDGES_FILTER
+      | CMD_WRITE_NEW_EDGES_FILTER
+      | CMD_FETCH_NEW_EDGES
+  )
 }
 
 lazy_static::lazy_static! {
@@ -54,9 +53,10 @@ pub struct Data {
   pub cond_done:      Condvar,
 }
 
-
-fn handle_empty_context_command(data: &Data, command: Command) -> Result<Vec<u8>, ()> {
-
+fn handle_empty_context_command(
+  data: &Data,
+  command: Command,
+) -> Result<Vec<u8>, ()> {
   let mut res = encode_response(&());
 
   //  Write commands
@@ -105,13 +105,7 @@ fn handle_empty_context_command(data: &Data, command: Command) -> Result<Vec<u8>
       if let Ok((src, dst, amount, index)) =
         rmp_serde::from_slice(command.payload.as_slice())
       {
-        graph.write_put_edge(
-          command.context.as_str(),
-          src,
-          dst,
-          amount,
-          index,
-        );
+        graph.write_put_edge(command.context.as_str(), src, dst, amount, index);
       }
     },
     CMD_CREATE_CONTEXT => {
@@ -156,160 +150,167 @@ fn handle_empty_context_command(data: &Data, command: Command) -> Result<Vec<u8>
   Err(())
 }
 
-
-fn update_readable_graph(data: &Data, writable_graph: &AugMultiGraph) {
-    match data.graph_readable.lock() {
-        Ok(ref mut x) => {
-            x.copy_from(writable_graph);
-        },
-        Err(e) => {
-            log_error!("(perform_command) {}", e);
-        },
-    };
+fn update_readable_graph(
+  data: &Data,
+  writable_graph: &AugMultiGraph,
+) {
+  match data.graph_readable.lock() {
+    Ok(ref mut x) => {
+      x.copy_from(writable_graph);
+    },
+    Err(e) => {
+      log_error!("(perform_command) {}", e);
+    },
+  };
 }
 
-fn handle_read_command(graph: &mut AugMultiGraph, command: &Command) -> Result<Vec<u8>, ()> {
-    match command.id.as_str() {
-        CMD_NODE_LIST => {
-            if let Ok(()) = rmp_serde::from_slice(&command.payload) {
-                encode_response(&graph.read_node_list())
-            } else {
-                Err(())
-            }
-        },
-        CMD_NODE_SCORE => {
-            if let Ok((ego, target)) = rmp_serde::from_slice(&command.payload) {
-                encode_response(&graph.read_node_score(
-                    command.context.as_str(),
-                    ego,
-                    target,
-                ))
-            } else {
-                Err(())
-            }
-        },
-        CMD_SCORES => {
-            if let Ok((ego, kind, hide_personal, lt, lte, gt, gte, index, count)) =
-                rmp_serde::from_slice(&command.payload)
-            {
-                encode_response(&graph.read_scores(
-                    command.context.as_str(),
-                    ego,
-                    kind,
-                    hide_personal,
-                    lt,
-                    lte,
-                    gt,
-                    gte,
-                    index,
-                    count,
-                ))
-            } else {
-                Err(())
-            }
-        },
-        CMD_GRAPH => {
-            if let Ok((ego, focus, positive_only, index, count)) =
-                rmp_serde::from_slice(&command.payload)
-            {
-                encode_response(&graph.read_graph(
-                    command.context.as_str(),
-                    ego,
-                    focus,
-                    positive_only,
-                    index,
-                    count,
-                ))
-            } else {
-                Err(())
-            }
-        },
-        CMD_CONNECTED => {
-            if let Ok(node) = rmp_serde::from_slice(&command.payload) {
-                encode_response(&graph.read_connected(command.context.as_str(), node))
-            } else {
-                Err(())
-            }
-        },
-        CMD_EDGES => {
-            if let Ok(()) = rmp_serde::from_slice(&command.payload) {
-                encode_response(&graph.read_edges(command.context.as_str()))
-            } else {
-                Err(())
-            }
-        },
-        CMD_MUTUAL_SCORES => {
-            if let Ok(ego) = rmp_serde::from_slice(&command.payload) {
-                encode_response(&graph.read_mutual_scores(command.context.as_str(), ego))
-            } else {
-                Err(())
-            }
-        },
-        CMD_READ_NEW_EDGES_FILTER => {
-            if let Ok(src) = rmp_serde::from_slice(&command.payload) {
-                encode_response(&graph.read_new_edges_filter(src))
-            } else {
-                Err(())
-            }
-        },
-        _ => {
-            log_error!("(handle_read_command) Unknown command: `{}`", command.id);
-            Err(())
-        },
-    }
+fn handle_read_command(
+  graph: &mut AugMultiGraph,
+  command: &Command,
+) -> Result<Vec<u8>, ()> {
+  match command.id.as_str() {
+    CMD_NODE_LIST => {
+      if let Ok(()) = rmp_serde::from_slice(&command.payload) {
+        encode_response(&graph.read_node_list())
+      } else {
+        Err(())
+      }
+    },
+    CMD_NODE_SCORE => {
+      if let Ok((ego, target)) = rmp_serde::from_slice(&command.payload) {
+        encode_response(&graph.read_node_score(
+          command.context.as_str(),
+          ego,
+          target,
+        ))
+      } else {
+        Err(())
+      }
+    },
+    CMD_SCORES => {
+      if let Ok((ego, kind, hide_personal, lt, lte, gt, gte, index, count)) =
+        rmp_serde::from_slice(&command.payload)
+      {
+        encode_response(&graph.read_scores(
+          command.context.as_str(),
+          ego,
+          kind,
+          hide_personal,
+          lt,
+          lte,
+          gt,
+          gte,
+          index,
+          count,
+        ))
+      } else {
+        Err(())
+      }
+    },
+    CMD_GRAPH => {
+      if let Ok((ego, focus, positive_only, index, count)) =
+        rmp_serde::from_slice(&command.payload)
+      {
+        encode_response(&graph.read_graph(
+          command.context.as_str(),
+          ego,
+          focus,
+          positive_only,
+          index,
+          count,
+        ))
+      } else {
+        Err(())
+      }
+    },
+    CMD_CONNECTED => {
+      if let Ok(node) = rmp_serde::from_slice(&command.payload) {
+        encode_response(&graph.read_connected(command.context.as_str(), node))
+      } else {
+        Err(())
+      }
+    },
+    CMD_EDGES => {
+      if let Ok(()) = rmp_serde::from_slice(&command.payload) {
+        encode_response(&graph.read_edges(command.context.as_str()))
+      } else {
+        Err(())
+      }
+    },
+    CMD_MUTUAL_SCORES => {
+      if let Ok(ego) = rmp_serde::from_slice(&command.payload) {
+        encode_response(
+          &graph.read_mutual_scores(command.context.as_str(), ego),
+        )
+      } else {
+        Err(())
+      }
+    },
+    CMD_READ_NEW_EDGES_FILTER => {
+      if let Ok(src) = rmp_serde::from_slice(&command.payload) {
+        encode_response(&graph.read_new_edges_filter(src))
+      } else {
+        Err(())
+      }
+    },
+    _ => {
+      log_error!("(handle_read_command) Unknown command: `{}`", command.id);
+      Err(())
+    },
+  }
 }
 
 fn lock_readable_graph(data: &Data) -> Result<MutexGuard<AugMultiGraph>, ()> {
-    match data.graph_readable.lock() {
-        Ok(graph) => Ok(graph),
-        Err(e) => {
-            log_error!("Failed to lock readable graph: {}", e);
-            Err(())
-        },
-    }
+  match data.graph_readable.lock() {
+    Ok(graph) => Ok(graph),
+    Err(e) => {
+      log_error!("Failed to lock readable graph: {}", e);
+      Err(())
+    },
+  }
 }
 
 fn perform_command(
-    data: &Data,
-    command: Command,
+  data: &Data,
+  command: Command,
 ) -> Result<Vec<u8>, ()> {
-    log_trace!("perform_command");
+  log_trace!("perform_command");
 
-    if requires_empty_context(command.id.as_str()) {
-        return handle_empty_context_command(data, command);
-    } else if command.id == CMD_SYNC {
-        if let Ok(()) = rmp_serde::from_slice(&command.payload) {
-            let mut queue = data.queue_commands.lock().expect("Mutex lock failed");
+  if requires_empty_context(command.id.as_str()) {
+    return handle_empty_context_command(data, command);
+  } else if command.id == CMD_SYNC {
+    if let Ok(()) = rmp_serde::from_slice(&command.payload) {
+      let mut queue = data.queue_commands.lock().expect("Mutex lock failed");
 
-            while !queue.is_empty() {
-                log_trace!("wait for queue to be empty");
-                queue = data.cond_done.wait(queue).expect("Condvar wait failed");
-            }
+      while !queue.is_empty() {
+        log_trace!("wait for queue to be empty");
+        queue = data.cond_done.wait(queue).expect("Condvar wait failed");
+      }
 
-            let _write = data.write_sync.lock().expect("Mutex lock failed");
+      let _write = data.write_sync.lock().expect("Mutex lock failed");
 
-            return encode_response(&());
-        }
-    } else if command.id == CMD_VERSION {
-        if let Ok(()) = rmp_serde::from_slice(&command.payload) {
-            return encode_response(&read_version());
-        }
-    } else if command.id == CMD_LOG_LEVEL {
-        if let Ok(log_level) = rmp_serde::from_slice(&command.payload) {
-            return encode_response(&write_log_level(log_level));
-        }
-    } else {
-        // Read commands
-        let mut graph = lock_readable_graph(data)?;
-        return handle_read_command(&mut graph, &command);
+      return encode_response(&());
     }
+  } else if command.id == CMD_VERSION {
+    if let Ok(()) = rmp_serde::from_slice(&command.payload) {
+      return encode_response(&read_version());
+    }
+  } else if command.id == CMD_LOG_LEVEL {
+    if let Ok(log_level) = rmp_serde::from_slice(&command.payload) {
+      return encode_response(&write_log_level(log_level));
+    }
+  } else {
+    // Read commands
+    let mut graph = lock_readable_graph(data)?;
+    return handle_read_command(&mut graph, &command);
+  }
 
-    log_error!(
-        "(perform_command) Invalid payload for command `{}`: {:?}",
-        command.id.as_str(),
-        command.payload
-    );
-    Err(())
+  log_error!(
+    "(perform_command) Invalid payload for command `{}`: {:?}",
+    command.id.as_str(),
+    command.payload
+  );
+  Err(())
 }
 
 fn command_queue_thread(data: &Data) {
@@ -374,8 +375,7 @@ fn decode_and_handle_request(
     command.payload
   );
 
-  if requires_empty_context(command.id.as_str())
-  {
+  if requires_empty_context(command.id.as_str()) {
     log_error!("(decode_and_handle_request) Context should be empty");
     return Err(());
   }
@@ -414,15 +414,17 @@ fn worker_callback(
     },
 
     AioResult::Recv(Ok(req)) => {
-      let msg: Vec<u8> = decode_and_handle_request(data, req.as_slice()).unwrap_or_else(|_| {
-        encode_response(&"Internal error, see server logs".to_string()).unwrap_or_else(|error| {
-          log_error!(
+      let msg: Vec<u8> = decode_and_handle_request(data, req.as_slice())
+        .unwrap_or_else(|_| {
+          encode_response(&"Internal error, see server logs".to_string())
+            .unwrap_or_else(|error| {
+              log_error!(
                 "(worker_callback) Unable to serialize error: {:?}",
                 error
               );
-          vec![]
-        })
-      });
+              vec![]
+            })
+        });
       log_trace!("decode_and_handle_request - done");
       match ctx.send(&aio, msg.as_slice()) {
         Ok(_) => {},
