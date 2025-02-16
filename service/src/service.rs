@@ -17,7 +17,21 @@ use crate::operations::*;
 use crate::protocol::*;
 use std::time::SystemTime;
 
-pub use meritrank_core::Weight;
+
+fn requires_empty_context(command_id: &str) -> bool {
+  matches!(
+        command_id,
+        CMD_VERSION
+            | CMD_LOG_LEVEL
+            | CMD_RESET
+            | CMD_RECALCULATE_ZERO
+            | CMD_RECALCULATE_CLUSTERING
+            | CMD_NODE_LIST
+            | CMD_READ_NEW_EDGES_FILTER
+            | CMD_WRITE_NEW_EDGES_FILTER
+            | CMD_FETCH_NEW_EDGES
+    )
+}
 
 lazy_static::lazy_static! {
   pub static ref THREADS : usize =
@@ -46,15 +60,7 @@ fn perform_command(
 ) -> Result<Vec<u8>, ()> {
   log_trace!("perform_command");
 
-  if command.id == CMD_RESET
-    || command.id == CMD_RECALCULATE_ZERO
-    || command.id == CMD_RECALCULATE_CLUSTERING
-    || command.id == CMD_DELETE_EDGE
-    || command.id == CMD_DELETE_NODE
-    || command.id == CMD_PUT_EDGE
-    || command.id == CMD_CREATE_CONTEXT
-    || command.id == CMD_WRITE_NEW_EDGES_FILTER
-    || command.id == CMD_FETCH_NEW_EDGES
+  if requires_empty_context(command.id.as_str())
   {
     let mut res = encode_response(&());
 
@@ -182,7 +188,6 @@ fn perform_command(
     }
   } else {
     //  Read commands
-
     let mut graph = match data.graph_readable.lock() {
       Ok(x) => x,
       Err(e) => {
@@ -287,7 +292,7 @@ fn command_queue_thread(data: &Data) {
 
     let commands: Vec<_> = queue.clone();
     queue.clear();
-    std::mem::drop(queue);
+    drop(queue);
 
     for cmd in commands {
       let begin = SystemTime::now();
@@ -340,16 +345,7 @@ fn decode_and_handle_request(
     command.payload
   );
 
-  if !command.context.is_empty()
-    && (command.id == CMD_VERSION
-      || command.id == CMD_LOG_LEVEL
-      || command.id == CMD_RESET
-      || command.id == CMD_RECALCULATE_ZERO
-      || command.id == CMD_RECALCULATE_CLUSTERING
-      || command.id == CMD_NODE_LIST
-      || command.id == CMD_READ_NEW_EDGES_FILTER
-      || command.id == CMD_WRITE_NEW_EDGES_FILTER
-      || command.id == CMD_FETCH_NEW_EDGES)
+  if requires_empty_context(command.id.as_str())
   {
     log_error!("(decode_and_handle_request) Context should be empty");
     return Err(());
@@ -389,22 +385,15 @@ fn worker_callback(
     },
 
     AioResult::Recv(Ok(req)) => {
-      let msg: Vec<u8> = match decode_and_handle_request(data, req.as_slice()) {
-        Ok(bytes) => bytes,
-        Err(_) => {
-          match encode_response(&"Internal error, see server logs".to_string())
-          {
-            Ok(bytes) => bytes,
-            Err(error) => {
-              log_error!(
+      let msg: Vec<u8> = decode_and_handle_request(data, req.as_slice()).unwrap_or_else(|_| {
+        encode_response(&"Internal error, see server logs".to_string()).unwrap_or_else(|error| {
+          log_error!(
                 "(worker_callback) Unable to serialize error: {:?}",
                 error
               );
-              vec![]
-            },
-          }
-        },
-      };
+          vec![]
+        })
+      });
       log_trace!("decode_and_handle_request - done");
       match ctx.send(&aio, msg.as_slice()) {
         Ok(_) => {},
