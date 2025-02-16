@@ -6,7 +6,7 @@ use std::{
   sync::atomic::Ordering,
   sync::{Arc, Condvar, Mutex},
 };
-
+use std::sync::MutexGuard;
 use crate::log_error;
 use crate::log_info;
 use crate::log_warning;
@@ -168,131 +168,148 @@ fn update_readable_graph(data: &Data, writable_graph: &AugMultiGraph) {
     };
 }
 
-fn perform_command(
-  data: &Data,
-  command: Command,
-) -> Result<Vec<u8>, ()> {
-  log_trace!("perform_command");
-
-  if requires_empty_context(command.id.as_str())
-  {
-    return handle_empty_context_command(data, command);
-  } else if command.id == CMD_SYNC {
-    if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
-      let mut queue = data.queue_commands.lock().expect("Mutex lock failed");
-
-      while !queue.is_empty() {
-        log_trace!("wait for queue to be empty");
-        queue = data.cond_done.wait(queue).expect("Condvar wait failed");
-      }
-
-      let _write = data.write_sync.lock().expect("Mutex lock failed");
-
-      return encode_response(&());
-    }
-  } else if command.id == CMD_VERSION {
-    if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
-      return encode_response(&read_version());
-    }
-  } else if command.id == CMD_LOG_LEVEL {
-    if let Ok(log_level) = rmp_serde::from_slice(command.payload.as_slice()) {
-      return encode_response(&write_log_level(log_level));
-    }
-  } else {
-    //  Read commands
-    let mut graph = match data.graph_readable.lock() {
-      Ok(x) => x,
-      Err(e) => {
-        log_error!("(perform_command) {}", e);
-        return Err(());
-      },
-    };
+fn handle_read_command(graph: &mut AugMultiGraph, command: &Command) -> Result<Vec<u8>, ()> {
     match command.id.as_str() {
-      CMD_NODE_LIST => {
-        if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
-          return encode_response(&graph.read_node_list());
-        }
-      },
-      CMD_NODE_SCORE => {
-        if let Ok((ego, target)) =
-          rmp_serde::from_slice(command.payload.as_slice())
-        {
-          return encode_response(&graph.read_node_score(
-            command.context.as_str(),
-            ego,
-            target,
-          ));
-        }
-      },
-      CMD_SCORES => {
-        if let Ok((ego, kind, hide_personal, lt, lte, gt, gte, index, count)) =
-          rmp_serde::from_slice(command.payload.as_slice())
-        {
-          return encode_response(&graph.read_scores(
-            command.context.as_str(),
-            ego,
-            kind,
-            hide_personal,
-            lt,
-            lte,
-            gt,
-            gte,
-            index,
-            count,
-          ));
-        }
-      },
-      CMD_GRAPH => {
-        if let Ok((ego, focus, positive_only, index, count)) =
-          rmp_serde::from_slice(command.payload.as_slice())
-        {
-          return encode_response(&graph.read_graph(
-            command.context.as_str(),
-            ego,
-            focus,
-            positive_only,
-            index,
-            count,
-          ));
-        }
-      },
-      CMD_CONNECTED => {
-        if let Ok(node) = rmp_serde::from_slice(command.payload.as_slice()) {
-          return encode_response(
-            &graph.read_connected(command.context.as_str(), node),
-          );
-        }
-      },
-      CMD_EDGES => {
-        if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
-          return encode_response(&graph.read_edges(command.context.as_str()));
-        }
-      },
-      CMD_MUTUAL_SCORES => {
-        if let Ok(ego) = rmp_serde::from_slice(command.payload.as_slice()) {
-          return encode_response(
-            &graph.read_mutual_scores(command.context.as_str(), ego),
-          );
-        }
-      },
-      CMD_READ_NEW_EDGES_FILTER => {
-        if let Ok(src) = rmp_serde::from_slice(command.payload.as_slice()) {
-          return encode_response(&graph.read_new_edges_filter(src));
-        }
-      },
-      _ => {
-        log_error!("(perform_command) Unknown command: `{}`", command.id);
-        return Err(());
-      },
+        CMD_NODE_LIST => {
+            if let Ok(()) = rmp_serde::from_slice(&command.payload) {
+                encode_response(&graph.read_node_list())
+            } else {
+                Err(())
+            }
+        },
+        CMD_NODE_SCORE => {
+            if let Ok((ego, target)) = rmp_serde::from_slice(&command.payload) {
+                encode_response(&graph.read_node_score(
+                    command.context.as_str(),
+                    ego,
+                    target,
+                ))
+            } else {
+                Err(())
+            }
+        },
+        CMD_SCORES => {
+            if let Ok((ego, kind, hide_personal, lt, lte, gt, gte, index, count)) =
+                rmp_serde::from_slice(&command.payload)
+            {
+                encode_response(&graph.read_scores(
+                    command.context.as_str(),
+                    ego,
+                    kind,
+                    hide_personal,
+                    lt,
+                    lte,
+                    gt,
+                    gte,
+                    index,
+                    count,
+                ))
+            } else {
+                Err(())
+            }
+        },
+        CMD_GRAPH => {
+            if let Ok((ego, focus, positive_only, index, count)) =
+                rmp_serde::from_slice(&command.payload)
+            {
+                encode_response(&graph.read_graph(
+                    command.context.as_str(),
+                    ego,
+                    focus,
+                    positive_only,
+                    index,
+                    count,
+                ))
+            } else {
+                Err(())
+            }
+        },
+        CMD_CONNECTED => {
+            if let Ok(node) = rmp_serde::from_slice(&command.payload) {
+                encode_response(&graph.read_connected(command.context.as_str(), node))
+            } else {
+                Err(())
+            }
+        },
+        CMD_EDGES => {
+            if let Ok(()) = rmp_serde::from_slice(&command.payload) {
+                encode_response(&graph.read_edges(command.context.as_str()))
+            } else {
+                Err(())
+            }
+        },
+        CMD_MUTUAL_SCORES => {
+            if let Ok(ego) = rmp_serde::from_slice(&command.payload) {
+                encode_response(&graph.read_mutual_scores(command.context.as_str(), ego))
+            } else {
+                Err(())
+            }
+        },
+        CMD_READ_NEW_EDGES_FILTER => {
+            if let Ok(src) = rmp_serde::from_slice(&command.payload) {
+                encode_response(&graph.read_new_edges_filter(src))
+            } else {
+                Err(())
+            }
+        },
+        _ => {
+            log_error!("(handle_read_command) Unknown command: `{}`", command.id);
+            Err(())
+        },
     }
-  }
+}
 
-  log_error!(
-    "(perform_command) Invalid payload for command `{}`: {:?}",
-    command.id.as_str(),
-    command.payload
-  );
-  Err(())
+fn lock_readable_graph(data: &Data) -> Result<MutexGuard<AugMultiGraph>, ()> {
+    match data.graph_readable.lock() {
+        Ok(graph) => Ok(graph),
+        Err(e) => {
+            log_error!("Failed to lock readable graph: {}", e);
+            Err(())
+        },
+    }
+}
+
+fn perform_command(
+    data: &Data,
+    command: Command,
+) -> Result<Vec<u8>, ()> {
+    log_trace!("perform_command");
+
+    if requires_empty_context(command.id.as_str()) {
+        return handle_empty_context_command(data, command);
+    } else if command.id == CMD_SYNC {
+        if let Ok(()) = rmp_serde::from_slice(&command.payload) {
+            let mut queue = data.queue_commands.lock().expect("Mutex lock failed");
+
+            while !queue.is_empty() {
+                log_trace!("wait for queue to be empty");
+                queue = data.cond_done.wait(queue).expect("Condvar wait failed");
+            }
+
+            let _write = data.write_sync.lock().expect("Mutex lock failed");
+
+            return encode_response(&());
+        }
+    } else if command.id == CMD_VERSION {
+        if let Ok(()) = rmp_serde::from_slice(&command.payload) {
+            return encode_response(&read_version());
+        }
+    } else if command.id == CMD_LOG_LEVEL {
+        if let Ok(log_level) = rmp_serde::from_slice(&command.payload) {
+            return encode_response(&write_log_level(log_level));
+        }
+    } else {
+        // Read commands
+        let mut graph = lock_readable_graph(data)?;
+        return handle_read_command(&mut graph, &command);
+    }
+
+    log_error!(
+        "(perform_command) Invalid payload for command `{}`: {:?}",
+        command.id.as_str(),
+        command.payload
+    );
+    Err(())
 }
 
 fn command_queue_thread(data: &Data) {
@@ -317,7 +334,7 @@ fn command_queue_thread(data: &Data) {
       }
     }
 
-    std::mem::drop(write);
+    drop(write);
 
     queue = data.queue_commands.lock().expect("Mutex lock failed");
     if queue.is_empty() {
