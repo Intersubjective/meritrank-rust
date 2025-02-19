@@ -846,7 +846,12 @@ mod tests {
     let ver = crate::mr_service();
 
     //  check if ver is in form "X.Y.Z"
-    assert_eq!(ver.split(".").map(|x| x.parse::<u32>().unwrap()).count(), 3);
+
+    let nums: Vec<&str> = ver.split(".").collect();
+
+    assert_eq!(nums.len(), 3);
+    let _ = nums[0].parse::<u32>().unwrap();
+    let _ = nums[1].parse::<u32>().unwrap();
   }
 
   #[pg_test]
