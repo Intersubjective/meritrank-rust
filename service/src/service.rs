@@ -7,12 +7,12 @@ use std::{
   sync::{Arc, Condvar, Mutex},
 };
 
+use crate::log::*;
 use crate::log_error;
 use crate::log_info;
-use crate::log_warning;
-// use crate::log_verbose;
-use crate::log::*;
 use crate::log_trace;
+use crate::log_verbose;
+use crate::log_warning;
 use crate::operations::*;
 use crate::protocol::*;
 use std::time::SystemTime;
@@ -44,7 +44,7 @@ fn perform_command(
   data: &Data,
   command: Command,
 ) -> Result<Vec<u8>, ()> {
-  log_trace!("perform_command");
+  log_trace!();
 
   if command.id == CMD_RESET
     || command.id == CMD_RECALCULATE_ZERO
@@ -63,7 +63,7 @@ fn perform_command(
     let mut graph = match data.graph_writable.lock() {
       Ok(x) => x,
       Err(e) => {
-        log_error!("(perform_command) {}", e);
+        log_error!("{}", e);
         return Err(());
       },
     };
@@ -143,7 +143,7 @@ fn perform_command(
         }
       },
       _ => {
-        log_error!("(perform_command) Unexpected command `{}`", command.id);
+        log_error!("Unexpected command `{}`", command.id);
       },
     };
     match data.graph_readable.lock() {
@@ -151,7 +151,7 @@ fn perform_command(
         x.copy_from(graph.deref_mut());
       },
       Err(e) => {
-        log_error!("(perform_command) {}", e);
+        log_error!("{}", e);
         return Err(());
       },
     };
@@ -164,7 +164,6 @@ fn perform_command(
       let mut queue = data.queue_commands.lock().expect("Mutex lock failed");
 
       while !queue.is_empty() {
-        log_trace!("wait for queue to be empty");
         queue = data.cond_done.wait(queue).expect("Condvar wait failed");
       }
 
@@ -186,7 +185,7 @@ fn perform_command(
     let mut graph = match data.graph_readable.lock() {
       Ok(x) => x,
       Err(e) => {
-        log_error!("(perform_command) {}", e);
+        log_error!("{}", e);
         return Err(());
       },
     };
@@ -264,24 +263,26 @@ fn perform_command(
         }
       },
       _ => {
-        log_error!("(perform_command) Unknown command: `{}`", command.id);
+        log_error!("Unknown command: {:?}", command.id);
         return Err(());
       },
     }
   }
 
   log_error!(
-    "(perform_command) Invalid payload for command `{}`: {:?}",
-    command.id.as_str(),
+    "Invalid payload for command {:?}: {:?}",
+    command.id,
     command.payload
   );
   Err(())
 }
 
 fn command_queue_thread(data: &Data) {
+  log_trace!();
+
   let mut queue = data.queue_commands.lock().expect("Mutex lock failed");
   loop {
-    log_trace!("command_queue_thread (loop)");
+    log_trace!("Loop");
 
     let write = data.write_sync.lock().expect("Mutex lock failed");
 
@@ -294,7 +295,6 @@ fn command_queue_thread(data: &Data) {
       let _ = perform_command(&data, cmd.clone());
       let duration = SystemTime::now().duration_since(begin).unwrap().as_secs();
 
-      log_trace!("perform_command - done");
       if duration > 5 {
         log_warning!("Command was done in {} seconds", duration);
       }
@@ -304,7 +304,6 @@ fn command_queue_thread(data: &Data) {
 
     queue = data.queue_commands.lock().expect("Mutex lock failed");
     if queue.is_empty() {
-      log_trace!("notify done");
       data.cond_done.notify_all();
 
       queue = data.cond_add.wait(queue).expect("Condvar wait failed");
@@ -316,11 +315,11 @@ fn put_for_write(
   data: &Data,
   command: Command,
 ) {
-  log_trace!("put_for_write");
+  log_trace!();
 
   let mut queue = data.queue_commands.lock().expect("Mutex lock failed");
   queue.push(command);
-  log_trace!("notify add");
+
   data.cond_add.notify_one();
 }
 
@@ -328,12 +327,12 @@ fn decode_and_handle_request(
   data: &Data,
   request: &[u8],
 ) -> Result<Vec<u8>, ()> {
-  log_trace!("decode_and_handle_request");
+  log_trace!();
 
   let command = decode_request(request)?;
 
-  log_trace!(
-    "decoded command `{}` in {:?}, blocking {:?}, with payload {:?}",
+  log_verbose!(
+    "Decoded command `{}` in {:?}, blocking {:?}, with payload {:?}",
     command.id,
     command.context,
     command.blocking,
@@ -351,7 +350,7 @@ fn decode_and_handle_request(
       || command.id == CMD_WRITE_NEW_EDGES_FILTER
       || command.id == CMD_FETCH_NEW_EDGES)
   {
-    log_error!("(decode_and_handle_request) Context should be empty");
+    log_error!("Context should be empty");
     return Err(());
   }
 
@@ -363,7 +362,6 @@ fn decode_and_handle_request(
     let res = perform_command(&data, command);
     let duration = SystemTime::now().duration_since(begin).unwrap().as_secs();
 
-    log_trace!("perform_command - done");
     if duration > 5 {
       log_warning!("Command was done in {} seconds", duration);
     }
@@ -378,13 +376,13 @@ fn worker_callback(
   ctx: &Context,
   res: AioResult,
 ) {
-  log_trace!("worker_callback");
+  log_trace!();
 
   match res {
     AioResult::Send(Ok(_)) => match ctx.recv(&aio) {
       Ok(_) => {},
       Err(error) => {
-        log_error!("(worker_callback) RECV failed: {}", error);
+        log_error!("RECV failed: {}", error);
       },
     },
 
@@ -396,20 +394,17 @@ fn worker_callback(
           {
             Ok(bytes) => bytes,
             Err(error) => {
-              log_error!(
-                "(worker_callback) Unable to serialize error: {:?}",
-                error
-              );
+              log_error!("Unable to serialize error: {:?}", error);
               vec![]
             },
           }
         },
       };
-      log_trace!("decode_and_handle_request - done");
+
       match ctx.send(&aio, msg.as_slice()) {
         Ok(_) => {},
         Err(error) => {
-          log_error!("(worker_callback) SEND failed: {:?}", error);
+          log_error!("SEND failed: {:?}", error);
         },
       };
     },
@@ -417,11 +412,11 @@ fn worker_callback(
     AioResult::Sleep(_) => {},
 
     AioResult::Send(Err(error)) => {
-      log_error!("(worker_callback) Async SEND failed: {:?}", error);
+      log_error!("Async SEND failed: {:?}", error);
     },
 
     AioResult::Recv(Err(error)) => {
-      log_error!("(worker_callback) Async RECV failed: {:?}", error);
+      log_error!("Async RECV failed: {:?}", error);
     },
   };
 }
@@ -455,7 +450,7 @@ pub fn main_async(threads: usize) -> Result<(), ()> {
   let s = match Socket::new(Protocol::Rep0) {
     Ok(x) => x,
     Err(e) => {
-      log_error!("(main_async) {}", e);
+      log_error!("{}", e);
       return Err(());
     },
   };
@@ -476,14 +471,14 @@ pub fn main_async(threads: usize) -> Result<(), ()> {
   {
     Ok(x) => x,
     Err(e) => {
-      log_error!("(main_async) {}", e);
+      log_error!("{}", e);
       return Err(());
     },
   };
 
   match s.listen(&SERVICE_URL) {
     Err(e) => {
-      log_error!("(main_async) {}", e);
+      log_error!("{}", e);
       return Err(());
     },
     _ => {},
@@ -492,7 +487,7 @@ pub fn main_async(threads: usize) -> Result<(), ()> {
   for (a, c) in &workers {
     match c.recv(a) {
       Err(e) => {
-        log_error!("(main_async) {}", e);
+        log_error!("{}", e);
         return Err(());
       },
       _ => {},

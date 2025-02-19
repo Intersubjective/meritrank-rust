@@ -1,5 +1,4 @@
 use integer_hasher::IntMap;
-use log::error;
 use rand::prelude::*;
 
 use crate::constants::{ASSERT, EPSILON, OPTIMIZE_INVALIDATION};
