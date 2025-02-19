@@ -1,9 +1,7 @@
 use meritrank_core::{NodeId, Weight};
 
-use crate::operations::AugMultiGraph;
 use std::collections::HashMap;
 use std::env;
-use std::sync::{Arc, RwLock};
 
 //////////////////////////////////////////////////////////
 //   VSIDS (Variable State Independent Decaying Sum)    //
@@ -52,23 +50,23 @@ use std::sync::{Arc, RwLock};
 pub enum GraphOp {
   SetEdge {
     context: String,
-    src_id: NodeId,
-    dst_id: NodeId,
-    weight: Weight,
+    src_id:  NodeId,
+    dst_id:  NodeId,
+    weight:  Weight,
   },
   RemoveEdge {
     context: String,
-    src_id: NodeId,
-    dst_id: NodeId,
+    src_id:  NodeId,
+    dst_id:  NodeId,
   },
 }
 
 #[derive(Clone, Debug)]
 pub struct VSIDSManager {
   pub(crate) min_max_weights: HashMap<(String, NodeId), (Weight, Weight, u32)>,
-  pub(crate) bump_factor: Weight,
+  pub(crate) bump_factor:       Weight,
   pub(crate) rescale_threshold: Weight,
-  pub(crate) deletion_ratio: Weight,
+  pub(crate) deletion_ratio:    Weight,
 }
 
 impl VSIDSManager {
@@ -85,7 +83,6 @@ impl VSIDSManager {
     }
   }
 
-
   pub fn scale_weight(
     &self,
     context: &str,
@@ -94,12 +91,15 @@ impl VSIDSManager {
     new_magnitude: u32,
   ) -> (Weight, Weight, Weight, u32, f64) {
     let src_key = (context.to_string(), src_id);
-    let (current_min, current_max, current_mag_scale) = self.min_max_weights
+    let (current_min, current_max, current_mag_scale) = self
+      .min_max_weights
       .get(&src_key)
       .copied()
       .unwrap_or((f64::MAX, 0.0, 0));
 
-    let new_scale_factor = self.bump_factor.powi(new_magnitude as i32 - current_mag_scale as i32);
+    let new_scale_factor = self
+      .bump_factor
+      .powi(new_magnitude as i32 - current_mag_scale as i32);
     let mut scaled_weight = new_weight * new_scale_factor;
     let scaled_weight_abs = scaled_weight.abs();
 
@@ -107,7 +107,7 @@ impl VSIDSManager {
 
     let mut updated_min = current_min.min(scaled_weight_abs);
     let mut updated_max = current_max.max(scaled_weight_abs);
-    let mut rescale_factor= 1.0;
+    let mut rescale_factor = 1.0;
     let mut updated_mag_scale = current_mag_scale;
     if scaled_weight_abs > self.rescale_threshold {
       // Have to rescale everything, so reuse the new weight unscaled
@@ -118,16 +118,16 @@ impl VSIDSManager {
       rescale_factor = current_scale_factor;
     };
 
-    (scaled_weight,
-     updated_min,
-     updated_max,
-     updated_mag_scale,
-     rescale_factor)
+    (
+      scaled_weight,
+      updated_min,
+      updated_max,
+      updated_mag_scale,
+      rescale_factor,
+    )
   }
 }
 
-
-#[cfg(test)]
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -155,13 +155,11 @@ mod tests {
     let (_, _, _, _, _) = vsids.scale_weight("test", 1, 1.0, 0);
 
     let small_weight = vsids.deletion_ratio / 2.0;
-    let (weight, min, max, _, _) = vsids.scale_weight("test", 1, small_weight, 0);
+    let (weight, min, max, _, _) =
+      vsids.scale_weight("test", 1, small_weight, 0);
 
     assert!(weight.abs() < vsids.deletion_ratio);
     assert!(min <= small_weight);
     assert!(max >= small_weight);
-}
-
-
-
+  }
 }

@@ -1,4 +1,3 @@
-use std::num::FpCategory::Nan;
 use indexmap::IndexMap;
 use integer_hasher::BuildIntHasher;
 
