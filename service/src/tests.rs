@@ -1041,7 +1041,7 @@ fn no_assert() {
 
 #[test]
 fn recalculate_zero_graph_all() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   put_testing_edges(&mut graph);
 
@@ -1060,7 +1060,7 @@ fn recalculate_zero_graph_all() {
 
 #[test]
 fn recalculate_out_of_bounds_regression() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 1.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -1070,7 +1070,7 @@ fn recalculate_out_of_bounds_regression() {
 
 #[test]
 fn graph_sort_order() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   put_testing_edges(&mut graph);
 
@@ -1088,7 +1088,7 @@ fn graph_sort_order() {
 
 #[test]
 fn recalculate_zero_graph_duplicates() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   put_testing_edges(&mut graph);
 
@@ -1111,7 +1111,7 @@ fn recalculate_zero_graph_duplicates() {
 
 #[test]
 fn recalculate_zero_graph_positive_only() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   put_testing_edges(&mut graph);
 
@@ -1129,7 +1129,7 @@ fn recalculate_zero_graph_positive_only() {
 
 #[test]
 fn recalculate_zero_graph_focus_beacon() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   put_testing_edges(&mut graph);
 
@@ -1152,7 +1152,7 @@ fn recalculate_zero_graph_focus_beacon() {
 
 #[test]
 fn recalculate_zero_reset_perf() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   put_testing_edges(&mut graph);
   graph.write_recalculate_zero();
@@ -1177,7 +1177,7 @@ fn recalculate_zero_reset_perf() {
 
 #[test]
 fn recalculate_zero_scores() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   put_testing_edges(&mut graph);
 
@@ -1205,7 +1205,7 @@ fn recalculate_zero_scores() {
 
 #[test]
 fn scores_sort_order() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   put_testing_edges(&mut graph);
 
@@ -1233,7 +1233,7 @@ fn scores_sort_order() {
 
 #[test]
 fn scores_without_recalculate() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   put_testing_edges_2(&mut graph);
 
@@ -1259,7 +1259,7 @@ fn scores_without_recalculate() {
 
 #[test]
 fn scores_with_recalculate() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   put_testing_edges_2(&mut graph);
 
@@ -1287,7 +1287,7 @@ fn scores_with_recalculate() {
 
 #[test]
 fn new_user_without_recalculate() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   put_testing_edges_2(&mut graph);
 
@@ -1311,7 +1311,7 @@ fn new_user_without_recalculate() {
 
 #[test]
 fn new_user_with_recalculate() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   put_testing_edges_2(&mut graph);
 
@@ -1340,7 +1340,7 @@ fn new_user_with_recalculate() {
 
 #[test]
 fn user_with_recalculate_negative_score() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U2", "U3", 1.0, -1);
 
@@ -1368,7 +1368,7 @@ fn user_with_recalculate_negative_score() {
 
 #[test]
 fn new_friend_smol() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "Ue925856b9cd9", "Ucc76e1b73be0", 1.0, -1);
 
@@ -1387,7 +1387,7 @@ fn new_friend_smol() {
 
 #[test]
 fn new_friend_big() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   put_testing_edges_2(&mut graph);
 
@@ -1406,7 +1406,7 @@ fn new_friend_big() {
 
 #[test]
 fn edge_uncontexted() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 1.5, -1);
 
@@ -1420,7 +1420,7 @@ fn edge_uncontexted() {
 
 #[test]
 fn edge_contexted() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "U1", "U2", 1.5, -1);
 
@@ -1434,7 +1434,7 @@ fn edge_contexted() {
 
 #[test]
 fn null_context_is_sum() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "B1", "U2", 1.0, -1);
   graph.write_put_edge("Y", "B1", "U2", 2.0, -1);
@@ -1449,7 +1449,7 @@ fn null_context_is_sum() {
 
 #[test]
 fn null_context_contains_all_users() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "U1", "U2", 1.0, -1);
   graph.write_put_edge("Y", "U1", "U3", 2.0, -1);
@@ -1466,7 +1466,7 @@ fn null_context_contains_all_users() {
 
 #[test]
 fn user_edges_dup() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "U1", "U2", 1.0, -1);
   graph.write_put_edge("X", "U1", "U3", 2.0, -1);
@@ -1484,7 +1484,7 @@ fn user_edges_dup() {
 
 #[test]
 fn non_user_edges_no_dup() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "U1", "C2", 1.0, -1);
   graph.write_put_edge("X", "U1", "C3", 2.0, -1);
@@ -1497,7 +1497,7 @@ fn non_user_edges_no_dup() {
 
 #[test]
 fn delete_nodes() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 1.0, -1);
   graph.write_delete_node("", "U1", -1);
@@ -1508,7 +1508,7 @@ fn delete_nodes() {
 
 #[test]
 fn delete_contexted_edge() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "B1", "U2", 1.0, -1);
   graph.write_put_edge("Y", "B1", "U2", 2.0, -1);
@@ -1524,7 +1524,7 @@ fn delete_contexted_edge() {
 
 #[test]
 fn null_context_invariant() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "B1", "B2", 1.0, -1);
   graph.write_put_edge("Y", "B1", "B2", 2.0, -1);
@@ -1541,7 +1541,7 @@ fn null_context_invariant() {
 
 #[test]
 fn scores_uncontexted() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -1588,7 +1588,7 @@ fn scores_uncontexted() {
 
 #[test]
 fn scores_reversed() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -1644,7 +1644,7 @@ fn scores_reversed() {
 
 #[test]
 fn scores_contexted() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "U1", "U2", 2.0, -1);
   graph.write_put_edge("X", "U1", "U3", 1.0, -1);
@@ -1691,7 +1691,7 @@ fn scores_contexted() {
 
 #[test]
 fn scores_unknown_context() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "B1", "B2", 2.0, -1);
   graph.write_put_edge("X", "B1", "B3", 1.0, -1);
@@ -1715,8 +1715,8 @@ fn scores_unknown_context() {
 
 #[test]
 fn scores_reset_smoke() {
-  let mut graph_read = AugMultiGraph::new();
-  let mut graph_write = AugMultiGraph::new();
+  let mut graph_read = AugMultiGraph::default();
+  let mut graph_write = AugMultiGraph::default();
 
   graph_write.write_put_edge("X", "U1", "U2", 2.0, -1);
   graph_write.write_put_edge("X", "U1", "U3", 1.0, -1);
@@ -1754,7 +1754,7 @@ fn scores_reset_smoke() {
 
 #[test]
 fn scores_self() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "B1", "B2", 2.0, -1);
   graph.write_put_edge("X", "B1", "B3", 1.0, -1);
@@ -1783,7 +1783,7 @@ fn scores_self() {
 
 #[test]
 fn node_list_uncontexted() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -1811,7 +1811,7 @@ fn node_list_uncontexted() {
 
 #[test]
 fn node_list_contexted() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "U1", "U2", 2.0, -1);
   graph.write_put_edge("X", "U1", "U3", 1.0, -1);
@@ -1839,7 +1839,7 @@ fn node_list_contexted() {
 
 #[test]
 fn node_list_mixed() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("X", "U1", "U3", 1.0, -1);
@@ -1867,7 +1867,7 @@ fn node_list_mixed() {
 
 #[test]
 fn node_score_uncontexted() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -1884,7 +1884,7 @@ fn node_score_uncontexted() {
 
 #[test]
 fn node_score_reversed() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -1904,7 +1904,7 @@ fn node_score_reversed() {
 
 #[test]
 fn node_score_contexted() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "U1", "U2", 2.0, -1);
   graph.write_put_edge("X", "U1", "U3", 1.0, -1);
@@ -1921,7 +1921,7 @@ fn node_score_contexted() {
 
 #[test]
 fn mutual_scores_uncontexted() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 3.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -1978,7 +1978,7 @@ fn mutual_scores_uncontexted() {
 
 #[test]
 fn mutual_scores_self() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 3.0, -1);
   graph.write_delete_edge("", "U1", "U2", -1);
@@ -1996,7 +1996,7 @@ fn mutual_scores_self() {
 
 #[test]
 fn mutual_scores_contexted() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "U1", "U2", 3.0, -1);
   graph.write_put_edge("X", "U1", "U3", 1.0, -1);
@@ -2053,7 +2053,7 @@ fn mutual_scores_contexted() {
 
 #[test]
 fn graph_uncontexted() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -2092,7 +2092,7 @@ fn graph_uncontexted() {
 
 #[test]
 fn graph_reversed() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -2136,7 +2136,7 @@ fn graph_reversed() {
 
 #[test]
 fn graph_contexted() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "U1", "U2", 2.0, -1);
   graph.write_put_edge("X", "U1", "U3", 1.0, -1);
@@ -2175,7 +2175,7 @@ fn graph_contexted() {
 
 #[test]
 fn graph_empty() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -2196,7 +2196,7 @@ fn graph_empty() {
 
 #[test]
 fn graph_removed_edge() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "B2", 1.0, -1);
   graph.write_put_edge("", "B2", "U1", 2.0, -1);
@@ -2217,7 +2217,7 @@ fn graph_removed_edge() {
 
 #[test]
 fn new_edges_fetch() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 1.0, -1);
 
@@ -2237,7 +2237,7 @@ fn new_edges_fetch() {
 
 #[test]
 fn new_edges_filter() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 1.0, -1);
 
@@ -2265,7 +2265,7 @@ fn new_edges_filter() {
 
 #[test]
 fn copy_user_edges_into_context() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "U1", "U2", 1.0, -1);
   graph.write_put_edge("X", "U1", "C2", 2.0, -1);
@@ -2282,7 +2282,7 @@ fn copy_user_edges_into_context() {
 
 #[test]
 fn context_already_exist() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "U1", "C2", 1.0, -1);
   graph.write_create_context("X");
@@ -2298,7 +2298,7 @@ fn context_already_exist() {
 
 #[test]
 fn mutual_scores_cluster_single_score_uncontexted() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 10.0, -1);
 
@@ -2313,7 +2313,7 @@ fn mutual_scores_cluster_single_score_uncontexted() {
 
 #[test]
 fn mutual_scores_cluster_single_score_contexted() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "U1", "U2", 10.0, -1);
 
@@ -2328,7 +2328,7 @@ fn mutual_scores_cluster_single_score_contexted() {
 
 #[test]
 fn mutual_scores_clustering() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("X", "U1", "U2", -5.0, -1);
   graph.write_put_edge("X", "U1", "U3", -5.0, -1);
@@ -2382,7 +2382,7 @@ fn mutual_scores_clustering() {
 
 #[test]
 fn five_user_scores_clustering() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 5.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -2427,7 +2427,7 @@ fn five_user_scores_clustering() {
 
 #[test]
 fn five_beacon_scores_clustering() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "B2", 5.0, -1);
   graph.write_put_edge("", "U1", "B3", 1.0, -1);
@@ -2470,7 +2470,7 @@ fn five_beacon_scores_clustering() {
 
 #[test]
 fn three_scores_chain_clustering() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U2", "U3", 3.0, -1);
@@ -2507,7 +2507,7 @@ fn three_scores_chain_clustering() {
 
 #[test]
 fn separate_clusters_without_users() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "B1", 3.0, -1);
   graph.write_put_edge("", "U1", "C1", 4.0, -1);
@@ -2536,7 +2536,7 @@ fn separate_clusters_without_users() {
 
 #[test]
 fn separate_clusters_self_score() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "B1", 3.0, -1);
@@ -2565,14 +2565,14 @@ fn separate_clusters_self_score() {
 
 #[test]
 fn regression_delete_self_reference_panic() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
   graph.write_put_edge("", "Ud57e58e4b20d", "U000000000000", 1.0, -1);
   graph.write_delete_edge("", "U000000000000", "U000000000000", -1);
 }
 
 #[test]
 fn regression_beacons_clustering() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
 
   graph.write_put_edge("", "U95f3426b8e5d", "U499f24158a40", 1.0, -1);
   graph.write_put_edge("", "U77a03e9a08af", "U6d2f25cc4264", 1.0, -1);
@@ -2787,16 +2787,21 @@ fn regression_beacons_clustering() {
 
 #[test]
 fn vsids_write_edge() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::new(AugMultiGraphSettings {
+    num_walks: 500,
+    ..AugMultiGraphSettings::default()
+  });
+
   graph.write_put_edge("", "U1", "U4", 3.0, -1);
   graph.write_put_edge("", "U1", "U2", 3.0, 0);
   graph.write_put_edge("", "U1", "U3", 1.0, 20);
   let u12 = graph.read_node_score("", "U1", "U2");
   let u13 = graph.read_node_score("", "U1", "U3");
 
-  //  FIXME: This assert fails randomly.
-  // assert!(u12[0].2 < u13[0].2, "Assert that thanks to magnitude, U3 has a higher score than U2");
-  assert!(u12[0].2 < u13[0].2 + 0.1);
+  assert!(
+    u12[0].2 < u13[0].2,
+    "Assert that thanks to magnitude, U3 has a higher score than U2"
+  );
 
   // Test deletion of too small edges
   graph.write_put_edge("", "U1", "U4", 1.0, 200);
@@ -2814,7 +2819,7 @@ fn vsids_write_edge() {
 
 #[test]
 fn vsids_edges_churn() {
-  let mut graph = AugMultiGraph::new();
+  let mut graph = AugMultiGraph::default();
   graph.vsids.bump_factor = 2.0;
 
   // Test for correct rescaling and dynamic deletion of smaller edges when
