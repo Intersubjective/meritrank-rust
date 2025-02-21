@@ -8,7 +8,7 @@ pub mod vsids;
 #[cfg(test)]
 mod tests;
 
-use crate::service::{main_async, THREADS};
+use crate::service::main_async;
 use ctrlc;
 
 fn main() -> Result<(), ()> {
@@ -17,5 +17,5 @@ fn main() -> Result<(), ()> {
     std::process::exit(0)
   });
 
-  main_async(*THREADS)
+  main_async()
 }

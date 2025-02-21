@@ -6,8 +6,7 @@ use petgraph::{
 };
 use simple_pagerank::Pagerank;
 use std::{
-  collections::HashMap, env::var, string::ToString, sync::atomic::Ordering,
-  time::Instant,
+  collections::HashMap, string::ToString, sync::atomic::Ordering, time::Instant,
 };
 
 use crate::astar::*;
@@ -20,6 +19,7 @@ use crate::log_warning;
 use crate::vsids::VSIDSManager;
 
 pub use meritrank_core::Weight;
+pub use std::num::NonZeroUsize;
 pub type Cluster = i32;
 
 //  ================================================================
@@ -33,50 +33,19 @@ pub const VERSION: &str = match option_env!("CARGO_PKG_VERSION") {
   None => "dev",
 };
 
-fn parse_env_with_default<T>(
-  name: &str,
-  default: T,
-) -> T
-where
-  T: std::str::FromStr,
-{
-  var(name)
-    .ok()
-    .and_then(|s| s.parse().ok())
-    .unwrap_or(default)
-}
-
-fn parse_env_with_transform<T, F>(
-  name: &str,
-  default: T,
-  transform: F,
-) -> T
-where
-  T: std::str::FromStr,
-  F: FnOnce(T) -> Option<T>,
-{
-  var(name)
-    .ok()
-    .and_then(|s| s.parse().ok())
-    .and_then(transform)
-    .unwrap_or(default)
-}
-
-lazy_static::lazy_static! {
-    pub static ref ZERO_OPINION_FACTOR: usize = parse_env_with_default("MERITRANK_ZERO_OPINION_FACTOR", 20);
-    pub static ref NUM_WALK: usize = parse_env_with_default("MERITRANK_NUM_WALK", 10000);
-    pub static ref TOP_NODES_LIMIT: usize = parse_env_with_default("MERITRANK_TOP_NODES_LIMIT", 100);
-    pub static ref FILTER_NUM_HASHES: usize = parse_env_with_default("MERITRANK_FILTER_NUM_HASHES", 10);
-    pub static ref FILTER_MIN_SIZE: usize = parse_env_with_transform("MERITRANK_FILTER_MIN_SIZE",32,|n| Some(std::cmp::max(n, 1)));
-    pub static ref FILTER_MAX_SIZE: usize = parse_env_with_default("MERITRANK_FILTER_MAX_SIZE", 8192);
-    pub static ref SCORES_CACHE_SIZE: usize = parse_env_with_default("MERITRANK_SCORES_CACHE_SIZE", 1024 * 10);
-    pub static ref WALKS_CACHE_SIZE: usize = parse_env_with_default("MERITRANK_WALKS_CACHE_SIZE", 1024);
-    pub static ref SCORE_CLUSTERS_TIMEOUT: u64 = parse_env_with_default("MERITRANK_SCORE_CLUSTERS_TIMEOUT", 60 * 60 * 6);
-    pub static ref KMEANS_TOLERANCE: f64 = parse_env_with_default("MERITRANK_KMEANS_TOLERANCE", 0.01);
-    pub static ref KMEANS_ITERATIONS: usize = parse_env_with_default("MERITRANK_KMEANS_ITERATIONS", 200);
-}
-
 pub const NUM_SCORE_QUANTILES: usize = 100;
+
+pub const DEFAULT_NUM_WALKS: usize = 50;
+pub const DEFAULT_TOP_NODES_LIMIT: usize = 100;
+pub const DEFAULT_ZERO_OPINION_FACTOR: f64 = 0.20;
+pub const DEFAULT_SCORE_CLUSTERS_TIMEOUT: u64 = 60 * 60 * 6; // 6 hours
+pub const DEFAULT_SCORES_CACHE_SIZE: NonZeroUsize =
+  NonZeroUsize::new(1024 * 10).unwrap();
+pub const DEFAULT_WALKS_CACHE_SIZE: NonZeroUsize =
+  NonZeroUsize::new(1024).unwrap();
+pub const DEFAULT_FILTER_NUM_HASHES: usize = 10;
+pub const DEFAULT_FILTER_MAX_SIZE: usize = 8192;
+pub const DEFAULT_FILTER_MIN_SIZE: usize = 32;
 
 //  ================================================================
 //
@@ -125,10 +94,26 @@ pub struct ScoreClustersByKind {
   pub comments: ClusterGroupBounds,
 }
 
+//  Augmented multi-context graph settings
+//
+#[derive(Clone)]
+pub struct AugMultiGraphSettings {
+  pub num_walks:              usize,
+  pub top_nodes_limit:        usize,
+  pub zero_opinion_factor:    f64,
+  pub score_clusters_timeout: u64,
+  pub scores_cache_size:      NonZeroUsize,
+  pub walks_cache_size:       NonZeroUsize,
+  pub filter_num_hashes:      usize,
+  pub filter_max_size:        usize,
+  pub filter_min_size:        usize,
+}
+
 //  Augmented multi-context graph
 //
 #[derive(Clone)]
 pub struct AugMultiGraph {
+  pub settings:              AugMultiGraphSettings,
   pub node_count:            usize,
   pub node_infos:            Vec<NodeInfo>,
   pub node_ids:              HashMap<String, NodeId>,
@@ -139,6 +124,11 @@ pub struct AugMultiGraph {
   pub time_begin:            Instant,
   pub cached_score_clusters: HashMap<String, Vec<ScoreClustersByKind>>,
   pub vsids:                 VSIDSManager,
+
+  //  We need this dummy value so we can return a reference to it when the requested
+  //  node does not exist. We don't want to use static variable instead, because we don't want
+  //  any potential bugs related to it to bleed into other instances of AugMultiGraph. See node_info_from_id.
+  pub dummy_node_info: NodeInfo,
 }
 
 //  ================================================================
@@ -149,7 +139,6 @@ pub struct AugMultiGraph {
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
-use std::num::NonZeroUsize;
 
 pub fn bloom_filter_bits(
   size: usize,
@@ -331,53 +320,57 @@ pub fn kind_from_name(name: &str) -> NodeKind {
   }
 }
 
+impl Default for AugMultiGraphSettings {
+  fn default() -> AugMultiGraphSettings {
+    AugMultiGraphSettings {
+      scores_cache_size:      DEFAULT_SCORES_CACHE_SIZE,
+      walks_cache_size:       DEFAULT_WALKS_CACHE_SIZE,
+      zero_opinion_factor:    DEFAULT_ZERO_OPINION_FACTOR,
+      num_walks:              DEFAULT_NUM_WALKS,
+      score_clusters_timeout: DEFAULT_SCORE_CLUSTERS_TIMEOUT,
+      filter_num_hashes:      DEFAULT_FILTER_NUM_HASHES,
+      filter_max_size:        DEFAULT_FILTER_MAX_SIZE,
+      filter_min_size:        DEFAULT_FILTER_MIN_SIZE,
+      top_nodes_limit:        DEFAULT_TOP_NODES_LIMIT,
+    }
+  }
+}
+
 impl Default for AugMultiGraph {
   fn default() -> AugMultiGraph {
-    AugMultiGraph::new()
+    AugMultiGraph::new(AugMultiGraphSettings::default())
   }
 }
 
-fn create_score_cache() -> LruCache<(String, NodeId, NodeId), Weight> {
-  match NonZeroUsize::new(*SCORES_CACHE_SIZE) {
-    Some(size) => LruCache::new(size),
-    None => {
-      log_error!(
-        "Failed to create score cache with size, exiting: {}",
-        *SCORES_CACHE_SIZE
-      );
-      std::process::exit(1);
-    },
-  }
+fn create_score_cache(
+  cache_size: NonZeroUsize
+) -> LruCache<(String, NodeId, NodeId), Weight> {
+  LruCache::new(cache_size)
 }
 
-fn create_cached_walks() -> LruCache<(String, NodeId), ()> {
-  match NonZeroUsize::new(*WALKS_CACHE_SIZE) {
-    Some(size) => LruCache::new(size),
-    None => {
-      log_error!(
-        "Failed to create walks cache with size, exiting: {}",
-        *WALKS_CACHE_SIZE
-      );
-      std::process::exit(1);
-    },
-  }
+fn create_cached_walks(
+  cache_size: NonZeroUsize
+) -> LruCache<(String, NodeId), ()> {
+  LruCache::new(cache_size)
 }
 
 impl AugMultiGraph {
-  pub fn new() -> AugMultiGraph {
+  pub fn new(settings: AugMultiGraphSettings) -> AugMultiGraph {
     log_trace!();
 
     AugMultiGraph {
+      settings:              settings.clone(),
       node_count:            0,
       node_infos:            Vec::new(),
       node_ids:              HashMap::new(),
       contexts:              HashMap::new(),
-      score_cache:           create_score_cache(),
-      cached_walks:          create_cached_walks(),
+      score_cache:           create_score_cache(settings.scores_cache_size),
+      cached_walks:          create_cached_walks(settings.walks_cache_size),
       zero_opinion:          vec![],
       time_begin:            Instant::now(),
       cached_score_clusters: HashMap::new(),
       vsids:                 VSIDSManager::new(),
+      dummy_node_info:       NodeInfo::default(),
     }
   }
 
@@ -405,8 +398,8 @@ impl AugMultiGraph {
     self.node_infos = vec![];
     self.node_ids = HashMap::new();
     self.contexts = HashMap::new();
-    self.score_cache = create_score_cache();
-    self.cached_walks = create_cached_walks();
+    self.score_cache = create_score_cache(self.settings.scores_cache_size);
+    self.cached_walks = create_cached_walks(self.settings.walks_cache_size);
     self.zero_opinion = vec![];
     self.time_begin = Instant::now();
     self.cached_score_clusters = HashMap::new();
@@ -429,10 +422,7 @@ impl AugMultiGraph {
 
     self.node_infos.get(node_id).unwrap_or_else(|| {
       log_error!("Node does not exist: {:?}", node_id);
-      // Create a new NodeInfo with default values
-      static DEFAULT_NODE_INFO: once_cell::sync::Lazy<NodeInfo> =
-        once_cell::sync::Lazy::new(|| NodeInfo::default());
-      &DEFAULT_NODE_INFO
+      &self.dummy_node_info
     })
   }
 
@@ -616,7 +606,7 @@ impl AugMultiGraph {
         Some(x) => *x,
         None => 0.0,
       };
-      let k = 0.01 * (*ZERO_OPINION_FACTOR as f64);
+      let k = self.settings.zero_opinion_factor;
       score * (1.0 - k) + k * zero_score
     } else {
       score
@@ -631,7 +621,7 @@ impl AugMultiGraph {
     log_trace!("{:?}", context);
 
     if context.is_empty() {
-      let k = 0.01 * (*ZERO_OPINION_FACTOR as f64);
+      let k = self.settings.zero_opinion_factor;
 
       let mut res: Vec<(NodeId, Weight)> = vec![];
       res.resize(self.zero_opinion.len(), (0, 0.0));
@@ -682,9 +672,11 @@ impl AugMultiGraph {
         },
       }
     } else {
+      let num_walks = self.settings.num_walks;
+
       match self
         .graph_from_ctx_mut(context)
-        .calculate(ego_id, *NUM_WALK)
+        .calculate(ego_id, num_walks)
       {
         Ok(()) => {
           self.cache_walk_add(context, ego_id);
@@ -717,10 +709,12 @@ impl AugMultiGraph {
   ) -> Weight {
     log_trace!("{:?} {} {}", context, ego_id, dst_id);
 
+    let num_walks = self.settings.num_walks;
+
     if !self.cache_walk_get(context, ego_id) {
       if let Err(e) = self
         .graph_from_ctx_mut(context)
-        .calculate(ego_id, *NUM_WALK)
+        .calculate(ego_id, num_walks)
       {
         log_error!("Failed to calculate: {}", e);
         return 0.0;
@@ -917,7 +911,7 @@ impl AugMultiGraph {
       },
     };
 
-    if elapsed_secs >= updated_sec + *SCORE_CLUSTERS_TIMEOUT {
+    if elapsed_secs >= updated_sec + self.settings.score_clusters_timeout {
       log_verbose!("Recalculate clustering for node {} in {:?}", ego, context);
       self.update_node_score_clustering(context, ego, kind);
     }
@@ -1419,7 +1413,7 @@ impl AugMultiGraph {
 
       for (dst_id, weight) in edges_to_modify {
         log_verbose!(
-          "Rescale or delete node: context={}, src={}, dst={}, new_weight={}",
+          "Rescale or delete node: context={:?}, src={}, dst={}, new_weight={}",
           context,
           self.node_info_from_id(src_id).name,
           self.node_info_from_id(dst_id).name,
@@ -1431,11 +1425,11 @@ impl AugMultiGraph {
     self.set_edge(context, src_id, dst_id, new_weight_scaled);
     if must_rescale {
       log_verbose!(
-          "Rescale performed: context={}, src={}, dst={}, normalized_new_weight={}",
+          "Rescale performed: context={:?}, src={}, dst={}, normalized_new_weight={}",
           context,src,dst, new_weight_scaled);
     } else {
       log_verbose!(
-          "Edge updated without rescale: context={}, src={}, dst={}, new_weight_scaled={}",
+          "Edge updated without rescale: context={:?}, src={}, dst={}, new_weight_scaled={}",
           context,src,dst,new_weight_scaled);
     }
     self.vsids.min_max_weights.insert(
@@ -2018,15 +2012,15 @@ impl AugMultiGraph {
   ) -> Vec<(String, Weight, Weight, Cluster, Cluster)> {
     log_command!("{:?} {:?}", src, prefix);
 
-    let num_hashes = *FILTER_NUM_HASHES;
-    let max_size = *FILTER_MAX_SIZE / 8;
+    let num_hashes = self.settings.filter_num_hashes;
+    let max_size = self.settings.filter_max_size / 8;
 
     let src_id = self.find_or_add_node_by_name(src);
 
     if self.node_infos[src_id].seen_nodes.is_empty() {
       self.node_infos[src_id]
         .seen_nodes
-        .resize((*FILTER_MIN_SIZE + 7) / 8, 0);
+        .resize((self.settings.filter_min_size + 7) / 8, 0);
 
       log_verbose!(
         "Create the bloom filter with {} bytes for {:?}",
@@ -2170,8 +2164,10 @@ impl AugMultiGraph {
       return vec![];
     }
 
+    let num_walks = self.settings.num_walks;
+
     for id in users.iter() {
-      match self.graph_from_ctx_mut("").calculate(*id, *NUM_WALK) {
+      match self.graph_from_ctx_mut("").calculate(*id, num_walks) {
         Ok(_) => {},
         Err(e) => log_error!("{}", e),
       };
@@ -2239,7 +2235,7 @@ impl AugMultiGraph {
     let (nodes, scores): (Vec<NodeId>, Vec<f64>) = pr
         .nodes()  // already sorted by score
         .into_iter()
-        .take(*TOP_NODES_LIMIT)
+        .take(self.settings.top_nodes_limit)
         .into_iter()
         .unzip();
 
@@ -2260,8 +2256,8 @@ impl AugMultiGraph {
 
     //  Drop all walks and make sure to empty caches.
     self.recalculate_all(0);
-    self.score_cache = create_score_cache();
-    self.cached_walks = create_cached_walks();
+    self.score_cache = create_score_cache(self.settings.scores_cache_size);
+    self.cached_walks = create_cached_walks(self.settings.walks_cache_size);
 
     self.zero_opinion.resize(0, 0.0);
     self.zero_opinion.reserve(nodes.len());

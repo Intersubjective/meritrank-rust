@@ -10,7 +10,6 @@ shared = []
 meritrank_core = { path = "../core" }
 
 petgraph = "0.6.3"
-lazy_static = "1.4"
 serde = "1.0.166"
 
 nng = "1.0.1"

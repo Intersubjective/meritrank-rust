@@ -19,18 +19,6 @@ use std::time::SystemTime;
 
 pub use meritrank_core::Weight;
 
-lazy_static::lazy_static! {
-  pub static ref THREADS : usize =
-    var("MERITRANK_SERVICE_THREADS")
-      .ok()
-      .and_then(|s| s.parse::<usize>().ok())
-      .unwrap_or(1);
-
-  static ref SERVICE_URL : String =
-    var("MERITRANK_SERVICE_URL")
-      .unwrap_or("tcp://127.0.0.1:10234".to_string());
-}
-
 pub struct Data {
   pub graph_readable: Mutex<AugMultiGraph>,
   pub graph_writable: Mutex<AugMultiGraph>,
@@ -421,20 +409,167 @@ fn worker_callback(
   };
 }
 
-pub fn main_async(threads: usize) -> Result<(), ()> {
-  let threads = if threads < 1 { 1 } else { threads };
+fn parse_env_var<T>(
+  name: &str,
+  min: T,
+  max: T,
+) -> Result<Option<T>, ()>
+where
+  T: std::str::FromStr,
+  T: std::cmp::Ord,
+{
+  match var(name) {
+    Ok(s) => match s.parse::<T>() {
+      Ok(n) => {
+        if n >= min && n <= max {
+          Ok(Some(n))
+        } else {
+          log_error!("Invalid {}: {:?}", name, s);
+          Err(())
+        }
+      },
+      _ => {
+        log_error!("Invalid {}: {:?}", name, s);
+        Err(())
+      },
+    },
+    _ => Ok(None),
+  }
+}
+
+fn parse_and_set_value<T>(
+  value: &mut T,
+  name: &str,
+  min: T,
+  max: T,
+) -> Result<(), ()>
+where
+  T: std::str::FromStr,
+  T: std::cmp::Ord,
+{
+  match parse_env_var(name, min, max)? {
+    Some(n) => *value = n,
+    _ => {},
+  }
+  Ok(())
+}
+
+pub fn parse_settings() -> Result<AugMultiGraphSettings, ()> {
+  let mut settings = AugMultiGraphSettings::default();
+
+  //  TODO: Remove.
+  match parse_env_var("MERITRANK_NUM_WALK", 0, 1000000)? {
+    Some(n) => {
+      log_warning!(
+        "DEPRECATED: Use MERITRANK_NUM_WALKS instead of MERITRANK_NUM_WALK."
+      );
+      settings.num_walks = n;
+    },
+    _ => {},
+  }
+
+  parse_and_set_value(
+    &mut settings.num_walks,
+    "MERITRANK_NUM_WALKS",
+    0,
+    1000000,
+  )?;
+  parse_and_set_value(
+    &mut settings.top_nodes_limit,
+    "MERITRANK_TOP_NODES_LIMIT",
+    0,
+    1000000,
+  )?;
+
+  match parse_env_var("MERITRANK_ZERO_OPINION_FACTOR", 0, 100)? {
+    Some(n) => settings.zero_opinion_factor = (n as f64) * 0.01,
+    _ => {},
+  }
+
+  const MIN_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1).unwrap();
+  const MAX_CACHE_SIZE: NonZeroUsize =
+    NonZeroUsize::new(1024 * 1024 * 100).unwrap();
+
+  parse_and_set_value(
+    &mut settings.score_clusters_timeout,
+    "MERITRANK_SCORE_CLUSTERS_TIMEOUT",
+    0,
+    60 * 60 * 24 * 365,
+  )?;
+  parse_and_set_value(
+    &mut settings.scores_cache_size,
+    "MERITRANK_SCORES_CACHE_SIZE",
+    MIN_CACHE_SIZE,
+    MAX_CACHE_SIZE,
+  )?;
+  parse_and_set_value(
+    &mut settings.walks_cache_size,
+    "MERITRANK_WALKS_CACHE_SIZE",
+    MIN_CACHE_SIZE,
+    MAX_CACHE_SIZE,
+  )?;
+  parse_and_set_value(
+    &mut settings.filter_num_hashes,
+    "MERITRANK_FILTER_NUM_HASHES",
+    1,
+    1024,
+  )?;
+  parse_and_set_value(
+    &mut settings.filter_max_size,
+    "MERITRANK_FILTER_MAX_SIZE",
+    1,
+    1024 * 1024 * 10,
+  )?;
+  parse_and_set_value(
+    &mut settings.filter_min_size,
+    "MERITRANK_FILTER_MIN_SIZE",
+    1,
+    1024 * 1024 * 10,
+  )?;
+
+  Ok(settings)
+}
+
+pub fn main_async() -> Result<(), ()> {
+  let threads = match var("MERITRANK_SERVICE_THREADS") {
+    Ok(s) => match s.parse::<usize>() {
+      Ok(n) => {
+        if n > 0 {
+          n
+        } else {
+          log_error!("Invalid MERITRANK_SERVICE_THREADS: {:?}", s);
+          return Err(());
+        }
+      },
+      _ => {
+        log_error!("Invalid MERITRANK_SERVICE_THREADS: {:?}", s);
+        return Err(());
+      },
+    },
+    _ => 1,
+  };
+
+  let url = match var("MERITRANK_SERVICE_URL") {
+    Ok(s) => s,
+    _ => "tcp://127.0.0.1:10234".to_string(),
+  };
 
   log_info!(
     "Starting server {} at {}, {} threads",
     VERSION,
-    *SERVICE_URL,
+    url,
     threads
   );
-  log_info!("NUM_WALK={}", *NUM_WALK);
+
+  let settings = parse_settings()?;
+
+  log_info!("Num walks: {}", settings.num_walks);
 
   let data = Arc::<Data>::new(Data {
-    graph_readable: Mutex::<AugMultiGraph>::new(AugMultiGraph::new()),
-    graph_writable: Mutex::<AugMultiGraph>::new(AugMultiGraph::new()),
+    graph_readable: Mutex::<AugMultiGraph>::new(AugMultiGraph::new(
+      settings.clone(),
+    )),
+    graph_writable: Mutex::<AugMultiGraph>::new(AugMultiGraph::new(settings)),
     queue_commands: Mutex::<Vec<Command>>::new(vec![]),
     write_sync:     Mutex::<()>::new(()),
     cond_add:       Condvar::new(),
@@ -476,7 +611,7 @@ pub fn main_async(threads: usize) -> Result<(), ()> {
     },
   };
 
-  match s.listen(&SERVICE_URL) {
+  match s.listen(&url) {
     Err(e) => {
       log_error!("{}", e);
       return Err(());
