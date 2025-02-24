@@ -60,6 +60,7 @@ pub enum NodeKind {
   User,
   Beacon,
   Comment,
+  Opinion,
 }
 
 #[derive(PartialEq, Clone, Default)]
@@ -92,6 +93,7 @@ pub struct ScoreClustersByKind {
   pub users:    ClusterGroupBounds,
   pub beacons:  ClusterGroupBounds,
   pub comments: ClusterGroupBounds,
+  pub opinions: ClusterGroupBounds,
 }
 
 //  Augmented multi-context graph settings
@@ -316,6 +318,7 @@ pub fn kind_from_name(name: &str) -> NodeKind {
     Some('U') => NodeKind::User,
     Some('B') => NodeKind::Beacon,
     Some('C') => NodeKind::Comment,
+    Some('O') => NodeKind::Comment,
     _ => NodeKind::Unknown,
   }
 }
@@ -811,6 +814,11 @@ impl AugMultiGraph {
         clusters[ego].comments.bounds = bounds;
       },
 
+      NodeKind::Opinion=> {
+        clusters[ego].opinions.updated_sec = time;
+        clusters[ego].opinions.bounds = bounds;
+      },
+
       _ => {
         log_error!("Unknown node kind");
       },
@@ -837,6 +845,11 @@ impl AugMultiGraph {
           node_id,
           NodeKind::Comment,
         );
+        self.update_node_score_clustering(
+          context.as_str(),
+          node_id,
+          NodeKind::Opinion,
+        );
       }
     }
   }
@@ -857,6 +870,7 @@ impl AugMultiGraph {
     let users_empty = bounds_are_empty(&clusters[ego].users.bounds);
     let beacons_empty = bounds_are_empty(&clusters[ego].beacons.bounds);
     let comments_empty = bounds_are_empty(&clusters[ego].comments.bounds);
+    let opinions_empty = bounds_are_empty(&clusters[ego].opinions.bounds);
 
     if users_empty {
       self.update_node_score_clustering(context, ego, NodeKind::User);
@@ -868,6 +882,10 @@ impl AugMultiGraph {
 
     if comments_empty {
       self.update_node_score_clustering(context, ego, NodeKind::Comment);
+    }
+
+    if opinions_empty {
+      self.update_node_score_clustering(context, ego, NodeKind::Opinion);
     }
   }
 
@@ -905,6 +923,7 @@ impl AugMultiGraph {
       NodeKind::User => clusters[ego].users.updated_sec,
       NodeKind::Beacon => clusters[ego].beacons.updated_sec,
       NodeKind::Comment => clusters[ego].comments.updated_sec,
+      NodeKind::Opinion => clusters[ego].opinions.updated_sec,
       _ => {
         log_error!("Unknown node kind.");
         return (score, 0);
@@ -922,6 +941,7 @@ impl AugMultiGraph {
       NodeKind::User => &clusters[ego].users.bounds,
       NodeKind::Beacon => &clusters[ego].beacons.bounds,
       NodeKind::Comment => &clusters[ego].comments.bounds,
+      NodeKind::Opinion => &clusters[ego].opinions.bounds,
       _ => {
         log_error!("Unknown node kind.");
         return (score, 0);
@@ -1246,6 +1266,7 @@ impl AugMultiGraph {
       "U" => NodeKind::User,
       "B" => NodeKind::Beacon,
       "C" => NodeKind::Comment,
+      "O" => NodeKind::Opinion,
       _ => {
         log_error!("Invalid node kind string: {:?}", kind_str);
         return vec![];
@@ -1278,7 +1299,8 @@ impl AugMultiGraph {
       .filter(|(target_id, target_kind, _, _)| {
         if !hide_personal
           || (*target_kind != NodeKind::Comment
-            && *target_kind != NodeKind::Beacon)
+            && *target_kind != NodeKind::Beacon
+            && *target_kind != NodeKind::Opinion)
         {
           return true;
         }
@@ -1564,7 +1586,9 @@ impl AugMultiGraph {
         } else {
           log_error!("Got invalid node id");
         }
-      } else if dst_kind == NodeKind::Comment || dst_kind == NodeKind::Beacon {
+      } else if dst_kind == NodeKind::Comment
+        || dst_kind == NodeKind::Beacon
+        || dst_kind == NodeKind::Opinion {
         let dst_neighbors = self.all_neighbors_normalized(context, dst_id);
 
         for (ngh_id, dst_ngh_weight) in dst_neighbors {
