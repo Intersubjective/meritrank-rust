@@ -1599,6 +1599,7 @@ impl AugMultiGraph {
             continue;
           }
 
+          // Calculate the weight of the edge from focus to this neighbor
           let focus_ngh_weight = focus_dst_weight
             * dst_ngh_weight
             * if focus_dst_weight < 0.0 && dst_ngh_weight < 0.0 {
@@ -1607,12 +1608,14 @@ impl AugMultiGraph {
               1.0
             };
 
+          // Calculate the weight of the edge from focus to this neighbor
           if !indices.contains_key(&ngh_id) {
             let index = im_graph.add_node(ngh_id);
             indices.insert(ngh_id, index);
             ids.insert(index, ngh_id);
           }
 
+          // Calculate the weight of the edge from focus to this neighbor
           if let (Some(focus_idx), Some(ngh_idx)) =
             (indices.get(&focus_id), indices.get(&ngh_id))
           {
