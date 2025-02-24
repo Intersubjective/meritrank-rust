@@ -25,11 +25,11 @@ pub fn log_with_time(message: String) {
 
   match LOG_MUTEX.lock() {
     Ok(_) => {
-      println!("[{:3}] {}.{:03}  {}", time_str, millis, thread, message);
+      println!("[{:3}.{:03}] {}  {}", time_str, millis, thread, message);
     },
     _ => {
       println!(
-        "[{:3}] {}.{:03}  LOG MUTEX FAILED",
+        "[{:3}.{:03}] {}  LOG MUTEX FAILED",
         time_str, millis, thread
       );
     },
@@ -74,7 +74,7 @@ macro_rules! log_warning {
 macro_rules! log_info {
   ($($arg:expr),*) => {
     if INFO.load(Ordering::Relaxed) {
-      log_with_time(format!("{}:{} INFO {}", file!(), line!(), format!($($arg),*)));
+      log_with_time(format!("INFO {}", format!($($arg),*)));
     }
   };
 }
@@ -83,7 +83,7 @@ macro_rules! log_info {
 macro_rules! log_verbose {
   ($($arg:expr),*) => {
     if VERBOSE.load(Ordering::Relaxed) {
-      log_with_time(format!("{}:{} VERBOSE --- {}", file!(), line!(), format!($($arg),*)));
+      log_with_time(format!("VERBOSE --- {}", format!($($arg),*)));
     }
   };
 }
