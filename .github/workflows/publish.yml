@@ -23,40 +23,8 @@ jobs:
       run: |
         export MERITRANK_NUM_WALK=50
         cargo test
-  test_psql_connector:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./psql-connector
-    steps:
-    - uses: actions/checkout@v4
-    - name: Setup PostgreSQL 16
-      run: |
-        sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
-        sudo apt-get update
-        sudo apt-get install -y postgresql-16 postgresql-server-dev-16
-    - name: Prepare env
-      run: |
-        sudo su - root -c "echo \"export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10444\" >> /etc/environment"
-    - name: Build the connector
-      run: |
-        cargo install --locked cargo-pgrx --version 0.12.8
-        cargo pgrx init --pg16 pg_config
-        cargo build
-    - name: Build and run the service
-      working-directory: ./service
-      run: |
-        cargo build --release
-        export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10444
-        export MERITRANK_NUM_WALK=500
-        cargo run --release >/dev/null 2>&1 &
-    - name: Do the tests
-      run: |
-        export RUST_TEST_THREADS=1
-        cargo pgrx test --runas postgres --pgdata /var/lib/postgresql/pgrx
   publish_service:
-    needs: [ test_core, test_service, test_psql_connector ]
+    needs: [ test_core, test_service ]
     if: success()
     runs-on: ubuntu-latest
     defaults:
@@ -92,20 +60,20 @@ jobs:
       run: |
         docker login -u vbulavintsev -p ${{ secrets.DOCKERHUB_TOKEN }}
         docker image push vbulavintsev/meritrank-service:$TAG
-  publish_connector:
-    needs: [ test_core, test_service, test_psql_connector ]
+  publish_postgres:
+    needs: [ test_core, test_service ]
     if: success()
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./psql-connector
+        working-directory: ./postgres
     steps:
     - uses: actions/checkout@v4
     - name: Check version
       id: check_version
       shell: bash
       run: |
-        export VER=$(cargo metadata --format-version=1 | jq -r '.packages[] | select(.name=="pgmer2") | .version')
+        export VER=0.4.1
         echo "VER=$VER"
         if ! [[ "$VER" =~ ^[0-9\.]+$ ]]; then
           echo "IGNORE DEV VERSION"

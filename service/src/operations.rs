@@ -28,11 +28,6 @@ pub type Cluster = i32;
 //
 //  ================================================================
 
-pub const VERSION: &str = match option_env!("CARGO_PKG_VERSION") {
-  Some(x) => x,
-  None => "dev",
-};
-
 pub const NUM_SCORE_QUANTILES: usize = 100;
 
 pub const DEFAULT_NUM_WALKS: usize = 50;
@@ -1175,11 +1170,6 @@ impl AugMultiGraph {
 //    Commands
 //
 //  ================================================
-
-pub fn read_version() -> &'static str {
-  log_command!();
-  VERSION
-}
 
 pub fn write_log_level(log_level: u32) {
   log_command!("{}", log_level);

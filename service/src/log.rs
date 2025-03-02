@@ -1,10 +1,17 @@
-use std::{sync::atomic::AtomicBool, sync::Mutex, thread};
+pub use std::{sync::atomic::{AtomicBool, Ordering}, sync::Mutex, thread};
 
 pub static ERROR: AtomicBool = AtomicBool::new(true);
 pub static WARNING: AtomicBool = AtomicBool::new(true);
 pub static INFO: AtomicBool = AtomicBool::new(true);
-pub static VERBOSE: AtomicBool = AtomicBool::new(false);
-pub static TRACE: AtomicBool = AtomicBool::new(false);
+pub static VERBOSE: AtomicBool = AtomicBool::new(true);
+pub static TRACE: AtomicBool = AtomicBool::new(true);
+
+pub use crate::log_error;
+pub use crate::log_warning;
+pub use crate::log_info;
+pub use crate::log_verbose;
+pub use crate::log_trace;
+pub use crate::log_command;
 
 static LOG_MUTEX: Mutex<()> = Mutex::new(());
 

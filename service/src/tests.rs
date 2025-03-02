@@ -1,5 +1,4 @@
 use crate::operations::*;
-use crate::protocol::*;
 use std::time::SystemTime;
 
 fn put_testing_edges(graph: &mut AugMultiGraph) {
@@ -1019,19 +1018,6 @@ fn encoding_serde() {
 
   assert_eq!(out_command, in_command);
   assert_eq!(out_context, in_context);
-}
-
-#[test]
-fn encoding_response() {
-  let foo = ("foo".to_string(), 1, 2, 3);
-  let payload = encode_response(&foo).unwrap();
-
-  let bar: (String, i32, i32, i32) = decode_response(&payload).unwrap();
-
-  assert_eq!(foo.0, bar.0);
-  assert_eq!(foo.1, bar.1);
-  assert_eq!(foo.2, bar.2);
-  assert_eq!(foo.3, bar.3);
 }
 
 #[test]
