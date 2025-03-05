@@ -28,23 +28,26 @@ pub struct NodeData {
 }
 
 impl NodeData {
+  pub fn get_outgoing_edges(
+    &self
+  ) -> impl Iterator<Item = (NodeId, Weight)> + '_ {
+    self
+      .pos_edges
+      .iter()
+      .map(|(&node_id, &weight)| (node_id, weight))
+      .chain(
+        self
+          .neg_edges
+          .iter()
+          .map(|(&node_id, &weight)| (node_id, -weight)),
+      )
+  }
 
-pub fn get_outgoing_edges(&self) -> impl Iterator<Item = (NodeId, Weight)> + '_ {
-    self.pos_edges
-        .iter()
-        .map(|(&node_id, &weight)| (node_id, weight))
-        .chain(
-            self.neg_edges
-                .iter()
-                .map(|(&node_id, &weight)| (node_id, -weight))
-        )
-}
-
-// Return a random neighbor and whether it's from positive or negative edges
-pub fn random_neighbor(
+  // Return a random neighbor and whether it's from positive or negative edges
+  pub fn random_neighbor(
     &mut self,
     positive_only: bool,
-) -> Option<(NodeId, bool)> {
+  ) -> Option<(NodeId, bool)> {
     if positive_only {
       if self.pos_edges.is_empty() {
         return None;
@@ -154,7 +157,10 @@ impl Graph {
       return Err(MeritRankError::NaNWeightEncountered);
     }
     if weight.is_infinite() {
-      error!("Trying to set infinite weight for edge from {} to {}", from, to);
+      error!(
+        "Trying to set infinite weight for edge from {} to {}",
+        from, to
+      );
       return Err(MeritRankError::InfWeightEncountered);
     }
 

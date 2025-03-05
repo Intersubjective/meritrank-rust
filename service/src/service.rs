@@ -1,412 +1,156 @@
-use nng::{Aio, AioResult, Context, Protocol, Socket};
-use std::{
-  env::var,
-  ops::DerefMut,
-  string::ToString,
-  sync::atomic::Ordering,
-  sync::{Arc, Condvar, Mutex},
-};
+//  ================================================================
+//
+//  Example of a redis_fdw interaction with the service
+//
+//  INSERT is used to request a write command.
+//  SELECT is used to request a read command.
+//
+//          redis_fdw |  MeritRank Service
+//                    |  emulating Redis Protocol
+//
+//                  INSERT
+//
+//  ------------------+---------------------------------------------
+//    *2              |
+//    $4              |
+//    AUTH            |
+//    $6              |
+//    secret          |
+//  ------------------+---------------------------------------------
+//                    |   +OK
+//  ------------------+---------------------------------------------
+//    *2              |
+//    $6              |
+//    SELECT          |
+//    $1              |
+//    0               |
+//  ------------------+---------------------------------------------
+//                    |   +OK
+//  ------------------+---------------------------------------------
+//    *2              |
+//    $6              |
+//    EXISTS          |
+//    $7              |
+//    bar_key         |
+//  ------------------+---------------------------------------------
+//                    |   :0
+//  ------------------+---------------------------------------------
+//    *4              |
+//    $4              |
+//    HSET            |
+//    $7              |
+//    bar_key         |
+//    $5              |
+//    name1           |
+//    $4              |
+//    val1            |
+//  ------------------+---------------------------------------------
+//                    |   +OK
+//  ------------------+---------------------------------------------
+//    *4              |
+//    $4              |
+//    HSET            |
+//    $7              |
+//    bar_key         |
+//    $5              |
+//    name2           |
+//    $4              |
+//    val2            |
+//  ------------------+---------------------------------------------
+//                    |   +OK
+//  ------------------+---------------------------------------------
+//
+//  ================================================================
+
+use std::env::var;
+use std::io::prelude::*;
+use std::io::BufReader;
+use std::io::ErrorKind;
+use std::net::Shutdown;
+use std::net::TcpListener;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::thread;
+use std::time::Duration;
 
 use crate::log::*;
-use crate::log_error;
-use crate::log_info;
-use crate::log_trace;
-use crate::log_verbose;
-use crate::log_warning;
 use crate::operations::*;
-use crate::protocol::*;
-use std::time::SystemTime;
+use crate::VERSION;
 
-pub use meritrank_core::Weight;
+//  FIXME: Make this into configurable settings.
+pub const READ_TIMEOUT_SEC: u64 = 10;
+pub const WRITE_TIMEOUT_SEC: u64 = 10;
+pub const ACCEPT_DELAY_MSEC: u64 = 10;
 
-pub struct Data {
-  pub graph_readable: Mutex<AugMultiGraph>,
-  pub graph_writable: Mutex<AugMultiGraph>,
-  pub queue_commands: Mutex<Vec<Command>>,
-  pub write_sync:     Mutex<()>,
-  pub cond_add:       Condvar,
-  pub cond_done:      Condvar,
+pub struct Service {
+  pub local_port:     u16,
+  pub done:           Arc<AtomicBool>,
+  pub graph_readable: Arc<Mutex<AugMultiGraph>>,
+  pub graph_writable: Arc<Mutex<AugMultiGraph>>,
+  pub threads:        Vec<thread::JoinHandle<()>>,
 }
 
-fn perform_command(
-  data: &Data,
-  command: Command,
-) -> Result<Vec<u8>, ()> {
-  log_trace!();
-
-  if command.id == CMD_RESET
-    || command.id == CMD_RECALCULATE_ZERO
-    || command.id == CMD_RECALCULATE_CLUSTERING
-    || command.id == CMD_DELETE_EDGE
-    || command.id == CMD_DELETE_NODE
-    || command.id == CMD_PUT_EDGE
-    || command.id == CMD_CREATE_CONTEXT
-    || command.id == CMD_WRITE_NEW_EDGES_FILTER
-    || command.id == CMD_FETCH_NEW_EDGES
-  {
-    let mut res = encode_response(&());
-
-    //  Write commands
-
-    let mut graph = match data.graph_writable.lock() {
-      Ok(x) => x,
-      Err(e) => {
-        log_error!("{}", e);
-        return Err(());
-      },
-    };
-
-    let mut ok = false;
-
-    match command.id.as_str() {
-      CMD_RESET => {
-        if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
-          ok = true;
-          graph.write_reset();
-        }
-      },
-      CMD_RECALCULATE_ZERO => {
-        if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
-          ok = true;
-          graph.write_recalculate_zero();
-        }
-      },
-      CMD_RECALCULATE_CLUSTERING => {
-        if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
-          ok = true;
-          graph.write_recalculate_clustering();
-        }
-      },
-      CMD_DELETE_EDGE => {
-        if let Ok((src, dst, index)) =
-          rmp_serde::from_slice(command.payload.as_slice())
-        {
-          ok = true;
-          graph.write_delete_edge(command.context.as_str(), src, dst, index);
-        }
-      },
-      CMD_DELETE_NODE => {
-        if let Ok((node, index)) =
-          rmp_serde::from_slice(command.payload.as_slice())
-        {
-          ok = true;
-          graph.write_delete_node(command.context.as_str(), node, index);
-        }
-      },
-      CMD_PUT_EDGE => {
-        if let Ok((src, dst, amount, index)) =
-          rmp_serde::from_slice(command.payload.as_slice())
-        {
-          ok = true;
-          graph.write_put_edge(
-            command.context.as_str(),
-            src,
-            dst,
-            amount,
-            index,
-          );
-        }
-      },
-      CMD_CREATE_CONTEXT => {
-        if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
-          ok = true;
-          graph.write_create_context(command.context.as_str());
-        }
-      },
-      CMD_WRITE_NEW_EDGES_FILTER => {
-        if let Ok((src, filter)) =
-          rmp_serde::from_slice(command.payload.as_slice())
-        {
-          ok = true;
-          let v: Vec<u8> = filter;
-          graph.write_new_edges_filter(src, &v);
-        }
-      },
-      CMD_FETCH_NEW_EDGES => {
-        if let Ok((src, prefix)) =
-          rmp_serde::from_slice(command.payload.as_slice())
-        {
-          ok = true;
-          res = encode_response(&graph.write_fetch_new_edges(src, prefix));
-        }
-      },
-      _ => {
-        log_error!("Unexpected command `{}`", command.id);
-      },
-    };
-    match data.graph_readable.lock() {
-      Ok(ref mut x) => {
-        x.copy_from(graph.deref_mut());
-      },
-      Err(e) => {
-        log_error!("{}", e);
-        return Err(());
-      },
-    };
-
-    if ok {
-      return res;
-    }
-  } else if command.id == CMD_SYNC {
-    if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
-      let mut queue = data.queue_commands.lock().expect("Mutex lock failed");
-
-      while !queue.is_empty() {
-        queue = data.cond_done.wait(queue).expect("Condvar wait failed");
-      }
-
-      let _write = data.write_sync.lock().expect("Mutex lock failed");
-
-      return encode_response(&());
-    }
-  } else if command.id == CMD_VERSION {
-    if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
-      return encode_response(&read_version());
-    }
-  } else if command.id == CMD_LOG_LEVEL {
-    if let Ok(log_level) = rmp_serde::from_slice(command.payload.as_slice()) {
-      return encode_response(&write_log_level(log_level));
-    }
-  } else {
-    //  Read commands
-
-    let mut graph = match data.graph_readable.lock() {
-      Ok(x) => x,
-      Err(e) => {
-        log_error!("{}", e);
-        return Err(());
-      },
-    };
-    match command.id.as_str() {
-      CMD_NODE_LIST => {
-        if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
-          return encode_response(&graph.read_node_list());
-        }
-      },
-      CMD_NODE_SCORE => {
-        if let Ok((ego, target)) =
-          rmp_serde::from_slice(command.payload.as_slice())
-        {
-          return encode_response(&graph.read_node_score(
-            command.context.as_str(),
-            ego,
-            target,
-          ));
-        }
-      },
-      CMD_SCORES => {
-        if let Ok((ego, kind, hide_personal, lt, lte, gt, gte, index, count)) =
-          rmp_serde::from_slice(command.payload.as_slice())
-        {
-          return encode_response(&graph.read_scores(
-            command.context.as_str(),
-            ego,
-            kind,
-            hide_personal,
-            lt,
-            lte,
-            gt,
-            gte,
-            index,
-            count,
-          ));
-        }
-      },
-      CMD_GRAPH => {
-        if let Ok((ego, focus, positive_only, index, count)) =
-          rmp_serde::from_slice(command.payload.as_slice())
-        {
-          return encode_response(&graph.read_graph(
-            command.context.as_str(),
-            ego,
-            focus,
-            positive_only,
-            index,
-            count,
-          ));
-        }
-      },
-      CMD_CONNECTED => {
-        if let Ok(node) = rmp_serde::from_slice(command.payload.as_slice()) {
-          return encode_response(
-            &graph.read_connected(command.context.as_str(), node),
-          );
-        }
-      },
-      CMD_EDGES => {
-        if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
-          return encode_response(&graph.read_edges(command.context.as_str()));
-        }
-      },
-      CMD_MUTUAL_SCORES => {
-        if let Ok(ego) = rmp_serde::from_slice(command.payload.as_slice()) {
-          return encode_response(
-            &graph.read_mutual_scores(command.context.as_str(), ego),
-          );
-        }
-      },
-      CMD_READ_NEW_EDGES_FILTER => {
-        if let Ok(src) = rmp_serde::from_slice(command.payload.as_slice()) {
-          return encode_response(&graph.read_new_edges_filter(src));
-        }
-      },
-      _ => {
-        log_error!("Unknown command: {:?}", command.id);
-        return Err(());
-      },
-    }
-  }
-
-  log_error!(
-    "Invalid payload for command {:?}: {:?}",
-    command.id,
-    command.payload
-  );
-  Err(())
+#[derive(PartialEq, Debug)]
+pub enum Request {
+  Unknown,
+  ReadVersion,
+  WritePutEdge(Option<String>, Option<String>, Option<Weight>),
 }
 
-fn command_queue_thread(data: &Data) {
-  log_trace!();
+pub const READ_VERSION: &str = "VERSION";
+pub const READ_NODE_SCORE: &str = "NODE_SCORE";
+pub const READ_SCORES: &str = "SCORES";
+pub const READ_GRAPH: &str = "GRAPH";
+pub const READ_CONNECTED: &str = "CONNECTED";
+pub const READ_NODE_LIST: &str = "NODE_LIST";
+pub const READ_EDGES: &str = "EDGES";
+pub const READ_MUTUAL_SCORES: &str = "MUTUAL_SCORES";
+pub const READ_NEW_EDGES_FILTER: &str = "NEW_EDGES_FILTER";
+pub const WRITE_LOG_LEVEL: &str = "LOG_LEVEL";
+pub const WRITE_CREATE_CONTEXT: &str = "CREATE_CONTEXT";
+pub const WRITE_PUT_EDGE: &str = "PUT_EDGE";
+pub const WRITE_DELETE_EDGE: &str = "DELETE_EDGE";
+pub const WRITE_DELETE_NODE: &str = "DELETE_NODE";
+pub const WRITE_RESET: &str = "RESET";
+pub const WRITE_NEW_EDGES_FILTER: &str = "NEW_EDGES_FILTER";
+pub const WRITE_FETCH_NEW_EDGES: &str = "FETCH_NEW_EDGES";
+pub const WRITE_RECALCULATE_ZERO: &str = "RECALCULATE_ZERO";
 
-  let mut queue = data.queue_commands.lock().expect("Mutex lock failed");
-  loop {
-    log_trace!("Loop");
-
-    let write = data.write_sync.lock().expect("Mutex lock failed");
-
-    let commands: Vec<_> = queue.clone();
-    queue.clear();
-    std::mem::drop(queue);
-
-    for cmd in commands {
-      let begin = SystemTime::now();
-      let _ = perform_command(&data, cmd.clone());
-      let duration = SystemTime::now().duration_since(begin).unwrap().as_secs();
-
-      if duration > 5 {
-        log_warning!("Command was done in {} seconds", duration);
-      }
-    }
-
-    std::mem::drop(write);
-
-    queue = data.queue_commands.lock().expect("Mutex lock failed");
-    if queue.is_empty() {
-      data.cond_done.notify_all();
-
-      queue = data.cond_add.wait(queue).expect("Condvar wait failed");
-    }
-  }
+#[derive(Debug)]
+pub enum Response {
+  Ok,
+  Error(String),
+  String(String),
 }
 
-fn put_for_write(
-  data: &Data,
-  command: Command,
-) {
-  log_trace!();
-
-  let mut queue = data.queue_commands.lock().expect("Mutex lock failed");
-  queue.push(command);
-
-  data.cond_add.notify_one();
+pub enum RequestMode {
+  Read,
+  Write,
 }
 
-fn decode_and_handle_request(
-  data: &Data,
-  request: &[u8],
-) -> Result<Vec<u8>, ()> {
-  log_trace!();
-
-  let command = decode_request(request)?;
-
-  log_verbose!(
-    "Decoded command `{}` in {:?}, blocking {:?}, with payload {:?}",
-    command.id,
-    command.context,
-    command.blocking,
-    command.payload
-  );
-
-  if !command.context.is_empty()
-    && (command.id == CMD_VERSION
-      || command.id == CMD_LOG_LEVEL
-      || command.id == CMD_RESET
-      || command.id == CMD_RECALCULATE_ZERO
-      || command.id == CMD_RECALCULATE_CLUSTERING
-      || command.id == CMD_NODE_LIST
-      || command.id == CMD_READ_NEW_EDGES_FILTER
-      || command.id == CMD_WRITE_NEW_EDGES_FILTER
-      || command.id == CMD_FETCH_NEW_EDGES)
-  {
-    log_error!("Context should be empty");
-    return Err(());
-  }
-
-  if !command.blocking {
-    put_for_write(&data, command);
-    encode_response(&())
-  } else {
-    let begin = SystemTime::now();
-    let res = perform_command(&data, command);
-    let duration = SystemTime::now().duration_since(begin).unwrap().as_secs();
-
-    if duration > 5 {
-      log_warning!("Command was done in {} seconds", duration);
-    }
-
-    res
-  }
-}
-
-fn worker_callback(
-  data: &Data,
-  aio: Aio,
-  ctx: &Context,
-  res: AioResult,
-) {
-  log_trace!();
-
-  match res {
-    AioResult::Send(Ok(_)) => match ctx.recv(&aio) {
-      Ok(_) => {},
-      Err(error) => {
-        log_error!("RECV failed: {}", error);
-      },
-    },
-
-    AioResult::Recv(Ok(req)) => {
-      let msg: Vec<u8> = match decode_and_handle_request(data, req.as_slice()) {
-        Ok(bytes) => bytes,
-        Err(_) => {
-          match encode_response(&"Internal error, see server logs".to_string())
-          {
-            Ok(bytes) => bytes,
-            Err(error) => {
-              log_error!("Unable to serialize error: {:?}", error);
-              vec![]
-            },
-          }
-        },
-      };
-
-      match ctx.send(&aio, msg.as_slice()) {
-        Ok(_) => {},
-        Err(error) => {
-          log_error!("SEND failed: {:?}", error);
-        },
-      };
-    },
-
-    AioResult::Sleep(_) => {},
-
-    AioResult::Send(Err(error)) => {
-      log_error!("Async SEND failed: {:?}", error);
-    },
-
-    AioResult::Recv(Err(error)) => {
-      log_error!("Async RECV failed: {:?}", error);
-    },
-  };
+pub struct RequestRaw {
+  pub mode:          RequestMode,
+  pub id:            Option<String>,
+  pub blocking:      Option<bool>,
+  pub context:       Option<String>,
+  pub node:          Option<String>,
+  pub ego:           Option<String>,
+  pub src:           Option<String>,
+  pub dst:           Option<String>,
+  pub focus:         Option<String>,
+  pub amount:        Option<Weight>,
+  pub magnitude:     Option<i64>,
+  pub prefix:        Option<String>,
+  pub hide_personal: Option<bool>,
+  pub positive_only: Option<bool>,
+  pub lt:            Option<Weight>,
+  pub lte:           Option<Weight>,
+  pub gt:            Option<Weight>,
+  pub gte:           Option<Weight>,
+  pub page_offset:   Option<i64>,
+  pub page_size:     Option<i64>,
+  pub bloom_filter:  Option<Vec<u8>>,
 }
 
 fn parse_env_var<T>(
@@ -455,18 +199,9 @@ where
 }
 
 pub fn parse_settings() -> Result<AugMultiGraphSettings, ()> {
-  let mut settings = AugMultiGraphSettings::default();
+  log_trace!();
 
-  //  TODO: Remove.
-  match parse_env_var("MERITRANK_NUM_WALK", 0, 1000000)? {
-    Some(n) => {
-      log_warning!(
-        "DEPRECATED: Use MERITRANK_NUM_WALKS instead of MERITRANK_NUM_WALK."
-      );
-      settings.num_walks = n;
-    },
-    _ => {},
-  }
+  let mut settings = AugMultiGraphSettings::default();
 
   parse_and_set_value(
     &mut settings.num_walks,
@@ -527,62 +262,265 @@ pub fn parse_settings() -> Result<AugMultiGraphSettings, ()> {
     1024 * 1024 * 10,
   )?;
 
+  //  TODO: Remove.
+  match parse_env_var("MERITRANK_NUM_WALK", 0, 1000000)? {
+    Some(n) => {
+      log_warning!(
+        "DEPRECATED: Use MERITRANK_NUM_WALKS instead of MERITRANK_NUM_WALK."
+      );
+      settings.num_walks = n;
+    },
+    _ => {},
+  }
+
   Ok(settings)
 }
 
-pub fn main_async() -> Result<(), ()> {
-  let threads = match var("MERITRANK_SERVICE_THREADS") {
-    Ok(s) => match s.parse::<usize>() {
-      Ok(n) => {
-        if n > 0 {
-          n
-        } else {
-          log_error!("Invalid MERITRANK_SERVICE_THREADS: {:?}", s);
-          return Err(());
-        }
+fn response_error(message: &str) -> Response {
+  log_error!("{}", message);
+  Response::Error(format!("ERROR {}", message))
+}
+
+pub fn perform_request(req: Request) -> Response {
+  log_trace!("{:?}", req);
+
+  match req {
+    Request::ReadVersion => Response::String(VERSION.to_string()),
+    Request::WritePutEdge(Some(_src), Some(_dst), Some(_amount)) => {
+      Response::Error("Not implemented".to_string())
+    },
+    Request::WritePutEdge(_, _, _) => response_error(&format!(
+      "Invalid arguments for {:?} request",
+      WRITE_PUT_EDGE
+    )),
+    _ => Response::Ok,
+  }
+}
+
+pub fn encode_response(res: Response) -> String {
+  log_trace!("{:?}", res);
+
+  match res {
+    Response::Ok => "+OK\r\n".to_string(),
+    Response::Error(e) => format!("-{}\r\n", e),
+    Response::String(s) => format!("+{}\r\n", s),
+  }
+}
+
+pub fn parse_string(chunk: &[String]) -> Result<(String, usize), ()> {
+  log_trace!("{:?}", chunk);
+
+  if chunk.is_empty() {
+    return Err(());
+  }
+  let c = match chunk[0].chars().nth(0) {
+    Some(x) => x,
+    _ => return Err(()),
+  };
+  if c == '+' {
+    return Ok((chunk[0][1..chunk[0].len() - 2].to_string(), 1));
+  }
+  if c == '$' && chunk.len() >= 2 {
+    let n = match chunk[0][1..chunk[0].len() - 2].parse::<i64>() {
+      Ok(x) => x,
+      _ => return Err(()),
+    };
+    if n < 0 {
+      return Ok(("".to_string(), 1));
+    }
+    let s = chunk[1][0..chunk[1].len() - 2].to_string();
+    if s.len() != n as usize {
+      return Err(());
+    }
+    return Ok((s, 2));
+  }
+  return Err(());
+}
+
+pub fn parse_request_raw(chunk: &[String]) -> RequestRaw {
+  log_trace!();
+
+  let mut req = RequestRaw {
+    mode:          RequestMode::Read,
+    id:            None,
+    blocking:      None,
+    context:       None,
+    node:          None,
+    ego:           None,
+    src:           None,
+    dst:           None,
+    focus:         None,
+    amount:        None,
+    magnitude:     None,
+    prefix:        None,
+    hide_personal: None,
+    positive_only: None,
+    lt:            None,
+    lte:           None,
+    gt:            None,
+    gte:           None,
+    page_offset:   None,
+    page_size:     None,
+    bloom_filter:  None,
+  };
+
+  if chunk.len() < 5 {
+    return req;
+  }
+  let c = match chunk[0].chars().nth(0) {
+    Some(x) => x,
+    _ => return req,
+  };
+  if c != '*' {
+    return req;
+  }
+
+  if chunk[1] == "$3\r\n" && chunk[2] == "GET\r\n" {
+    match parse_string(&chunk[3..chunk.len()]) {
+      Ok((s, _)) => req.id = Some(s),
+      _ => {},
+    }
+  }
+
+  if chunk[1] == "$3\r\n" && chunk[2] == "SET\r\n" {
+    match parse_string(&chunk[3..chunk.len()]) {
+      Ok((s, _)) => {
+        req.mode = RequestMode::Write;
+        req.id = Some(s);
       },
+      _ => {},
+    }
+  }
+
+  //  TODO: Parse request params.
+
+  return req;
+}
+
+pub fn parse_request(chunk: &[String]) -> Request {
+  log_trace!("{:?}", chunk);
+
+  let raw = parse_request_raw(chunk);
+
+  match raw.id {
+    Some(id) if id == READ_VERSION => Request::ReadVersion,
+    Some(id) if id == WRITE_PUT_EDGE => {
+      Request::WritePutEdge(raw.src, raw.dst, raw.amount)
+    },
+    _ => Request::Unknown,
+  }
+}
+
+pub fn next_chunk(
+  lines: &[String],
+  index: usize,
+) -> Result<usize, ()> {
+  log_trace!();
+
+  let c = match lines[index].chars().nth(0) {
+    Some(x) => x,
+    _ => {
+      log_error!("Unexpected empty line");
+      return Err(());
+    },
+  };
+  if c == '+'
+    || c == '-'
+    || c == ':'
+    || c == '_'
+    || c == '#'
+    || c == ','
+    || c == '('
+  {
+    //  Simple values
+    return Ok(index + 1);
+  }
+  if c == '*' {
+    //  Array
+    let n = match lines[index][1..lines[index].len() - 2].parse::<i64>() {
+      Ok(x) => x,
       _ => {
-        log_error!("Invalid MERITRANK_SERVICE_THREADS: {:?}", s);
+        log_error!("Invalid syntax {:?}", lines[index]);
         return Err(());
       },
-    },
-    _ => 1,
-  };
+    };
+    let mut next = index + 1;
+    for _ in 0..n {
+      next = next_chunk(lines, next)?;
+    }
+    return Ok(next);
+  }
+  if c == '$' {
+    //  Bulk string
+    //  FIXME: Check the bulk string length.
+    return Ok(index + 2);
+  }
+  log_error!("Not implemented");
+  return Err(());
+}
 
-  let url = match var("MERITRANK_SERVICE_URL") {
-    Ok(s) => s,
-    _ => "tcp://127.0.0.1:10234".to_string(),
-  };
+pub fn process_requests(lines: &[String]) -> String {
+  log_trace!();
 
-  log_info!(
-    "Starting server {} at {}, {} threads",
-    VERSION,
-    url,
-    threads
-  );
+  for line in lines {
+    log_info!("RECV {:?}", line);
+  }
 
-  let settings = parse_settings()?;
+  let mut responses = "".to_string();
 
-  log_info!("Num walks: {}", settings.num_walks);
+  let mut index: usize = 0;
+  loop {
+    let next = match next_chunk(lines, index) {
+      Ok(x) => x,
+      _ => return "-Syntax error\r\n".to_string(),
+    };
 
-  let data = Arc::<Data>::new(Data {
-    graph_readable: Mutex::<AugMultiGraph>::new(AugMultiGraph::new(
-      settings.clone(),
-    )),
-    graph_writable: Mutex::<AugMultiGraph>::new(AugMultiGraph::new(settings)),
-    queue_commands: Mutex::<Vec<Command>>::new(vec![]),
-    write_sync:     Mutex::<()>::new(()),
-    cond_add:       Condvar::new(),
-    cond_done:      Condvar::new(),
-  });
+    let req = parse_request(&lines[index..next]);
+    let res = perform_request(req);
+    responses += &encode_response(res);
 
-  let data_cloned = data.clone();
+    if next == lines.len() {
+      break;
+    }
 
-  std::thread::spawn(move || {
-    command_queue_thread(&data_cloned);
-  });
+    index = next;
+  }
 
-  let s = match Socket::new(Protocol::Rep0) {
+  if responses.is_empty() {
+    return "-Internal error\r\n".to_string();
+  }
+
+  log_info!("SEND {:?}", responses);
+
+  return responses;
+}
+
+pub fn service_init(settings: AugMultiGraphSettings) -> Result<Service, ()> {
+  log_trace!();
+
+  Ok(Service {
+    local_port:     0,
+    done:           Arc::new(AtomicBool::new(false)),
+    graph_readable: Arc::new(Mutex::new(AugMultiGraph::new(settings.clone()))),
+    graph_writable: Arc::new(Mutex::new(AugMultiGraph::new(settings))),
+    threads:        vec![],
+  })
+}
+
+pub fn service_run(
+  service: &mut Service,
+  mut num_threads: usize,
+  url: &str,
+) -> Result<(), ()> {
+  log_trace!();
+
+  if num_threads == 0 {
+    num_threads = 1;
+  }
+
+  service.threads.reserve_exact(num_threads);
+
+  let listener_root = match TcpListener::bind(url) {
     Ok(x) => x,
     Err(e) => {
       log_error!("{}", e);
@@ -590,45 +528,214 @@ pub fn main_async() -> Result<(), ()> {
     },
   };
 
-  let workers: Vec<_> = match (0..threads)
-    .map(|_| {
-      let ctx = Context::new(&s)?;
-      let ctx_cloned = ctx.clone();
-      let data_cloned = data.clone();
-
-      let aio = Aio::new(move |aio, res| {
-        worker_callback(&data_cloned.clone(), aio, &ctx_cloned, res);
-      })?;
-
-      Ok((aio, ctx))
-    })
-    .collect::<Result<_, nng::Error>>()
-  {
-    Ok(x) => x,
+  service.local_port = match listener_root.local_addr() {
+    Ok(addr) => addr.port(),
     Err(e) => {
       log_error!("{}", e);
       return Err(());
     },
   };
 
-  match s.listen(&url) {
-    Err(e) => {
-      log_error!("{}", e);
-      return Err(());
-    },
-    _ => {},
-  };
+  for _ in 0..num_threads {
+    let done = service.done.clone();
 
-  for (a, c) in &workers {
-    match c.recv(a) {
+    let listener = match listener_root.try_clone() {
+      Ok(x) => x,
       Err(e) => {
         log_error!("{}", e);
         return Err(());
       },
-      _ => {},
     };
+
+    let thread = thread::spawn(move || {
+      while !done.load(Ordering::SeqCst) {
+        match listener.set_nonblocking(true) {
+          Ok(_) => {},
+          Err(e) => {
+            log_error!("{}", e);
+            return;
+          },
+        }
+
+        match listener.accept() {
+          Ok((mut stream, _)) => {
+            match stream.set_nonblocking(true) {
+              Ok(_) => {},
+              Err(e) => {
+                log_error!("{}", e);
+                continue;
+              },
+            }
+
+            match stream
+              .set_read_timeout(Some(Duration::from_secs(READ_TIMEOUT_SEC)))
+            {
+              Ok(_) => {},
+              Err(e) => {
+                log_error!("{}", e);
+                continue;
+              },
+            }
+
+            match stream
+              .set_write_timeout(Some(Duration::from_secs(WRITE_TIMEOUT_SEC)))
+            {
+              Ok(_) => {},
+              Err(e) => {
+                log_error!("{}", e);
+                continue;
+              },
+            }
+
+            loop {
+              if done.load(Ordering::SeqCst) {
+                match stream.shutdown(Shutdown::Both) {
+                  Ok(_) => {},
+                  Err(e) => log_error!("{}", e),
+                }
+                break;
+              }
+
+              let buf_stream = match stream.try_clone() {
+                Ok(x) => x,
+                Err(e) => {
+                  log_error!("{}", e);
+                  break;
+                },
+              };
+
+              let mut lines: Vec<String> = vec![];
+
+              let mut buf = BufReader::new(buf_stream);
+              loop {
+                let mut line = "".to_string();
+                match buf.read_line(&mut line) {
+                  Err(e) if e.kind() != ErrorKind::WouldBlock => {
+                    log_error!("{:?}", e.kind())
+                  },
+                  _ => {},
+                }
+                if !line.is_empty() {
+                  lines.push(line);
+                } else if !lines.is_empty() || done.load(Ordering::SeqCst) {
+                  break;
+                } else {
+                  thread::sleep(Duration::from_millis(ACCEPT_DELAY_MSEC));
+                }
+              }
+
+              if lines.is_empty() {
+                match stream.shutdown(Shutdown::Both) {
+                  Ok(_) => {},
+                  Err(e) => log_error!("{}", e),
+                }
+                break;
+              }
+
+              let response = process_requests(&lines);
+
+              match stream.set_nonblocking(false) {
+                Ok(_) => {},
+                Err(e) => {
+                  log_error!("{}", e);
+                  break;
+                },
+              }
+
+              match stream.write(response.as_bytes()) {
+                Ok(_) => {},
+                Err(e) => {
+                  log_error!("{}", e);
+                  break;
+                },
+              }
+
+              match stream.set_nonblocking(true) {
+                Ok(_) => {},
+                Err(e) => {
+                  log_error!("{}", e);
+                  break;
+                },
+              }
+            }
+          },
+          Err(e) if e.kind() == ErrorKind::WouldBlock => {
+            thread::sleep(Duration::from_millis(ACCEPT_DELAY_MSEC));
+          },
+          Err(e) => log_error!("{}", e),
+        }
+      }
+    });
+
+    service.threads.push(thread);
   }
 
-  std::thread::park();
   Ok(())
+}
+
+pub fn service_join(service: &mut Service) {
+  log_trace!();
+
+  while let Some(x) = service.threads.pop() {
+    match x.join() {
+      Err(_) => log_error!("Failed to join thread"),
+      _ => {},
+    }
+  }
+}
+
+pub fn service_stop(service: &mut Service) {
+  log_trace!();
+
+  service.done.store(true, Ordering::SeqCst);
+
+  service_join(service);
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use redis::*;
+
+  #[test]
+  fn cmd_version() {
+    let mut service = service_init(AugMultiGraphSettings::default()).unwrap();
+    service_run(&mut service, 4, "127.0.0.1:0").unwrap();
+
+    let redis =
+      Client::open(format!("redis://127.0.0.1:{}", service.local_port))
+        .unwrap();
+    let mut conn = redis.get_connection().unwrap();
+    let ver: String = conn.get(READ_VERSION).unwrap();
+
+    assert_eq!(ver, VERSION);
+
+    service_stop(&mut service);
+  }
+
+  #[test]
+  fn cmd_put_edge() {
+    let mut service = service_init(AugMultiGraphSettings::default()).unwrap();
+    service_run(&mut service, 4, "127.0.0.1:0").unwrap();
+
+    let redis =
+      Client::open(format!("redis://127.0.0.1:{}", service.local_port))
+        .unwrap();
+    let mut conn = redis.get_connection().unwrap();
+
+    let ok: String = cmd("SET")
+      .arg(WRITE_PUT_EDGE)
+      .arg("src")
+      .arg("U1")
+      .arg("dst")
+      .arg("U2")
+      .arg("amount")
+      .arg(42.0)
+      .query(&mut conn)
+      .unwrap();
+
+    assert_eq!(ok, "OK");
+
+    service_stop(&mut service);
+  }
 }

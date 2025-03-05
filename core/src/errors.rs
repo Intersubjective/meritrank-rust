@@ -25,10 +25,10 @@ impl Display for MeritRankError {
     f: &mut Formatter<'_>,
   ) -> Result {
     match self {
-      MeritRankError::InfWeightEncountered=> {
+      MeritRankError::InfWeightEncountered => {
         write!(f, "Edge with infinite weights are not allowed")
       },
-      MeritRankError::NaNWeightEncountered=> {
+      MeritRankError::NaNWeightEncountered => {
         write!(f, "Edge with NaN weights are not allowed")
       },
       MeritRankError::ZeroWeightEncountered => {
