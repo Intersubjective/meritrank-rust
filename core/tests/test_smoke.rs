@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-  use meritrank_core::{MeritRank, Graph};
+  use meritrank_core::{Graph, MeritRank};
   use std::time::SystemTime;
 
   #[test]
@@ -1736,9 +1736,10 @@ mod tests {
     rank.calculate(454, numwalks).unwrap();
     rank.calculate(349, numwalks).unwrap();
     rank.calculate(522, numwalks).unwrap();
-  
-    let begin    = SystemTime::now();
-    let get_time = || SystemTime::now().duration_since(begin).unwrap().as_millis();
+
+    let begin = SystemTime::now();
+    let get_time =
+      || SystemTime::now().duration_since(begin).unwrap().as_millis();
 
     //  Should be fast!
 
@@ -3837,9 +3838,10 @@ mod tests {
     rank.calculate(454, numwalks).unwrap();
     rank.calculate(349, numwalks).unwrap();
     rank.calculate(522, numwalks).unwrap();
-  
-    let begin    = SystemTime::now();
-    let get_time = || SystemTime::now().duration_since(begin).unwrap().as_millis();
+
+    let begin = SystemTime::now();
+    let get_time =
+      || SystemTime::now().duration_since(begin).unwrap().as_millis();
 
     //  Should be fast!
 

@@ -7,11 +7,11 @@ pub mod vsids;
 #[cfg(test)]
 mod tests;
 
-use std::env::var;
 use ctrlc;
+use std::env::var;
 
-use crate::service::*;
 use crate::log::*;
+use crate::service::*;
 
 pub const VERSION: &str = match option_env!("CARGO_PKG_VERSION") {
   Some(x) => x,

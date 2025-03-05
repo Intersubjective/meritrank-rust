@@ -102,7 +102,10 @@ impl MeritRank {
       .get(&ego)
       .ok_or(MeritRankError::NodeIsNotCalculated)?;
 
-    let combined_counter = pos_counter.keys().chain(neg_counter.keys()).collect::<std::collections::HashSet<_>>();
+    let combined_counter = pos_counter
+      .keys()
+      .chain(neg_counter.keys())
+      .collect::<std::collections::HashSet<_>>();
 
     let mut peer_scores: Vec<_> = combined_counter
       .into_iter()
@@ -144,7 +147,10 @@ impl MeritRank {
       panic!("Trying to set NaN weight for edge from {} to {}", src, dest);
     }
     if new_weight.is_infinite() {
-      panic!("Trying to set infinite weight for edge from {} to {}", src, dest);
+      panic!(
+        "Trying to set infinite weight for edge from {} to {}",
+        src, dest
+      );
     }
 
     if old_weight.abs() > EPSILON && new_weight.abs() > EPSILON {

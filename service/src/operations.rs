@@ -809,7 +809,7 @@ impl AugMultiGraph {
         clusters[ego].comments.bounds = bounds;
       },
 
-      NodeKind::Opinion=> {
+      NodeKind::Opinion => {
         clusters[ego].opinions.updated_sec = time;
         clusters[ego].opinions.bounds = bounds;
       },
@@ -1230,10 +1230,10 @@ impl AugMultiGraph {
     ego: &str,
     kind_str: &str,
     hide_personal: bool,
-    score_lt: f64,
-    score_lte: bool,
-    score_gt: f64,
-    score_gte: bool,
+    score_lt: Weight,
+    score_lte: Weight,
+    score_gt: Weight,
+    score_gte: Weight,
     index: u32,
     count: u32,
   ) -> Vec<(String, String, Weight, Weight, Cluster, Cluster)> {
@@ -1279,10 +1279,10 @@ impl AugMultiGraph {
         kind == NodeKind::Unknown || kind == *target_kind
       })
       .filter(|(_, _, score, _)| {
-        score_gt < *score || (score_gte && score_gt <= *score)
-      })
-      .filter(|(_, _, score, _)| {
-        *score < score_lt || (score_lte && score_lt >= *score)
+        *score > score_gt
+          && *score >= score_gte
+          && *score < score_lt
+          && *score <= score_lte
       })
       .collect::<Vec<(NodeId, NodeKind, Weight, Cluster)>>()
       .into_iter()
@@ -1558,7 +1558,8 @@ impl AugMultiGraph {
       let dst_kind = self.node_info_from_id(dst_id).kind;
 
       if dst_kind == NodeKind::User {
-        if positive_only && self.fetch_raw_score(context, ego_id, dst_id) <= 0.0
+        if positive_only
+          && self.fetch_raw_score(context, ego_id, dst_id) < EPSILON
         {
           continue;
         }
@@ -1578,11 +1579,12 @@ impl AugMultiGraph {
         }
       } else if dst_kind == NodeKind::Comment
         || dst_kind == NodeKind::Beacon
-        || dst_kind == NodeKind::Opinion {
+        || dst_kind == NodeKind::Opinion
+      {
         let dst_neighbors = self.all_neighbors_normalized(context, dst_id);
 
         for (ngh_id, dst_ngh_weight) in dst_neighbors {
-          if (positive_only && dst_ngh_weight <= 0.0)
+          if (positive_only && dst_ngh_weight < EPSILON)
             || ngh_id == focus_id
             || self.node_info_from_id(ngh_id).kind != NodeKind::User
           {

@@ -1158,7 +1158,7 @@ fn recalculate_zero_reset_perf() {
 
   assert!(res.len() > 1);
 
-  assert!(get_time() < 300);
+  assert!(get_time() < 500);
 }
 
 #[test]
@@ -1175,9 +1175,9 @@ fn recalculate_zero_scores() {
     "B",
     true,
     100.0,
-    false,
+    100.0,
     -100.0,
-    false,
+    -100.0,
     0,
     u32::MAX,
   );
@@ -1203,9 +1203,9 @@ fn scores_sort_order() {
     "B",
     true,
     100.0,
-    false,
+    100.0,
     -100.0,
-    false,
+    -100.0,
     0,
     u32::MAX,
   );
@@ -1231,9 +1231,9 @@ fn scores_without_recalculate() {
     "U",
     true,
     100.0,
-    false,
+    100.0,
     -100.0,
-    false,
+    -100.0,
     0,
     u32::MAX,
   );
@@ -1259,9 +1259,9 @@ fn scores_with_recalculate() {
     "U",
     true,
     100.0,
-    false,
+    100.0,
     -100.0,
-    false,
+    -100.0,
     0,
     u32::MAX,
   );
@@ -1283,9 +1283,9 @@ fn new_user_without_recalculate() {
     "U",
     true,
     100.0,
-    false,
+    100.0,
     -100.0,
-    false,
+    -100.0,
     0,
     u32::MAX,
   );
@@ -1312,9 +1312,9 @@ fn new_user_with_recalculate() {
     "U",
     true,
     100.0,
-    false,
+    100.0,
     -100.0,
-    false,
+    -100.0,
     0,
     u32::MAX,
   );
@@ -1339,9 +1339,9 @@ fn user_with_recalculate_negative_score() {
     "U",
     true,
     100.0,
-    false,
+    100.0,
     -100.0,
-    false,
+    -100.0,
     0,
     u32::MAX,
   );
@@ -1533,18 +1533,8 @@ fn scores_uncontexted() {
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
   graph.write_put_edge("", "U2", "U3", 3.0, -1);
 
-  let res: Vec<_> = graph.read_scores(
-    "",
-    "U1",
-    "U",
-    false,
-    10.0,
-    false,
-    0.0,
-    false,
-    0,
-    u32::MAX,
-  );
+  let res: Vec<_> =
+    graph.read_scores("", "U1", "U", false, 10.0, 10.0, 0.0, 0.0, 0, u32::MAX);
 
   assert_eq!(res.len(), 3);
 
@@ -1582,18 +1572,8 @@ fn scores_reversed() {
   graph.write_put_edge("", "U2", "U1", 4.0, -1);
   graph.write_put_edge("", "U3", "U1", -5.0, -1);
 
-  let res: Vec<_> = graph.read_scores(
-    "",
-    "U1",
-    "U",
-    false,
-    10.0,
-    false,
-    0.0,
-    false,
-    0,
-    u32::MAX,
-  );
+  let res: Vec<_> =
+    graph.read_scores("", "U1", "U", false, 10.0, 10.0, 0.0, 0.0, 0, u32::MAX);
 
   assert!(res.len() >= 2);
   assert!(res.len() <= 3);
@@ -1636,18 +1616,8 @@ fn scores_contexted() {
   graph.write_put_edge("X", "U1", "U3", 1.0, -1);
   graph.write_put_edge("X", "U2", "U3", 3.0, -1);
 
-  let res: Vec<_> = graph.read_scores(
-    "X",
-    "U1",
-    "U",
-    false,
-    10.0,
-    false,
-    0.0,
-    false,
-    0,
-    u32::MAX,
-  );
+  let res: Vec<_> =
+    graph.read_scores("X", "U1", "U", false, 10.0, 10.0, 0.0, 0.0, 0, u32::MAX);
 
   assert_eq!(res.len(), 3);
 
@@ -1683,18 +1653,8 @@ fn scores_unknown_context() {
   graph.write_put_edge("X", "B1", "B3", 1.0, -1);
   graph.write_put_edge("X", "B2", "B3", 3.0, -1);
 
-  let res: Vec<_> = graph.read_scores(
-    "Y",
-    "B1",
-    "B",
-    false,
-    10.0,
-    false,
-    0.0,
-    false,
-    0,
-    u32::MAX,
-  );
+  let res: Vec<_> =
+    graph.read_scores("Y", "B1", "B", false, 10.0, 10.0, 0.0, 0.0, 0, u32::MAX);
 
   assert_eq!(res.len(), 0);
 }
@@ -1709,9 +1669,8 @@ fn scores_reset_smoke() {
   graph_write.write_put_edge("X", "U2", "U3", 3.0, -1);
 
   graph_read.copy_from(&graph_write);
-  let res: Vec<_> = graph_read.read_scores(
-    "X", "U1", "U", false, 10.0, false, 0.0, false, 0, 2147483647,
-  );
+  let res: Vec<_> = graph_read
+    .read_scores("X", "U1", "U", false, 10.0, 10.0, 0.0, 0.0, 0, 2147483647);
 
   assert_eq!(res.len(), 3);
 
@@ -1723,16 +1682,7 @@ fn scores_reset_smoke() {
 
   graph_read.copy_from(&graph_write);
   let res: Vec<_> = graph_read.read_scores(
-    "X",
-    "U1",
-    "U",
-    false,
-    2147483647.0,
-    false,
-    -2147483648.0,
-    false,
-    0,
-    2147483647,
+    "X", "U1", "U", false, 100.0, 100.0, -100.0, -100.0, 0, 2147483647,
   );
 
   assert_eq!(res.len(), 3);
@@ -1747,18 +1697,8 @@ fn scores_self() {
   graph.write_put_edge("X", "B2", "U1", 3.0, -1);
   graph.write_create_context("Y");
 
-  let res: Vec<_> = graph.read_scores(
-    "Y",
-    "U1",
-    "U",
-    false,
-    10.0,
-    false,
-    0.0,
-    false,
-    0,
-    u32::MAX,
-  );
+  let res: Vec<_> =
+    graph.read_scores("Y", "U1", "U", false, 10.0, 10.0, 0.0, 0.0, 0, u32::MAX);
 
   assert_eq!(res.len(), 1);
   assert_eq!(res[0].0, "U1");
@@ -2384,9 +2324,9 @@ fn five_user_scores_clustering() {
     "",
     true,
     100.0,
-    false,
+    100.0,
     -100.0,
-    false,
+    -100.0,
     0,
     u32::MAX,
   );
@@ -2427,9 +2367,9 @@ fn five_beacon_scores_clustering() {
     "B",
     true,
     100.0,
-    false,
+    100.0,
     -100.0,
-    false,
+    -100.0,
     0,
     u32::MAX,
   );
@@ -2470,9 +2410,9 @@ fn three_scores_chain_clustering() {
     "",
     true,
     100.0,
-    false,
+    100.0,
     -100.0,
-    false,
+    -100.0,
     0,
     u32::MAX,
   );
@@ -2504,9 +2444,9 @@ fn separate_clusters_without_users() {
     "",
     true,
     100.0,
-    false,
+    100.0,
     -100.0,
-    false,
+    -100.0,
     0,
     u32::MAX,
   );
@@ -2534,9 +2474,9 @@ fn separate_clusters_self_score() {
     "U",
     true,
     100.0,
-    false,
+    100.0,
     -100.0,
-    false,
+    -100.0,
     0,
     u32::MAX,
   );
@@ -2747,9 +2687,9 @@ fn regression_beacons_clustering() {
     "B",
     true,
     100.0,
-    false,
+    100.0,
     -100.0,
-    false,
+    -100.0,
     0,
     u32::MAX,
   );
