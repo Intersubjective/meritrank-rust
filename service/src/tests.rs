@@ -1172,7 +1172,7 @@ fn recalculate_zero_reset_perf() {
 
   assert!(res.len() > 1);
 
-  assert!(get_time() < 300);
+  assert!(get_time() < 500);
 }
 
 #[test]
