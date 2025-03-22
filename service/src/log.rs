@@ -3,8 +3,8 @@ use std::{sync::atomic::AtomicBool, sync::Mutex, thread};
 pub static ERROR: AtomicBool = AtomicBool::new(true);
 pub static WARNING: AtomicBool = AtomicBool::new(true);
 pub static INFO: AtomicBool = AtomicBool::new(true);
-pub static VERBOSE: AtomicBool = AtomicBool::new(true);
-pub static TRACE: AtomicBool = AtomicBool::new(true);
+pub static VERBOSE: AtomicBool = AtomicBool::new(false);
+pub static TRACE: AtomicBool = AtomicBool::new(false);
 
 static LOG_MUTEX: Mutex<()> = Mutex::new(());
 
