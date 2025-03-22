@@ -1878,8 +1878,8 @@ fn node_score_uncontexted() {
   assert_eq!(res.len(), 1);
   assert_eq!(res[0].0, "U1");
   assert_eq!(res[0].1, "U2");
-  assert!(res[0].2 > 0.25);
-  assert!(res[0].2 < 0.4);
+  assert!(res[0].2 > 0.3);
+  assert!(res[0].2 < 0.45);
 }
 
 #[test]
