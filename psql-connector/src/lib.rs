@@ -295,6 +295,82 @@ fn mr_graph(
 }
 
 #[pg_extern(immutable)]
+fn mr_neighbors(
+  ego: Option<&str>,
+  focus: Option<&str>,
+  direction: Option<i64>,
+  hide_personal: default!(Option<bool>, "false"),
+  context: default!(Option<&str>, "''"),
+  kind: default!(Option<&str>, "''"),
+  lt: default!(Option<f64>, "null"),
+  lte: default!(Option<f64>, "null"),
+  gt: default!(Option<f64>, "null"),
+  gte: default!(Option<f64>, "null"),
+  index: default!(Option<i64>, "0"),
+  count: default!(Option<i64>, "16"),
+) -> Result<
+  TableIterator<
+    'static,
+    (
+      name!(src, String),
+      name!(dst, String),
+      name!(score_value_of_dst, f64),
+      name!(score_value_of_src, f64),
+      name!(score_cluster_of_dst, i32),
+      name!(score_cluster_of_src, i32),
+    ),
+  >,
+  Box<dyn Error + 'static>,
+> {
+  let ego = ego.expect("ego should not be null");
+  let focus = focus.expect("focus should not be null");
+  let direction = direction
+    .expect("direction should be 0 (all), 1 (outbound) or 2 (inbound)");
+  let hide_personal = hide_personal.unwrap_or(false);
+  let context = context.unwrap_or("");
+  let kind = kind.unwrap_or("");
+  let index = index.unwrap_or(0) as u32;
+  let count = count.unwrap_or(i32::MAX as i64) as u32;
+
+  if direction != 0 && direction != 1 && direction != 2 {
+    return Err(Box::from(
+      "direction should be 0 (all), 1 (outbound) or 2 (inbound)",
+    ));
+  }
+  if lt.is_some() && lte.is_some() {
+    return Err(Box::from("either lt or lte is allowed!"));
+  }
+  if gt.is_some() && gte.is_some() {
+    return Err(Box::from("either gt or gte is allowed!"));
+  }
+
+  let args = rmp_serde::to_vec(&(
+    ego,
+    focus,
+    direction,
+    kind,
+    hide_personal,
+    lt.unwrap_or(lte.unwrap_or(i32::MAX.into())),
+    lte.is_some(),
+    gt.unwrap_or(gte.unwrap_or(i32::MIN.into())),
+    gte.is_some(),
+    index,
+    count,
+  ))?;
+
+  let payload = encode_request(&Command {
+    id:       CMD_NEIGHBORS.to_string(),
+    context:  context.to_string(),
+    blocking: true,
+    payload:  args,
+  })?;
+
+  let response: Vec<(String, String, f64, f64, i32, i32)> =
+    request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  Ok(TableIterator::new(response))
+}
+
+#[pg_extern(immutable)]
 fn mr_nodelist(
   context: default!(Option<&str>, "''")
 ) -> Result<
@@ -563,6 +639,29 @@ fn mr_delete_node(
 }
 
 #[pg_extern]
+fn mr_set_zero_opinion(
+  node: Option<&str>,
+  score: Option<f64>,
+  context: default!(Option<&str>, "''"),
+) -> Result<&'static str, Box<dyn Error + 'static>> {
+  let context = context.unwrap_or("");
+  let node = node.expect("node should not be null");
+  let score = score.expect("score should not be null");
+
+  let args = rmp_serde::to_vec(&(node, score))?;
+
+  let payload = encode_request(&Command {
+    id:       CMD_SET_ZERO_OPINION.to_string(),
+    context:  context.to_string(),
+    blocking: false,
+    payload:  args,
+  })?;
+
+  let _: () = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  return Ok("Ok");
+}
+
+#[pg_extern]
 fn mr_set_new_edges_filter(
   src: Option<&str>,
   filter: Option<Vec<u8>>,
@@ -579,7 +678,7 @@ fn mr_set_new_edges_filter(
     payload:  args,
   })?;
 
-  let _ = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
+  let _: () = request(payload, Some(*RECV_TIMEOUT_MSEC))?;
   return Ok("Ok");
 }
 
@@ -706,6 +805,7 @@ fn mr_recalculate_clustering(
 #[pg_schema]
 mod tests {
   use super::testing::*;
+  use meritrank_service::protocol::*;
   use pgrx::prelude::*;
   use std::time::SystemTime;
 
@@ -1532,6 +1632,7 @@ mod tests {
     let _ =
       crate::mr_put_edge(Some("U2"), Some("U1"), Some(4.0), None, Some(-1))
         .unwrap();
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res: Vec<_> = crate::mr_scores(
       Some("U1"),
@@ -1564,6 +1665,60 @@ mod tests {
 
     assert!(res[4].4 <= 60);
     assert!(res[4].4 >= 1);
+  }
+
+  #[pg_test]
+  fn set_zero_opinion() {
+    let _ = crate::mr_reset().unwrap();
+
+    let _ =
+      crate::mr_put_edge(Some("U1"), Some("U2"), Some(5.0), None, Some(-1))
+        .unwrap();
+    let _ = crate::mr_sync(Some(1000)).unwrap();
+
+    let s0: Vec<_> = crate::mr_node_score(Some("U1"), Some("U2"), None)
+      .unwrap()
+      .collect();
+
+    let _ = crate::mr_set_zero_opinion(Some("U2"), Some(-10.0), None);
+    let _ = crate::mr_sync(Some(1000)).unwrap();
+
+    let s1: Vec<_> = crate::mr_node_score(Some("U1"), Some("U2"), None)
+      .unwrap()
+      .collect();
+
+    assert_ne!(s0[0].2, s1[0].2);
+  }
+
+  #[pg_test]
+  fn neighbors_inbound() {
+    let _ = crate::mr_reset().unwrap();
+
+    let _ =
+      crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None, Some(-1))
+        .unwrap();
+    let _ = crate::mr_sync(Some(1000)).unwrap();
+
+    let neighbors: Vec<_> = crate::mr_neighbors(
+      Some("U1"),
+      Some("U2"),
+      Some(NEIGHBORS_INBOUND),
+      None,
+      None,
+      None,
+      None,
+      None,
+      None,
+      None,
+      None,
+      None,
+    )
+    .unwrap()
+    .collect();
+
+    assert_eq!(neighbors.len(), 1);
+    assert_eq!(neighbors[0].0, "U1");
+    assert_eq!(neighbors[0].1, "U1");
   }
 }
 

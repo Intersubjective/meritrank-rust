@@ -30,6 +30,12 @@ pub const CMD_CONNECTED: &str = "connected";
 pub const CMD_EDGES: &str = "edges";
 pub const CMD_MUTUAL_SCORES: &str = "mutual_scores";
 pub const CMD_CREATE_CONTEXT: &str = "create_context";
+pub const CMD_SET_ZERO_OPINION: &str = "set_zero_opinion";
+pub const CMD_NEIGHBORS: &str = "neighbors";
+
+pub const NEIGHBORS_ALL: i64 = 0;
+pub const NEIGHBORS_OUTBOUND: i64 = 1;
+pub const NEIGHBORS_INBOUND: i64 = 2;
 
 #[derive(Clone)]
 pub struct Command {
