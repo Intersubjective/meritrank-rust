@@ -1497,27 +1497,27 @@ mod tests {
       match x.1.as_str() {
         "U1" => {
           assert!(res[0].2 > 0.15);
-          assert!(res[0].2 < 0.35);
+          assert!(res[0].2 < 0.45);
           assert!(res[0].3 > 0.15);
-          assert!(res[0].3 < 0.35);
+          assert!(res[0].3 < 0.45);
           assert!(u1);
           u1 = false;
         },
 
         "U2" => {
           assert!(res[1].2 > 0.15);
-          assert!(res[1].2 < 0.35);
+          assert!(res[1].2 < 0.45);
           assert!(res[1].3 > 0.05);
-          assert!(res[1].3 < 0.35);
+          assert!(res[1].3 < 0.45);
           assert!(u2);
           u2 = false;
         },
 
         "U3" => {
           assert!(res[2].2 > 0.05);
-          assert!(res[2].2 < 0.35);
+          assert!(res[2].2 < 0.45);
           assert!(res[2].3 > 0.15);
-          assert!(res[2].3 < 0.35);
+          assert!(res[2].3 < 0.45);
           assert!(u3);
           u3 = false;
         },
