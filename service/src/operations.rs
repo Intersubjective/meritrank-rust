@@ -97,7 +97,7 @@ impl Default for ClusterGroupBounds {
 
 #[derive(PartialEq, Clone, Default)]
 pub struct ScoreClustersByKind {
-  //  FIXME Refactor this to be more general.
+  //  FIXME: Refactor this to be more general.
   pub users:    ClusterGroupBounds,
   pub beacons:  ClusterGroupBounds,
   pub comments: ClusterGroupBounds,
@@ -420,6 +420,7 @@ impl AugMultiGraph {
     self.zero_opinion = other.zero_opinion.clone();
     self.time_begin = other.time_begin.clone();
     self.cached_score_clusters = other.cached_score_clusters.clone();
+    self.vsids = other.vsids.clone();
   }
 
   pub fn reset(&mut self) {
@@ -434,6 +435,7 @@ impl AugMultiGraph {
     self.zero_opinion = HashMap::new();
     self.time_begin = Instant::now();
     self.cached_score_clusters = HashMap::new();
+    self.vsids = VSIDSManager::new();
   }
 
   pub fn node_exists(
@@ -490,7 +492,7 @@ impl AugMultiGraph {
     if !context.is_empty() {
       match self.contexts.get_mut("") {
         Some(zero) => {
-          log_verbose!("Copy user edges from `` into {:?}", context);
+          log_verbose!("Copy user edges from \"\" into {:?}", context);
 
           let zero_cloned = zero.clone();
           let all_nodes = zero_cloned.graph.nodes.iter().enumerate();
