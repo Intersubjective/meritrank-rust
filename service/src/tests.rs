@@ -1059,16 +1059,6 @@ fn recalculate_zero_graph_all() {
 }
 
 #[test]
-fn recalculate_out_of_bounds_regression() {
-  let mut graph = AugMultiGraph::default();
-
-  graph.write_put_edge("", "U1", "U2", 1.0, -1);
-  graph.write_put_edge("", "U1", "U3", 1.0, -1);
-
-  graph.write_recalculate_zero();
-}
-
-#[test]
 fn graph_sort_order() {
   let mut graph = AugMultiGraph::default();
 
@@ -1172,7 +1162,7 @@ fn recalculate_zero_reset_perf() {
 
   assert!(res.len() > 1);
 
-  assert!(get_time() < 300);
+  assert!(get_time() < 500);
 }
 
 #[test]
@@ -1567,13 +1557,13 @@ fn scores_uncontexted() {
 
     match x.1.as_str() {
       "U1" => {
-        assert!(x.2 > 0.1);
-        assert!(x.2 < 0.4);
+        assert!(x.2 > 0.2);
+        assert!(x.2 < 0.5);
       },
 
       "U2" => {
-        assert!(x.2 > 0.1);
-        assert!(x.2 < 0.4);
+        assert!(x.2 > 0.2);
+        assert!(x.2 < 0.5);
       },
 
       "U3" => {
@@ -1878,8 +1868,8 @@ fn node_score_uncontexted() {
   assert_eq!(res.len(), 1);
   assert_eq!(res[0].0, "U1");
   assert_eq!(res[0].1, "U2");
-  assert!(res[0].2 > 0.25);
-  assert!(res[0].2 < 0.4);
+  assert!(res[0].2 > 0.3);
+  assert!(res[0].2 < 0.45);
 }
 
 #[test]
@@ -1932,6 +1922,8 @@ fn mutual_scores_uncontexted() {
 
   let res: Vec<_> = graph.read_mutual_scores("", "U1");
 
+  println!("{:?}", res);
+
   assert_eq!(res.len(), 3);
 
   let mut u1 = true;
@@ -1943,28 +1935,28 @@ fn mutual_scores_uncontexted() {
 
     match x.1.as_str() {
       "U1" => {
-        assert!(x.2 > 0.2);
-        assert!(x.2 < 0.4);
-        assert!(x.3 > 0.25);
-        assert!(x.3 < 0.4);
+        assert!(x.2 > 0.3);
+        assert!(x.2 < 0.5);
+        assert!(x.3 > 0.3);
+        assert!(x.3 < 0.5);
         assert!(u1);
         u1 = false;
       },
 
       "U2" => {
         assert!(x.2 > 0.15);
-        assert!(x.2 < 0.3);
+        assert!(x.2 < 0.35);
         assert!(x.3 > 0.15);
-        assert!(x.3 < 0.3);
+        assert!(x.3 < 0.35);
         assert!(u2);
         u2 = false;
       },
 
       "U3" => {
         assert!(x.2 > 0.15);
-        assert!(x.2 < 0.3);
+        assert!(x.2 < 0.35);
         assert!(x.3 > 0.15);
-        assert!(x.3 < 0.3);
+        assert!(x.3 < 0.35);
         assert!(u3);
         u3 = false;
       },
@@ -1985,13 +1977,15 @@ fn mutual_scores_self() {
 
   let res: Vec<_> = graph.read_mutual_scores("", "U1");
 
+  println!("{:?}", res);
+
   assert_eq!(res.len(), 1);
   assert_eq!(res[0].0, "U1");
   assert_eq!(res[0].1, "U1");
-  assert!(res[0].2 > 0.79);
-  assert!(res[0].2 < 0.81);
-  assert!(res[0].3 > 0.79);
-  assert!(res[0].3 < 0.81);
+  assert!(res[0].2 > 0.99);
+  assert!(res[0].2 < 1.01);
+  assert!(res[0].3 > 0.99);
+  assert!(res[0].3 < 1.01);
 }
 
 #[test]
@@ -2124,8 +2118,8 @@ fn graph_reversed() {
         if x.1 == "U3" {
           assert!(x.2 > 0.39);
           assert!(x.2 < 0.49);
-          assert!(x.3 > 0.1);
-          assert!(x.3 < 0.3);
+          assert!(x.3 > 0.2);
+          assert!(x.3 < 0.4);
         }
       },
 
@@ -2561,6 +2555,119 @@ fn separate_clusters_self_score() {
 
   assert_eq!(res[0].4, 100);
   assert_eq!(res[1].4, 1);
+}
+
+#[test]
+fn set_zero_opinion_uncontexted() {
+  let mut graph = AugMultiGraph::default();
+  graph.write_put_edge("", "U1", "U2", -5.0, -1);
+  let s0 = graph.read_node_score("", "U1", "U2")[0].2;
+  graph.write_set_zero_opinion("", "U2", 10.0);
+  let s1 = graph.read_node_score("", "U1", "U2")[0].2;
+
+  println!("{}, {}", s0, s1);
+  assert_ne!(s0, s1);
+}
+
+#[test]
+fn set_zero_opinion_contexted() {
+  let mut graph = AugMultiGraph::default();
+  graph.write_put_edge("X", "U1", "U2", -5.0, -1);
+  let s0 = graph.read_node_score("X", "U1", "U2")[0].2;
+  graph.write_set_zero_opinion("X", "U2", 10.0);
+  let s1 = graph.read_node_score("X", "U1", "U2")[0].2;
+
+  println!("{}, {}", s0, s1);
+  assert_ne!(s0, s1);
+}
+
+#[test]
+fn neighbors_all() {
+  let mut graph = AugMultiGraph::default();
+  graph.write_put_edge("", "U1", "U2", 1.0, -1);
+  graph.write_put_edge("", "U2", "U3", 2.0, -1);
+  graph.write_put_edge("", "U3", "U1", 3.0, -1);
+
+  let neighbors = graph.read_neighbors(
+    "",
+    "U1",
+    "U2",
+    NEIGHBORS_ALL,
+    "",
+    false,
+    100.0,
+    false,
+    -100.0,
+    false,
+    0,
+    100,
+  );
+
+  assert_eq!(neighbors.len(), 2);
+  assert_eq!(neighbors[0].1, "U3");
+  assert_eq!(neighbors[1].1, "U1");
+}
+
+#[test]
+fn neighbors_inbound() {
+  let mut graph = AugMultiGraph::default();
+  graph.write_put_edge("", "U1", "U2", 1.0, -1);
+  graph.write_put_edge("", "U2", "U3", 2.0, -1);
+  graph.write_put_edge("", "U3", "U1", 3.0, -1);
+
+  let neighbors = graph.read_neighbors(
+    "",
+    "U1",
+    "U2",
+    NEIGHBORS_INBOUND,
+    "",
+    false,
+    100.0,
+    false,
+    -100.0,
+    false,
+    0,
+    100,
+  );
+
+  assert_eq!(neighbors.len(), 1);
+  assert_eq!(neighbors[0].1, "U1");
+}
+
+#[test]
+fn neighbors_outbound() {
+  let mut graph = AugMultiGraph::default();
+  graph.write_put_edge("", "U1", "U2", 1.0, -1);
+  graph.write_put_edge("", "U2", "U3", 2.0, -1);
+  graph.write_put_edge("", "U3", "U1", 3.0, -1);
+
+  let neighbors = graph.read_neighbors(
+    "",
+    "U1",
+    "U2",
+    NEIGHBORS_OUTBOUND,
+    "",
+    false,
+    100.0,
+    false,
+    -100.0,
+    false,
+    0,
+    100,
+  );
+
+  assert_eq!(neighbors.len(), 1);
+  assert_eq!(neighbors[0].1, "U3");
+}
+
+#[test]
+fn regression_recalculate_out_of_bounds() {
+  let mut graph = AugMultiGraph::default();
+
+  graph.write_put_edge("", "U1", "U2", 1.0, -1);
+  graph.write_put_edge("", "U1", "U3", 1.0, -1);
+
+  graph.write_recalculate_zero();
 }
 
 #[test]

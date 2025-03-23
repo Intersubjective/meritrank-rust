@@ -43,6 +43,7 @@ fn perform_command(
     || command.id == CMD_CREATE_CONTEXT
     || command.id == CMD_WRITE_NEW_EDGES_FILTER
     || command.id == CMD_FETCH_NEW_EDGES
+    || command.id == CMD_SET_ZERO_OPINION
   {
     let mut res = encode_response(&());
 
@@ -69,6 +70,14 @@ fn perform_command(
         if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
           ok = true;
           graph.write_recalculate_zero();
+        }
+      },
+      CMD_SET_ZERO_OPINION => {
+        if let Ok((node, score)) =
+          rmp_serde::from_slice(command.payload.as_slice())
+        {
+          ok = true;
+          graph.write_set_zero_opinion(command.context.as_str(), node, score);
         }
       },
       CMD_RECALCULATE_CLUSTERING => {
@@ -248,6 +257,37 @@ fn perform_command(
       CMD_READ_NEW_EDGES_FILTER => {
         if let Ok(src) = rmp_serde::from_slice(command.payload.as_slice()) {
           return encode_response(&graph.read_new_edges_filter(src));
+        }
+      },
+      CMD_NEIGHBORS => {
+        if let Ok((
+          ego,
+          focus,
+          direction,
+          kind,
+          hide_personal,
+          lt,
+          lte,
+          gt,
+          gte,
+          index,
+          count,
+        )) = rmp_serde::from_slice(command.payload.as_slice())
+        {
+          return encode_response(&graph.read_neighbors(
+            command.context.as_str(),
+            ego,
+            focus,
+            direction,
+            kind,
+            hide_personal,
+            lt,
+            lte,
+            gt,
+            gte,
+            index,
+            count,
+          ));
         }
       },
       _ => {
