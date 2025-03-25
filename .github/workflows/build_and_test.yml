@@ -43,10 +43,16 @@ jobs:
     - uses: actions/checkout@v4
     - name: Build
       run: cargo build
-    - name: Run tests
+    - name: Run tests with memory usage check
       run: |
         export MERITRANK_NUM_WALK=50
-        cargo test
+        (cargo test & export PID=$!;                         \
+        while sleep 1; do                                    \
+          mem=$(ps -p $PID -o rss= | awk '{print $1/1024}'); \
+          if (( $(echo "$mem > 2048" | bc -l) )); then       \
+            kill $PID; exit 1;                               \
+          fi;                                                \
+        done) || exit 1
   test_psql_connector:
     runs-on: ubuntu-latest
     defaults:
