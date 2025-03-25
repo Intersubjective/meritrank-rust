@@ -43,16 +43,25 @@ jobs:
     - uses: actions/checkout@v4
     - name: Build
       run: cargo build
-    - name: Run tests with memory usage check
+    - name: Run tests
       run: |
-        export MERITRANK_NUM_WALK=50
-        (cargo test & export PID=$!;                         \
-        while sleep 1; do                                    \
-          mem=$(ps -p $PID -o rss= | awk '{print $1/1024}'); \
-          if (( $(echo "$mem > 2048" | bc -l) )); then       \
-            kill $PID; exit 1;                               \
-          fi;                                                \
-        done) || exit 1
+        cargo test
+  test_service_oom:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./service
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build
+      run: cargo build --release
+    - name: Run OOM tests with memory usage check
+      run: |
+        export MEM_KB=`/usr/bin/time -f "%M" cargo test --release --quiet oom 2>&1 1>/dev/null`
+        echo "Memory consumption is $MEM_KB KB"
+        if [ $MEM_KB -gt 2000000 ]; then
+          exit 1
+        fi
   test_psql_connector:
     runs-on: ubuntu-latest
     defaults:

@@ -2953,6 +2953,8 @@ fn regression_beacons_clustering() {
   }
 }
 
+//  NOTE: This test is too slow in debug, so we disable it.
+#[cfg(not(debug_assertions))]
 #[test]
 fn regression_oom() {
   let mut graph = AugMultiGraph::new(AugMultiGraphSettings {
