@@ -1,6 +1,6 @@
 [package]
 name = "pgmer2"
-version = "0.3.25"
+version = "0.3.26"
 edition = "2021"
 
 [[bin]]
@@ -11,9 +11,9 @@ path = "./src/pgrx_embed.rs"
 crate-type = ["cdylib", "lib"]
 
 [features]
-default = ["pg16"]
+default = ["pg17"]
 shared = []
-pg16 = ["pgrx/pg16", "pgrx-tests/pg16"]
+pg17 = ["pgrx/pg17", "pgrx-tests/pg17"]
 pg_test = []
 
 [dependencies]

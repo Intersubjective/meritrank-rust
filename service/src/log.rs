@@ -107,13 +107,13 @@ macro_rules! log_trace {
 macro_rules! log_command {
   () => {
     if INFO.load(Ordering::Relaxed) {
-      log_with_time(format!("COMMAND {}", crate::log_func_name!()));
+      log_with_time(format!("CMD {}", crate::log_func_name!()));
     }
   };
 
   ($($arg:expr),+) => {
     if INFO.load(Ordering::Relaxed) {
-      log_with_time(format!("COMMAND {}: {}", crate::log_func_name!(), format!($($arg),*)));
+      log_with_time(format!("CMD {}: {}", crate::log_func_name!(), format!($($arg),*)));
     }
   };
 }
