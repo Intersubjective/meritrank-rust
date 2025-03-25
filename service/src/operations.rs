@@ -2530,7 +2530,10 @@ impl AugMultiGraph {
   pub fn write_recalculate_zero(&mut self) {
     log_command!();
 
-    for (context, _) in &self.contexts.clone() {
+    for (context, graph) in &self.contexts.clone() {
+      //  Save the current state of the graph
+      let graph_bak = graph.clone();
+
       self.recalculate_all(context, 0);
       let nodes = self.top_nodes(context);
 
@@ -2552,6 +2555,9 @@ impl AugMultiGraph {
       }
 
       self.zero_opinion.insert(context.to_string(), zero_opinion);
+
+      //  Reset the graph
+      self.contexts.insert(context.clone(), graph_bak);
     }
   }
 

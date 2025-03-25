@@ -19,7 +19,7 @@ jobs:
     - name: Run tests
       run: |
         cargo test -- --skip smoke_memory
-  test_memory_consumption:
+  test_core_oom:
     runs-on: ubuntu-latest
     defaults:
       run:
