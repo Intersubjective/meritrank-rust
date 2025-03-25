@@ -2403,11 +2403,36 @@ impl AugMultiGraph {
   ) -> Vec<(NodeId, NodeId, Weight)> {
     log_trace!();
 
+    let mut all_edges = vec![];
+
+    for src in 0..self.node_infos.len() {
+      match self.graph_from_ctx(context).graph.get_node_data(src) {
+        Some(data) => {
+          for (dst, _) in &data.pos_edges {
+            all_edges.push((src, *dst));
+          }
+
+          for (dst, _) in &data.neg_edges {
+            all_edges.push((src, *dst));
+          }
+        },
+        _ => {},
+      }
+    }
+
     let users: Vec<NodeId> = self
       .node_infos
       .iter()
       .enumerate()
       .filter(|(_id, info)| info.kind == NodeKind::User)
+      .filter(|(id, _info)| {
+        for (src, dst) in &all_edges {
+          if *id == *src || *id == *dst {
+            return true;
+          }
+        }
+        return false;
+      })
       .map(|(id, _info)| id)
       .collect();
 

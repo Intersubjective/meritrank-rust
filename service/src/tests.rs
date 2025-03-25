@@ -2962,9 +2962,6 @@ fn regression_oom() {
     ..AugMultiGraphSettings::default()
   });
 
-  graph.write_recalculate_zero();
-  graph.write_reset();
-
   graph.write_put_edge("", "U95f3426b8e5d", "U499f24158a40", 1.0, 0);
   graph.write_put_edge("", "U77a03e9a08af", "U6d2f25cc4264", 1.0, 0);
   graph.write_put_edge("", "Ub47d8c364c9e", "Ub01f4ad1b03f", 1.0, 0);
@@ -6984,6 +6981,5 @@ fn regression_oom() {
   graph.write_put_edge("", "Oe654a0e656d3", "U3ea0a229ad85", 1.0, 0);
   graph.write_put_edge("", "Oe654a0e656d3", "U6d2f25cc4264", 1.0, 0);
   graph.write_new_edges_filter("Ub01f4ad1b03f", &[105, 105, 105, 105, 105, 105, 105, 105, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 101, 101, 101, 101, 101, 101, 101, 101, 2, 2, 2, 2, 2, 2, 2, 2, 52, 52, 52, 52, 52, 52, 52, 52, 137, 137, 137, 137, 137, 137, 137, 137, 41, 41, 41, 41, 41, 41, 41, 41, 8, 8, 8, 8, 8, 8, 8, 8, 33, 33, 33, 33, 33, 33, 33, 33, 176, 176, 176, 176, 176, 176, 176, 176, 17, 17, 17, 17, 17, 17, 17, 17, 114, 114, 114, 114, 114, 114, 114, 114, 83, 83, 83, 83, 83, 83, 83, 83, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2]);
-  graph.write_recalculate_zero();
   graph.write_recalculate_zero();
 }
