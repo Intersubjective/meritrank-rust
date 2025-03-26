@@ -36,7 +36,8 @@ pub const VERSION: &str = match option_env!("CARGO_PKG_VERSION") {
 
 pub const NUM_SCORE_QUANTILES: usize = 100;
 
-pub const DEFAULT_NUM_WALKS: usize = 50;
+pub const DEFAULT_NUM_WALKS: usize = 10000;
+pub const DEFAULT_ZERO_OPINION_NUM_WALKS: usize = 1000;
 pub const DEFAULT_TOP_NODES_LIMIT: usize = 100;
 pub const DEFAULT_ZERO_OPINION_FACTOR: f64 = 0.20;
 pub const DEFAULT_SCORE_CLUSTERS_TIMEOUT: u64 = 60 * 60 * 6; // 6 hours
@@ -109,6 +110,7 @@ pub struct ScoreClustersByKind {
 #[derive(Clone)]
 pub struct AugMultiGraphSettings {
   pub num_walks:              usize,
+  pub zero_opinion_num_walks: usize,
   pub top_nodes_limit:        usize,
   pub zero_opinion_factor:    f64,
   pub score_clusters_timeout: u64,
@@ -358,6 +360,7 @@ impl Default for AugMultiGraphSettings {
       walks_cache_size:       DEFAULT_WALKS_CACHE_SIZE,
       zero_opinion_factor:    DEFAULT_ZERO_OPINION_FACTOR,
       num_walks:              DEFAULT_NUM_WALKS,
+      zero_opinion_num_walks: DEFAULT_ZERO_OPINION_NUM_WALKS,
       score_clusters_timeout: DEFAULT_SCORE_CLUSTERS_TIMEOUT,
       filter_num_hashes:      DEFAULT_FILTER_NUM_HASHES,
       filter_max_size:        DEFAULT_FILTER_MAX_SIZE,
@@ -2440,7 +2443,7 @@ impl AugMultiGraph {
       return vec![];
     }
 
-    let num_walks = self.settings.num_walks;
+    let num_walks = self.settings.zero_opinion_num_walks;
 
     for id in users.iter() {
       match self.graph_from_ctx_mut(context).calculate(*id, num_walks) {

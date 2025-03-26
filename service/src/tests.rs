@@ -2,6 +2,14 @@ use crate::operations::*;
 use crate::protocol::*;
 use std::time::SystemTime;
 
+fn default_graph() -> AugMultiGraph {
+  AugMultiGraph::new(AugMultiGraphSettings {
+    num_walks: 50,
+    zero_opinion_num_walks: 50,
+    ..AugMultiGraphSettings::default()
+  })
+}
+
 fn put_testing_edges(graph: &mut AugMultiGraph) {
   graph.write_put_edge("", "U0cd6bd2dde4f", "B7f628ad203b5", 1.0, -1);
   graph.write_put_edge("", "U9a2c85753a6d", "C070e739180d6", 9.0, -1);
@@ -1041,7 +1049,7 @@ fn no_assert() {
 
 #[test]
 fn recalculate_zero_graph_all() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   put_testing_edges(&mut graph);
 
@@ -1060,7 +1068,7 @@ fn recalculate_zero_graph_all() {
 
 #[test]
 fn graph_sort_order() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   put_testing_edges(&mut graph);
 
@@ -1078,7 +1086,7 @@ fn graph_sort_order() {
 
 #[test]
 fn recalculate_zero_graph_duplicates() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   put_testing_edges(&mut graph);
 
@@ -1101,7 +1109,7 @@ fn recalculate_zero_graph_duplicates() {
 
 #[test]
 fn recalculate_zero_graph_positive_only() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   put_testing_edges(&mut graph);
 
@@ -1119,7 +1127,7 @@ fn recalculate_zero_graph_positive_only() {
 
 #[test]
 fn recalculate_zero_graph_focus_beacon() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   put_testing_edges(&mut graph);
 
@@ -1142,7 +1150,7 @@ fn recalculate_zero_graph_focus_beacon() {
 
 #[test]
 fn recalculate_zero_reset_perf() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   put_testing_edges(&mut graph);
   graph.write_recalculate_zero();
@@ -1167,7 +1175,7 @@ fn recalculate_zero_reset_perf() {
 
 #[test]
 fn recalculate_zero_scores() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   put_testing_edges(&mut graph);
 
@@ -1195,7 +1203,7 @@ fn recalculate_zero_scores() {
 
 #[test]
 fn scores_sort_order() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   put_testing_edges(&mut graph);
 
@@ -1223,7 +1231,7 @@ fn scores_sort_order() {
 
 #[test]
 fn scores_without_recalculate() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   put_testing_edges_2(&mut graph);
 
@@ -1249,7 +1257,7 @@ fn scores_without_recalculate() {
 
 #[test]
 fn scores_with_recalculate() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   put_testing_edges_2(&mut graph);
 
@@ -1277,7 +1285,7 @@ fn scores_with_recalculate() {
 
 #[test]
 fn new_user_without_recalculate() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   put_testing_edges_2(&mut graph);
 
@@ -1301,7 +1309,7 @@ fn new_user_without_recalculate() {
 
 #[test]
 fn new_user_with_recalculate() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   put_testing_edges_2(&mut graph);
 
@@ -1330,7 +1338,7 @@ fn new_user_with_recalculate() {
 
 #[test]
 fn user_with_recalculate_negative_score() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U2", "U3", 1.0, -1);
 
@@ -1358,7 +1366,7 @@ fn user_with_recalculate_negative_score() {
 
 #[test]
 fn new_friend_smol() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "Ue925856b9cd9", "Ucc76e1b73be0", 1.0, -1);
 
@@ -1377,7 +1385,7 @@ fn new_friend_smol() {
 
 #[test]
 fn new_friend_big() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   put_testing_edges_2(&mut graph);
 
@@ -1396,7 +1404,7 @@ fn new_friend_big() {
 
 #[test]
 fn edge_uncontexted() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 1.5, -1);
 
@@ -1410,7 +1418,7 @@ fn edge_uncontexted() {
 
 #[test]
 fn edge_contexted() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "U1", "U2", 1.5, -1);
 
@@ -1424,7 +1432,7 @@ fn edge_contexted() {
 
 #[test]
 fn null_context_is_sum() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "B1", "U2", 1.0, -1);
   graph.write_put_edge("Y", "B1", "U2", 2.0, -1);
@@ -1439,7 +1447,7 @@ fn null_context_is_sum() {
 
 #[test]
 fn null_context_contains_all_users() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "U1", "U2", 1.0, -1);
   graph.write_put_edge("Y", "U1", "U3", 2.0, -1);
@@ -1456,7 +1464,7 @@ fn null_context_contains_all_users() {
 
 #[test]
 fn user_edges_dup() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "U1", "U2", 1.0, -1);
   graph.write_put_edge("X", "U1", "U3", 2.0, -1);
@@ -1474,7 +1482,7 @@ fn user_edges_dup() {
 
 #[test]
 fn non_user_edges_no_dup() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "U1", "C2", 1.0, -1);
   graph.write_put_edge("X", "U1", "C3", 2.0, -1);
@@ -1487,7 +1495,7 @@ fn non_user_edges_no_dup() {
 
 #[test]
 fn delete_nodes() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 1.0, -1);
   graph.write_delete_node("", "U1", -1);
@@ -1498,7 +1506,7 @@ fn delete_nodes() {
 
 #[test]
 fn delete_contexted_edge() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "B1", "U2", 1.0, -1);
   graph.write_put_edge("Y", "B1", "U2", 2.0, -1);
@@ -1514,7 +1522,7 @@ fn delete_contexted_edge() {
 
 #[test]
 fn null_context_invariant() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "B1", "B2", 1.0, -1);
   graph.write_put_edge("Y", "B1", "B2", 2.0, -1);
@@ -1531,7 +1539,7 @@ fn null_context_invariant() {
 
 #[test]
 fn scores_uncontexted() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -1578,7 +1586,7 @@ fn scores_uncontexted() {
 
 #[test]
 fn scores_reversed() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -1634,7 +1642,7 @@ fn scores_reversed() {
 
 #[test]
 fn scores_contexted() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "U1", "U2", 2.0, -1);
   graph.write_put_edge("X", "U1", "U3", 1.0, -1);
@@ -1681,7 +1689,7 @@ fn scores_contexted() {
 
 #[test]
 fn scores_unknown_context() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "B1", "B2", 2.0, -1);
   graph.write_put_edge("X", "B1", "B3", 1.0, -1);
@@ -1705,8 +1713,8 @@ fn scores_unknown_context() {
 
 #[test]
 fn scores_reset_smoke() {
-  let mut graph_read = AugMultiGraph::default();
-  let mut graph_write = AugMultiGraph::default();
+  let mut graph_read = default_graph();
+  let mut graph_write = default_graph();
 
   graph_write.write_put_edge("X", "U1", "U2", 2.0, -1);
   graph_write.write_put_edge("X", "U1", "U3", 1.0, -1);
@@ -1744,7 +1752,7 @@ fn scores_reset_smoke() {
 
 #[test]
 fn scores_self() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "B1", "B2", 2.0, -1);
   graph.write_put_edge("X", "B1", "B3", 1.0, -1);
@@ -1773,7 +1781,7 @@ fn scores_self() {
 
 #[test]
 fn node_list_uncontexted() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -1801,7 +1809,7 @@ fn node_list_uncontexted() {
 
 #[test]
 fn node_list_contexted() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "U1", "U2", 2.0, -1);
   graph.write_put_edge("X", "U1", "U3", 1.0, -1);
@@ -1829,7 +1837,7 @@ fn node_list_contexted() {
 
 #[test]
 fn node_list_mixed() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("X", "U1", "U3", 1.0, -1);
@@ -1857,7 +1865,7 @@ fn node_list_mixed() {
 
 #[test]
 fn node_score_uncontexted() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -1874,7 +1882,7 @@ fn node_score_uncontexted() {
 
 #[test]
 fn node_score_reversed() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -1894,7 +1902,7 @@ fn node_score_reversed() {
 
 #[test]
 fn node_score_contexted() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "U1", "U2", 2.0, -1);
   graph.write_put_edge("X", "U1", "U3", 1.0, -1);
@@ -1911,7 +1919,7 @@ fn node_score_contexted() {
 
 #[test]
 fn mutual_scores_uncontexted() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 3.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -1970,7 +1978,7 @@ fn mutual_scores_uncontexted() {
 
 #[test]
 fn mutual_scores_self() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 3.0, -1);
   graph.write_delete_edge("", "U1", "U2", -1);
@@ -1990,7 +1998,7 @@ fn mutual_scores_self() {
 
 #[test]
 fn mutual_scores_contexted() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "U1", "U2", 3.0, -1);
   graph.write_put_edge("X", "U1", "U3", 1.0, -1);
@@ -2047,7 +2055,7 @@ fn mutual_scores_contexted() {
 
 #[test]
 fn graph_uncontexted() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -2086,7 +2094,7 @@ fn graph_uncontexted() {
 
 #[test]
 fn graph_reversed() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -2130,7 +2138,7 @@ fn graph_reversed() {
 
 #[test]
 fn graph_contexted() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "U1", "U2", 2.0, -1);
   graph.write_put_edge("X", "U1", "U3", 1.0, -1);
@@ -2169,7 +2177,7 @@ fn graph_contexted() {
 
 #[test]
 fn graph_empty() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -2190,7 +2198,7 @@ fn graph_empty() {
 
 #[test]
 fn graph_removed_edge() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "B2", 1.0, -1);
   graph.write_put_edge("", "B2", "U1", 2.0, -1);
@@ -2211,7 +2219,7 @@ fn graph_removed_edge() {
 
 #[test]
 fn new_edges_fetch() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 1.0, -1);
 
@@ -2231,7 +2239,7 @@ fn new_edges_fetch() {
 
 #[test]
 fn new_edges_filter() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 1.0, -1);
 
@@ -2259,7 +2267,7 @@ fn new_edges_filter() {
 
 #[test]
 fn copy_user_edges_into_context() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "U1", "U2", 1.0, -1);
   graph.write_put_edge("X", "U1", "C2", 2.0, -1);
@@ -2276,7 +2284,7 @@ fn copy_user_edges_into_context() {
 
 #[test]
 fn context_already_exist() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "U1", "C2", 1.0, -1);
   graph.write_create_context("X");
@@ -2292,7 +2300,7 @@ fn context_already_exist() {
 
 #[test]
 fn mutual_scores_cluster_single_score_uncontexted() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 10.0, -1);
 
@@ -2307,7 +2315,7 @@ fn mutual_scores_cluster_single_score_uncontexted() {
 
 #[test]
 fn mutual_scores_cluster_single_score_contexted() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "U1", "U2", 10.0, -1);
 
@@ -2322,7 +2330,7 @@ fn mutual_scores_cluster_single_score_contexted() {
 
 #[test]
 fn mutual_scores_clustering() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("X", "U1", "U2", -5.0, -1);
   graph.write_put_edge("X", "U1", "U3", -5.0, -1);
@@ -2376,7 +2384,7 @@ fn mutual_scores_clustering() {
 
 #[test]
 fn five_user_scores_clustering() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 5.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -2421,7 +2429,7 @@ fn five_user_scores_clustering() {
 
 #[test]
 fn five_beacon_scores_clustering() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "B2", 5.0, -1);
   graph.write_put_edge("", "U1", "B3", 1.0, -1);
@@ -2464,7 +2472,7 @@ fn five_beacon_scores_clustering() {
 
 #[test]
 fn three_scores_chain_clustering() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U2", "U3", 3.0, -1);
@@ -2501,7 +2509,7 @@ fn three_scores_chain_clustering() {
 
 #[test]
 fn separate_clusters_without_users() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "B1", 3.0, -1);
   graph.write_put_edge("", "U1", "C1", 4.0, -1);
@@ -2530,7 +2538,7 @@ fn separate_clusters_without_users() {
 
 #[test]
 fn separate_clusters_self_score() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "B1", 3.0, -1);
@@ -2559,7 +2567,7 @@ fn separate_clusters_self_score() {
 
 #[test]
 fn set_zero_opinion_uncontexted() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
   graph.write_put_edge("", "U1", "U2", -5.0, -1);
   let s0 = graph.read_node_score("", "U1", "U2")[0].2;
   graph.write_set_zero_opinion("", "U2", 10.0);
@@ -2571,7 +2579,7 @@ fn set_zero_opinion_uncontexted() {
 
 #[test]
 fn set_zero_opinion_contexted() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
   graph.write_put_edge("X", "U1", "U2", -5.0, -1);
   let s0 = graph.read_node_score("X", "U1", "U2")[0].2;
   graph.write_set_zero_opinion("X", "U2", 10.0);
@@ -2583,7 +2591,7 @@ fn set_zero_opinion_contexted() {
 
 #[test]
 fn neighbors_all() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
   graph.write_put_edge("", "U1", "U2", 1.0, -1);
   graph.write_put_edge("", "U2", "U3", 2.0, -1);
   graph.write_put_edge("", "U3", "U1", 3.0, -1);
@@ -2610,7 +2618,7 @@ fn neighbors_all() {
 
 #[test]
 fn neighbors_inbound() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
   graph.write_put_edge("", "U1", "U2", 1.0, -1);
   graph.write_put_edge("", "U2", "U3", 2.0, -1);
   graph.write_put_edge("", "U3", "U1", 3.0, -1);
@@ -2636,7 +2644,7 @@ fn neighbors_inbound() {
 
 #[test]
 fn neighbors_outbound() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
   graph.write_put_edge("", "U1", "U2", 1.0, -1);
   graph.write_put_edge("", "U2", "U3", 2.0, -1);
   graph.write_put_edge("", "U3", "U1", 3.0, -1);
@@ -2694,7 +2702,7 @@ fn vsids_write_edge() {
 
 #[test]
 fn vsids_edges_churn() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
   graph.vsids.bump_factor = 2.0;
 
   // Test for correct rescaling and dynamic deletion of smaller edges when
@@ -2723,7 +2731,7 @@ fn vsids_edges_churn() {
 
 #[test]
 fn regression_recalculate_out_of_bounds() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 1.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -2733,14 +2741,14 @@ fn regression_recalculate_out_of_bounds() {
 
 #[test]
 fn regression_delete_self_reference_panic() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
   graph.write_put_edge("", "Ud57e58e4b20d", "U000000000000", 1.0, -1);
   graph.write_delete_edge("", "U000000000000", "U000000000000", -1);
 }
 
 #[test]
 fn regression_beacons_clustering() {
-  let mut graph = AugMultiGraph::default();
+  let mut graph = default_graph();
 
   graph.write_put_edge("", "U95f3426b8e5d", "U499f24158a40", 1.0, -1);
   graph.write_put_edge("", "U77a03e9a08af", "U6d2f25cc4264", 1.0, -1);
@@ -2959,6 +2967,7 @@ fn regression_beacons_clustering() {
 fn regression_oom() {
   let mut graph = AugMultiGraph::new(AugMultiGraphSettings {
     num_walks: 10000,
+    zero_opinion_num_walks: 10000,
     ..AugMultiGraphSettings::default()
   });
 
@@ -2969,10 +2978,10 @@ fn regression_oom() {
   graph.write_put_edge("", "U389f9f24b31c", "U7a8d8324441d", 1.0, 0);
   graph.write_put_edge("", "U016217c34c6e", "U9a89e0679dec", 1.0, 0);
   graph.write_put_edge("", "U80e22da6d8c4", "U0c17798eaab4", 1.0, 0);
-  graph.write_put_edge("", "U0c17798eaab4", "Udece0afd9a8b" ,-1.0, 0);
+  graph.write_put_edge("", "U0c17798eaab4", "Udece0afd9a8b", -1.0, 0);
   graph.write_put_edge("", "Udece0afd9a8b", "U1c285703fc63", 1.0, 0);
-  graph.write_put_edge("", "Udece0afd9a8b", "Uadeb43da4abb" ,-1.0, 0);
-  graph.write_put_edge("", "Ue7a29d5409f2", "Uc3c31b8a022f" ,-1.0, 0);
+  graph.write_put_edge("", "Udece0afd9a8b", "Uadeb43da4abb", -1.0, 0);
+  graph.write_put_edge("", "Ue7a29d5409f2", "Uc3c31b8a022f", -1.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "Udece0afd9a8b", 1.0, 0);
   graph.write_put_edge("", "U5d33a9be1633", "U0be96c3b9883", 1.0, 0);
   graph.write_put_edge("", "U0be96c3b9883", "U55272fd6c264", 1.0, 0);
@@ -3011,10 +3020,10 @@ fn regression_oom() {
   graph.write_put_edge("", "U28846d74623d", "U286f94380611", 1.0, 0);
   graph.write_put_edge("", "U28846d74623d", "Udab52ec61933", 1.0, 0);
   graph.write_put_edge("", "U1c285703fc63", "Uad577360d968", 1.0, 0);
-  graph.write_put_edge("", "Udece0afd9a8b", "Uc3c31b8a022f" ,-1.0, 0);
-  graph.write_put_edge("", "Uf5096f6ab14e", "U9e42f6dab85a" ,-1.0, 0);
-  graph.write_put_edge("", "Ue7a29d5409f2", "Uaa4e2be7a87a" ,-1.0, 0);
-  graph.write_put_edge("", "U7a8d8324441d", "U1c285703fc63" ,-1.0, 0);
+  graph.write_put_edge("", "Udece0afd9a8b", "Uc3c31b8a022f", -1.0, 0);
+  graph.write_put_edge("", "Uf5096f6ab14e", "U9e42f6dab85a", -1.0, 0);
+  graph.write_put_edge("", "Ue7a29d5409f2", "Uaa4e2be7a87a", -1.0, 0);
+  graph.write_put_edge("", "U7a8d8324441d", "U1c285703fc63", -1.0, 0);
   graph.write_put_edge("", "Udab52ec61933", "U28846d74623d", 1.0, 0);
   graph.write_put_edge("", "Udab52ec61933", "U286f94380611", 1.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "U1c285703fc63", 1.0, 0);
@@ -3214,14 +3223,50 @@ fn regression_oom() {
   graph.write_put_edge("Fatum", "U0080a5f2547d", "B5844890200e7", 1.0, 0);
   graph.write_put_edge("", "Bed48703df71d", "U0ae9f5d0bf02", 1.0, 0);
   graph.write_put_edge("", "U0ae9f5d0bf02", "Bed48703df71d", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Be64122664ec6", "U0ae9f5d0bf02", 1.0, 0);
-  graph.write_put_edge("tentura-test", "U0ae9f5d0bf02", "Be64122664ec6", 1.0, 0);
-  graph.write_put_edge("tentura-test", "B500ed1ecb236", "U0ae9f5d0bf02", 1.0, 0);
-  graph.write_put_edge("tentura-test", "U0ae9f5d0bf02", "B500ed1ecb236", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Be64122664ec6",
+    "U0ae9f5d0bf02",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U0ae9f5d0bf02",
+    "Be64122664ec6",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "B500ed1ecb236",
+    "U0ae9f5d0bf02",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U0ae9f5d0bf02",
+    "B500ed1ecb236",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "Bea6112348aa2", "U0be96c3b9883", 1.0, 0);
   graph.write_put_edge("", "U0be96c3b9883", "Bea6112348aa2", 1.0, 0);
-  graph.write_put_edge("Clean Architecture", "B2b0525693165", "U1ada5dcdea2b", 1.0, 0);
-  graph.write_put_edge("Clean Architecture", "U1ada5dcdea2b", "B2b0525693165", 1.0, 0);
+  graph.write_put_edge(
+    "Clean Architecture",
+    "B2b0525693165",
+    "U1ada5dcdea2b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U1ada5dcdea2b",
+    "B2b0525693165",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "Bca63d8a2057b", "Ub01f4ad1b03f", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "Bca63d8a2057b", 1.0, 0);
   graph.write_put_edge("", "B99e6c816679d", "Ub01f4ad1b03f", 1.0, 0);
@@ -3376,8 +3421,20 @@ fn regression_oom() {
   graph.write_put_edge("", "U8c85f8c3bef7", "B6d130d7414d1", 1.0, 0);
   graph.write_put_edge("", "B988f628fa22f", "U8c85f8c3bef7", 1.0, 0);
   graph.write_put_edge("", "U8c85f8c3bef7", "B988f628fa22f", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "B0cb05535835f", "U2becfc64c13b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U2becfc64c13b", "B0cb05535835f", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "B0cb05535835f",
+    "U2becfc64c13b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U2becfc64c13b",
+    "B0cb05535835f",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Volunteer", "Bc0dc1870dcb1", "Uf82dbb4708ba", 1.0, 0);
   graph.write_put_edge("Volunteer", "Uf82dbb4708ba", "Bc0dc1870dcb1", 1.0, 0);
   graph.write_put_edge("Life", "Bd3cfc011be87", "U46e5959770ad", 1.0, 0);
@@ -3394,48 +3451,240 @@ fn regression_oom() {
   graph.write_put_edge("", "U76a293d70033", "B790089851584", 1.0, 0);
   graph.write_put_edge("", "Bd46b3e9a38bb", "Ud10b3f42f87b", 1.0, 0);
   graph.write_put_edge("", "Ud10b3f42f87b", "Bd46b3e9a38bb", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Bc1cb783b0159", "U286f94380611", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "B521ff7422d52", "U286f94380611", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "B521ff7422d52", 1.0, 0);
-  graph.write_put_edge("Community Support", "B86a6e5de190a", "U3a33697ffab9", 1.0, 0);
-  graph.write_put_edge("Community Support", "U3a33697ffab9", "B86a6e5de190a", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "Bb4dbbb63b373", "U3a33697ffab9", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "U3a33697ffab9", "Bb4dbbb63b373", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "B0055751ce4cc", "U286f94380611", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "B0055751ce4cc", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "B0b176a4c7617", "U3a33697ffab9", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "U3a33697ffab9", "B0b176a4c7617", 1.0, 0);
-  graph.write_put_edge("Community Support", "Be8bb41f4353e", "U3a33697ffab9", 1.0, 0);
-  graph.write_put_edge("Community Support", "U3a33697ffab9", "Be8bb41f4353e", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Bc1cb783b0159",
+    "U286f94380611",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "B521ff7422d52",
+    "U286f94380611",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "B521ff7422d52",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "B86a6e5de190a",
+    "U3a33697ffab9",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U3a33697ffab9",
+    "B86a6e5de190a",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "Bb4dbbb63b373",
+    "U3a33697ffab9",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "U3a33697ffab9",
+    "Bb4dbbb63b373",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "B0055751ce4cc",
+    "U286f94380611",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "B0055751ce4cc",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "B0b176a4c7617",
+    "U3a33697ffab9",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "U3a33697ffab9",
+    "B0b176a4c7617",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "Be8bb41f4353e",
+    "U3a33697ffab9",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U3a33697ffab9",
+    "Be8bb41f4353e",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "B6bbf9d5766c3", "U3a33697ffab9", 1.0, 0);
   graph.write_put_edge("", "U3a33697ffab9", "B6bbf9d5766c3", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Bdbd14ea14b6f", "U2becfc64c13b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U2becfc64c13b", "Bdbd14ea14b6f", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Bdbd14ea14b6f",
+    "U2becfc64c13b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U2becfc64c13b",
+    "Bdbd14ea14b6f",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "B4268797cc8ee", "U3a33697ffab9", 1.0, 0);
   graph.write_put_edge("", "U3a33697ffab9", "B4268797cc8ee", 1.0, 0);
   graph.write_put_edge("", "Bec4566ce9bd4", "U2becfc64c13b", 1.0, 0);
   graph.write_put_edge("", "U2becfc64c13b", "Bec4566ce9bd4", 1.0, 0);
-  graph.write_put_edge("Community Support", "B3b1ee4d8fc29", "U2becfc64c13b", 1.0, 0);
-  graph.write_put_edge("Community Support", "U2becfc64c13b", "B3b1ee4d8fc29", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "B89b51dc35863", "U2becfc64c13b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U2becfc64c13b", "B89b51dc35863", 1.0, 0);
-  graph.write_put_edge("Community Support", "B2005fe10663d", "Ue479f7b03b5d", 1.0, 0);
-  graph.write_put_edge("Community Support", "Ue479f7b03b5d", "B2005fe10663d", 1.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "B3b1ee4d8fc29",
+    "U2becfc64c13b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U2becfc64c13b",
+    "B3b1ee4d8fc29",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "B89b51dc35863",
+    "U2becfc64c13b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U2becfc64c13b",
+    "B89b51dc35863",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "B2005fe10663d",
+    "Ue479f7b03b5d",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "Ue479f7b03b5d",
+    "B2005fe10663d",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "B7e7517882a1d", "Ue479f7b03b5d", 1.0, 0);
   graph.write_put_edge("", "Ue479f7b03b5d", "B7e7517882a1d", 1.0, 0);
-  graph.write_put_edge("Community Support", "B80372f051f17", "Ue479f7b03b5d", 1.0, 0);
-  graph.write_put_edge("Community Support", "Ue479f7b03b5d", "B80372f051f17", 1.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "B80372f051f17",
+    "Ue479f7b03b5d",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "Ue479f7b03b5d",
+    "B80372f051f17",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "Baadac7ab80fe", "U36906cde6568", 1.0, 0);
   graph.write_put_edge("", "U36906cde6568", "Baadac7ab80fe", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "Bcd0a6c69a705", "U4d9267c70eab", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U4d9267c70eab", "Bcd0a6c69a705", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "Bb9d31c168baf", "Ue79d43c03425", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "Ue79d43c03425", "Bb9d31c168baf", 1.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "B080a0d5de22d", "U41906748a800", 1.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "U41906748a800", "B080a0d5de22d", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "B20f3d51e498f", "U4d9267c70eab", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U4d9267c70eab", "B20f3d51e498f", 1.0, 0);
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "Bcd0a6c69a705",
+    "U4d9267c70eab",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U4d9267c70eab",
+    "Bcd0a6c69a705",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "Bb9d31c168baf",
+    "Ue79d43c03425",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "Ue79d43c03425",
+    "Bb9d31c168baf",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "B080a0d5de22d",
+    "U41906748a800",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "U41906748a800",
+    "B080a0d5de22d",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "B20f3d51e498f",
+    "U4d9267c70eab",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U4d9267c70eab",
+    "B20f3d51e498f",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "Baf813d1b4acf", "U4d9267c70eab", 1.0, 0);
   graph.write_put_edge("", "U4d9267c70eab", "Baf813d1b4acf", 1.0, 0);
   graph.write_put_edge("", "B7bade2c63598", "U1ada5dcdea2b", 1.0, 0);
@@ -3456,7 +3705,7 @@ fn regression_oom() {
   graph.write_put_edge("", "U9a2c85753a6d", "B3b3f2ecde430", 6.0, 0);
   graph.write_put_edge("", "Uf5096f6ab14e", "B60d725feca77", 8.0, 0);
   graph.write_put_edge("", "U9e42f6dab85a", "Bad1c69de7837", 3.0, 0);
-  graph.write_put_edge("", "Ud7002ae5a86c", "B75a44a52fa29" ,-2.0, 0);
+  graph.write_put_edge("", "Ud7002ae5a86c", "B75a44a52fa29", -2.0, 0);
   graph.write_put_edge("", "Uaa4e2be7a87a", "B7f628ad203b5", 9.0, 0);
   graph.write_put_edge("", "Uef7fbf45ef11", "B7f628ad203b5", 7.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "B5eb4c6be535a", 5.0, 0);
@@ -3468,16 +3717,16 @@ fn regression_oom() {
   graph.write_put_edge("", "Ub93799d9400e", "B73a44e2bbd44", 5.0, 0);
   graph.write_put_edge("", "Ub93799d9400e", "B491d307dfe01", 2.0, 0);
   graph.write_put_edge("", "U09cf1f359454", "B73a44e2bbd44", 1.0, 0);
-  graph.write_put_edge("Fatum", "U5cd05270c153", "B9c01ce5718d1" ,-56.0, 0);
+  graph.write_put_edge("Fatum", "U5cd05270c153", "B9c01ce5718d1", -56.0, 0);
   graph.write_put_edge("Fatum", "U01814d1ec9ff", "B9c01ce5718d1", 10.0, 0);
   graph.write_put_edge("Fatum", "U09cf1f359454", "B310b66ab31fb", 1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Be2b46c17f1da" ,-1.0, 0);
-  graph.write_put_edge("", "U01814d1ec9ff", "B63fbe1427d09" ,-3.0, 0);
-  graph.write_put_edge("", "U01814d1ec9ff", "B491d307dfe01" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Be2b46c17f1da", -1.0, 0);
+  graph.write_put_edge("", "U01814d1ec9ff", "B63fbe1427d09", -3.0, 0);
+  graph.write_put_edge("", "U01814d1ec9ff", "B491d307dfe01", -1.0, 0);
   graph.write_put_edge("", "U02fbd7c8df4c", "B75a44a52fa29", 7.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B63fbe1427d09" ,-1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B63fbe1427d09", -1.0, 0);
   graph.write_put_edge("Fatum", "U9605bd4d1218", "B9c01ce5718d1", 2.0, 0);
-  graph.write_put_edge("", "U02fbd7c8df4c", "Bad1c69de7837" ,-5.0, 0);
+  graph.write_put_edge("", "U02fbd7c8df4c", "Bad1c69de7837", -5.0, 0);
   graph.write_put_edge("", "Uc3c31b8a022f", "Bb78026d99388", 1.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "B3b3f2ecde430", 9.0, 0);
   graph.write_put_edge("", "Uaa4e2be7a87a", "B0e230e9108dd", 2.0, 0);
@@ -3487,84 +3736,84 @@ fn regression_oom() {
   graph.write_put_edge("", "U26aca0e369c7", "Be2b46c17f1da", 7.0, 0);
   graph.write_put_edge("", "U0c17798eaab4", "B0e230e9108dd", 3.0, 0);
   graph.write_put_edge("", "Udece0afd9a8b", "Bad1c69de7837", 9.0, 0);
-  graph.write_put_edge("", "Uef7fbf45ef11", "B0e230e9108dd" ,-1.0, 0);
+  graph.write_put_edge("", "Uef7fbf45ef11", "B0e230e9108dd", -1.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "B5eb4c6be535a", 1.0, 0);
-  graph.write_put_edge("", "Uc3c31b8a022f", "B3c467fb437b2" ,-1.0, 0);
+  graph.write_put_edge("", "Uc3c31b8a022f", "B3c467fb437b2", -1.0, 0);
   graph.write_put_edge("", "U016217c34c6e", "B3c467fb437b2", 2.0, 0);
   graph.write_put_edge("", "Uf5096f6ab14e", "B3b3f2ecde430", 3.0, 0);
   graph.write_put_edge("", "Uc3c31b8a022f", "B45d72e29f004", 3.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "Be2b46c17f1da", 5.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "B3c467fb437b2", 9.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Bad1c69de7837" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B8a531802473b" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B45d72e29f004" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Bad1c69de7837", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B8a531802473b", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B45d72e29f004", -1.0, 0);
   graph.write_put_edge("", "U9605bd4d1218", "B8a531802473b", 2.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B60d725feca77" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B3c467fb437b2" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B60d725feca77", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B3c467fb437b2", -1.0, 0);
   graph.write_put_edge("", "U01814d1ec9ff", "B8a531802473b", 8.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B5a1c1d3d0140" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B5a1c1d3d0140", -1.0, 0);
   graph.write_put_edge("", "U6661263fb410", "B75a44a52fa29", 3.0, 0);
   graph.write_put_edge("", "U9605bd4d1218", "B5a1c1d3d0140", 2.0, 0);
   graph.write_put_edge("", "U01814d1ec9ff", "Bd7a8bfcf3337", 3.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B3b3f2ecde430" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B3b3f2ecde430", -1.0, 0);
   graph.write_put_edge("Fatum", "Ud5b22ebf52f2", "B310b66ab31fb", 1.0, 0);
-  graph.write_put_edge("", "U01814d1ec9ff", "B3b3f2ecde430" ,-3.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B0e230e9108dd" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Bb78026d99388" ,-1.0, 0);
+  graph.write_put_edge("", "U01814d1ec9ff", "B3b3f2ecde430", -3.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B0e230e9108dd", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Bb78026d99388", -1.0, 0);
   graph.write_put_edge("", "U01814d1ec9ff", "B5a1c1d3d0140", 5.0, 0);
   graph.write_put_edge("", "U9605bd4d1218", "Bd7a8bfcf3337", 1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B5eb4c6be535a" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B25c85fe0df2d" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B5eb4c6be535a", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B25c85fe0df2d", -1.0, 0);
   graph.write_put_edge("Fatum", "U09cf1f359454", "B3f6f837bc345", 1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B63fbe1427d09" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B63fbe1427d09", -1.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "Ba3c4a280657d", 2.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "B491d307dfe01", 3.0, 0);
   graph.write_put_edge("", "Ub93799d9400e", "B75a44a52fa29", 5.0, 0);
   graph.write_put_edge("", "U682c3380036f", "B75a44a52fa29", 2.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B7f628ad203b5" ,-1.0, 0);
-  graph.write_put_edge("", "U01814d1ec9ff", "Bb78026d99388" ,-11.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B7f628ad203b5", -1.0, 0);
+  graph.write_put_edge("", "U01814d1ec9ff", "Bb78026d99388", -11.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "B79efabc4d8bf", 2.0, 0);
   graph.write_put_edge("Fatum", "Ub93799d9400e", "B9c01ce5718d1", 5.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "Bad1c69de7837" ,-1.0, 0);
-  graph.write_put_edge("Fatum", "U6240251593cd", "B9c01ce5718d1" ,-4.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "Bad1c69de7837", -1.0, 0);
+  graph.write_put_edge("Fatum", "U6240251593cd", "B9c01ce5718d1", -4.0, 0);
   graph.write_put_edge("", "U682c3380036f", "Bf34ee3bfc12b", 4.0, 0);
   graph.write_put_edge("", "U6240251593cd", "B75a44a52fa29", 4.0, 0);
   graph.write_put_edge("", "Ua12e78308f49", "B75a44a52fa29", 4.0, 0);
   graph.write_put_edge("Fatum", "Ud9df8116deba", "B310b66ab31fb", 1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B499bfc56e77b" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Be2b46c17f1da" ,-1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B499bfc56e77b", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Be2b46c17f1da", -1.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "Bfefe4e25c870", 4.0, 0);
   graph.write_put_edge("Fatum", "U1e41b5f3adff", "B310b66ab31fb", 5.0, 0);
   graph.write_put_edge("Fatum", "U6d2f25cc4264", "B9c01ce5718d1", 4.0, 0);
   graph.write_put_edge("Fatum", "U8a78048d60f7", "B9c01ce5718d1", 3.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "Bfefe4e25c870", 3.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B3c467fb437b2" ,-1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B3c467fb437b2", -1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "B491d307dfe01", 3.0, 0);
-  graph.write_put_edge("Test", "U8a78048d60f7", "Bd49e3dac97b0" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Bf3a0a1165271" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B8a531802473b" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Bdf39d0e1daf5" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B7f628ad203b5" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B45d72e29f004" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "Bdf39d0e1daf5" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B63fbe1427d09" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B60d725feca77" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Bb78026d99388" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B5eb4c6be535a" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B3b3f2ecde430" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B0e230e9108dd" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B25c85fe0df2d" ,-1.0, 0);
+  graph.write_put_edge("Test", "U8a78048d60f7", "Bd49e3dac97b0", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Bf3a0a1165271", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B8a531802473b", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Bdf39d0e1daf5", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B7f628ad203b5", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B45d72e29f004", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "Bdf39d0e1daf5", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B63fbe1427d09", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B60d725feca77", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Bb78026d99388", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B5eb4c6be535a", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B3b3f2ecde430", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B0e230e9108dd", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B25c85fe0df2d", -1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "Ba3c4a280657d", 3.0, 0);
   graph.write_put_edge("", "U0cd6bd2dde4f", "B7f628ad203b5", 1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "B75a44a52fa29", 3.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Bdf39d0e1daf5" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Ba5d64165e5d5" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Bf3a0a1165271" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B4f14b223b56d" ,-1.0, 0);
-  graph.write_put_edge("Test", "U09cf1f359454", "Bd49e3dac97b0" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Be29b4af3f7a5" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Be5bb2f3d56cb" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B499bfc56e77b" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Bdf39d0e1daf5", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Ba5d64165e5d5", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Bf3a0a1165271", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B4f14b223b56d", -1.0, 0);
+  graph.write_put_edge("Test", "U09cf1f359454", "Bd49e3dac97b0", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Be29b4af3f7a5", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Be5bb2f3d56cb", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B499bfc56e77b", -1.0, 0);
   graph.write_put_edge("", "U09cf1f359454", "B75a44a52fa29", 1.0, 0);
   graph.write_put_edge("", "U1bcba4fd7175", "B4f00e7813add", 3.0, 0);
   graph.write_put_edge("", "U0cd6bd2dde4f", "B92e4a185c654", 1.0, 0);
@@ -3577,66 +3826,66 @@ fn regression_oom() {
   graph.write_put_edge("", "U8a78048d60f7", "Bd90a1cf73384", 3.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "B0a87a669fc28", 3.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "B19ea554faf29", 3.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "Bb78026d99388" ,-1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "Bb78026d99388", -1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "Bb1e3630d2f4a", 3.0, 0);
   graph.write_put_edge("", "Ub20ed0f8f9b0", "B6d130d7414d1", 0.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "Bf34ee3bfc12b", 3.0, 0);
-  graph.write_put_edge("", "Uc35c445325f5", "B8a531802473b" ,-5.0, 0);
+  graph.write_put_edge("", "Uc35c445325f5", "B8a531802473b", -5.0, 0);
   graph.write_put_edge("", "U1bcba4fd7175", "Bfefe4e25c870", 5.0, 0);
   graph.write_put_edge("", "U3c63a9b6115a", "B75a44a52fa29", 5.0, 0);
   graph.write_put_edge("", "Ud04c89aaf453", "B73a44e2bbd44", 4.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B5eb4c6be535a" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B8a531802473b" ,-1.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "Bb78026d99388" ,-1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B5eb4c6be535a", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B8a531802473b", -1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "Bb78026d99388", -1.0, 0);
   graph.write_put_edge("Fatum", "U09cf1f359454", "B9c01ce5718d1", 2.0, 0);
   graph.write_put_edge("", "U09cf1f359454", "B491d307dfe01", 2.0, 0);
   graph.write_put_edge("", "U1bcba4fd7175", "Bc4addf09b79f", 3.0, 0);
-  graph.write_put_edge("", "U1bcba4fd7175", "B0e230e9108dd" ,-1.0, 0);
+  graph.write_put_edge("", "U1bcba4fd7175", "B0e230e9108dd", -1.0, 0);
   graph.write_put_edge("", "Uce7e9acd408e", "B8fabb952bc4b", 7.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "Be2b46c17f1da" ,-1.0, 0);
-  graph.write_put_edge("Fatum", "U79466f73dc0c", "B9c01ce5718d1" ,-6.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Ba5d64165e5d5" ,-1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "Be2b46c17f1da", -1.0, 0);
+  graph.write_put_edge("Fatum", "U79466f73dc0c", "B9c01ce5718d1", -6.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Ba5d64165e5d5", -1.0, 0);
   graph.write_put_edge("", "Uc35c445325f5", "B75a44a52fa29", 2.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "B60d725feca77" ,-1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "B60d725feca77", -1.0, 0);
   graph.write_put_edge("Fatum", "Uc35c445325f5", "B9c01ce5718d1", 4.0, 0);
   graph.write_put_edge("", "U1bcba4fd7175", "B73a44e2bbd44", 3.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "Be2b46c17f1da" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Be29b4af3f7a5" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B4f14b223b56d" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Be5bb2f3d56cb" ,-1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "Be2b46c17f1da", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Be29b4af3f7a5", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B4f14b223b56d", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Be5bb2f3d56cb", -1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "Bd7a8bfcf3337", 1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "B79efabc4d8bf", 1.0, 0);
   graph.write_put_edge("Fatum", "U0cd6bd2dde4f", "B9c01ce5718d1", 1.0, 0);
   graph.write_put_edge("", "U0cd6bd2dde4f", "B75a44a52fa29", 1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B499bfc56e77b" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B25c85fe0df2d" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B3c467fb437b2" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B3b3f2ecde430" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Bc896788cd2ef" ,-1.0, 0);
-  graph.write_put_edge("", "U1bcba4fd7175", "B45d72e29f004" ,-9.0, 0);
-  graph.write_put_edge("", "U1bcba4fd7175", "Be2b46c17f1da" ,-1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B499bfc56e77b", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B25c85fe0df2d", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B3c467fb437b2", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B3b3f2ecde430", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Bc896788cd2ef", -1.0, 0);
+  graph.write_put_edge("", "U1bcba4fd7175", "B45d72e29f004", -9.0, 0);
+  graph.write_put_edge("", "U1bcba4fd7175", "Be2b46c17f1da", -1.0, 0);
   graph.write_put_edge("Fatum", "U1bcba4fd7175", "B9c01ce5718d1", 9.0, 0);
   graph.write_put_edge("", "U79466f73dc0c", "B45d72e29f004", 5.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "B79efabc4d8bf" ,-1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "B79efabc4d8bf", -1.0, 0);
   graph.write_put_edge("", "U79466f73dc0c", "B7f628ad203b5", 6.0, 0);
-  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B9c01ce5718d1" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B9c01ce5718d1", -1.0, 0);
   graph.write_put_edge("", "U79466f73dc0c", "Be2b46c17f1da", 4.0, 0);
   graph.write_put_edge("", "U79466f73dc0c", "Bad1c69de7837", 2.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "B0e230e9108dd" ,-10.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "B0e230e9108dd", -10.0, 0);
   graph.write_put_edge("game", "U3ea0a229ad85", "Bc4603804bacf", 4.0, 0);
   graph.write_put_edge("", "Uce7e9acd408e", "Ba3c4a280657d", 0.0, 0);
   graph.write_put_edge("Fatum", "U638f5c19326f", "B9c01ce5718d1", 2.0, 0);
   graph.write_put_edge("", "U3ea0a229ad85", "Bea6112348aa2", 1.0, 0);
   graph.write_put_edge("cat", "U3ea0a229ad85", "Bc8526e892c5d", 1.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "B25c85fe0df2d" ,-7.0, 0);
-  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B310b66ab31fb" ,-12.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "B491d307dfe01" ,-7.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "B25c85fe0df2d", -7.0, 0);
+  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B310b66ab31fb", -12.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "B491d307dfe01", -7.0, 0);
   graph.write_put_edge("Fatum", "Ud2123c013577", "B310b66ab31fb", 2.0, 0);
   graph.write_put_edge("Fatum", "Ud2123c013577", "B9c01ce5718d1", 3.0, 0);
   graph.write_put_edge("", "Ueb139752b907", "B1533941e2773", 1.0, 0);
-  graph.write_put_edge("", "Uce7e9acd408e", "B60d725feca77" ,-1.0, 0);
+  graph.write_put_edge("", "Uce7e9acd408e", "B60d725feca77", -1.0, 0);
   graph.write_put_edge("", "Uce7e9acd408e", "B75a44a52fa29", 3.0, 0);
-  graph.write_put_edge("", "U11456af7d414", "Bad1c69de7837" ,-2.0, 0);
+  graph.write_put_edge("", "U11456af7d414", "Bad1c69de7837", -2.0, 0);
   graph.write_put_edge("", "U18a178de1dfb", "B491d307dfe01", 1.0, 0);
   graph.write_put_edge("", "U18a178de1dfb", "B75a44a52fa29", 1.0, 0);
   graph.write_put_edge("Fatum", "U18a178de1dfb", "B310b66ab31fb", 1.0, 0);
@@ -3646,8 +3895,8 @@ fn regression_oom() {
   graph.write_put_edge("", "Uce7e9acd408e", "Bea6112348aa2", 3.0, 0);
   graph.write_put_edge("game", "Uce7e9acd408e", "Bc4603804bacf", 8.0, 0);
   graph.write_put_edge("Fatum", "Uce7e9acd408e", "B3f6f837bc345", 4.0, 0);
-  graph.write_put_edge("Fatum", "U76a293d70033", "B310b66ab31fb" ,-2.0, 0);
-  graph.write_put_edge("Fatum", "U76a293d70033", "B3f6f837bc345" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U76a293d70033", "B310b66ab31fb", -2.0, 0);
+  graph.write_put_edge("Fatum", "U76a293d70033", "B3f6f837bc345", -1.0, 0);
   graph.write_put_edge("", "U3ea0a229ad85", "B7fbe3633b4b0", 1.0, 0);
   graph.write_put_edge("", "Ua37f245cf686", "B7f628ad203b5", 2.0, 0);
   graph.write_put_edge("", "Ua37f245cf686", "B491d307dfe01", 2.0, 0);
@@ -3657,12 +3906,18 @@ fn regression_oom() {
   graph.write_put_edge("", "U18a178de1dfb", "B1533941e2773", 1.0, 0);
   graph.write_put_edge("", "U18a178de1dfb", "Bc4addf09b79f", 1.0, 0);
   graph.write_put_edge("", "U18a178de1dfb", "B70df5dbab8c3", 1.0, 0);
-  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B3f6f837bc345" ,-11.0, 0);
-  graph.write_put_edge("Clean Architecture", "Ub20ed0f8f9b0", "B2b0525693165" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B3f6f837bc345", -11.0, 0);
+  graph.write_put_edge(
+    "Clean Architecture",
+    "Ub20ed0f8f9b0",
+    "B2b0525693165",
+    -1.0,
+    0,
+  );
   graph.write_put_edge("", "U0162cf4b43ae", "Bf3a0a1165271", 1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bd7a8bfcf3337" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bfefe4e25c870" ,-2.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Ba3c4a280657d" ,-2.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bd7a8bfcf3337", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bfefe4e25c870", -2.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Ba3c4a280657d", -2.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "B3f6f837bc345", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B75a44a52fa29", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B1533941e2773", 3.0, 0);
@@ -3670,83 +3925,107 @@ fn regression_oom() {
   graph.write_put_edge("", "Ub01f4ad1b03f", "Bc4addf09b79f", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B4f00e7813add", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B70df5dbab8c3", 1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Be2b46c17f1da" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B45d72e29f004" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B8a531802473b" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B5a1c1d3d0140" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B60d725feca77" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B3c467fb437b2" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B3b3f2ecde430" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B5eb4c6be535a" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bb78026d99388" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B0e230e9108dd" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B25c85fe0df2d" ,-1.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "Bed5126bc655d" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Be2b46c17f1da", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B45d72e29f004", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B8a531802473b", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B5a1c1d3d0140", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B60d725feca77", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B3c467fb437b2", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B3b3f2ecde430", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B5eb4c6be535a", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bb78026d99388", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B0e230e9108dd", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B25c85fe0df2d", -1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "Bed5126bc655d", -1.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "B310b66ab31fb", 2.0, 0);
   graph.write_put_edge("", "U95f3426b8e5d", "B79efabc4d8bf", 3.0, 0);
   graph.write_put_edge("Fatum", "U95f3426b8e5d", "B9c01ce5718d1", 2.0, 0);
   graph.write_put_edge("", "Ucc76e1b73be0", "B7f628ad203b5", 4.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bfae1726e4e87" ,-1.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "Bd7a8bfcf3337" ,-14.0, 0);
-  graph.write_put_edge("tentura-test", "Ub01f4ad1b03f", "Be64122664ec6" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bb1e3630d2f4a" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bfae1726e4e87", -1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "Bd7a8bfcf3337", -14.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub01f4ad1b03f",
+    "Be64122664ec6",
+    -1.0,
+    0,
+  );
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bb1e3630d2f4a", -1.0, 0);
   graph.write_put_edge("", "Ud2123c013577", "B79efabc4d8bf", 0.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B0a87a669fc28" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B0a87a669fc28", -1.0, 0);
   graph.write_put_edge("Fatum", "Ud2123c013577", "B3f6f837bc345", 1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B19ea554faf29" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B92e4a185c654" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B19ea554faf29", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B92e4a185c654", -1.0, 0);
   graph.write_put_edge("Fatum", "Ub9713d01f478", "B9c01ce5718d1", 6.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bd90a1cf73384" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B10d3f548efc4" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bf34ee3bfc12b" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bd90a1cf73384", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B10d3f548efc4", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bf34ee3bfc12b", -1.0, 0);
   graph.write_put_edge("", "Ud2123c013577", "B60d725feca77", 0.0, 0);
-  graph.write_put_edge("", "Uce7e9acd408e", "Bf34ee3bfc12b" ,-1.0, 0);
+  graph.write_put_edge("", "Uce7e9acd408e", "Bf34ee3bfc12b", -1.0, 0);
   graph.write_put_edge("Fatum", "U77a03e9a08af", "B4b8fafa86526", 0.0, 0);
-  graph.write_put_edge("game", "Ud2123c013577", "Bc4603804bacf" ,-1.0, 0);
+  graph.write_put_edge("game", "Ud2123c013577", "Bc4603804bacf", -1.0, 0);
   graph.write_put_edge("", "Uf82dbb4708ba", "B60d725feca77", 11.0, 0);
   graph.write_put_edge("", "Ud2123c013577", "B7f628ad203b5", 0.0, 0);
-  graph.write_put_edge("", "U77a03e9a08af", "B7f628ad203b5" ,-3.0, 0);
-  graph.write_put_edge("tentura-test", "Ud2123c013577", "B500ed1ecb236", 0.0, 0);
+  graph.write_put_edge("", "U77a03e9a08af", "B7f628ad203b5", -3.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Ud2123c013577",
+    "B500ed1ecb236",
+    0.0,
+    0,
+  );
   graph.write_put_edge("", "Uf82dbb4708ba", "Bad1c69de7837", 8.0, 0);
   graph.write_put_edge("home", "U3ea0a229ad85", "B5ab3ad635025", 2.0, 0);
-  graph.write_put_edge("tentura-test", "Uf82dbb4708ba", "Be64122664ec6", 3.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Uf82dbb4708ba",
+    "Be64122664ec6",
+    3.0,
+    0,
+  );
   graph.write_put_edge("", "U425e5e1ff39b", "B790089851584", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B491d307dfe01", 1.0, 0);
-  graph.write_put_edge("", "U0be96c3b9883", "B25c85fe0df2d" ,-4.0, 0);
+  graph.write_put_edge("", "U0be96c3b9883", "B25c85fe0df2d", -4.0, 0);
   graph.write_put_edge("Photo", "Ub01f4ad1b03f", "Bf97103a947f5", 3.0, 0);
-  graph.write_put_edge("", "U0be96c3b9883", "Be2b46c17f1da" ,-3.0, 0);
+  graph.write_put_edge("", "U0be96c3b9883", "Be2b46c17f1da", -3.0, 0);
   graph.write_put_edge("Fatum", "Ua37f245cf686", "B9c01ce5718d1", 2.0, 0);
   graph.write_put_edge("", "Ub9713d01f478", "Bd46b3e9a38bb", 2.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B68d3b36887e4", 4.0, 0);
   graph.write_put_edge("", "U881eb59c559f", "B491d307dfe01", 1.0, 0);
   graph.write_put_edge("", "U881eb59c559f", "Ba3c4a280657d", 1.0, 0);
-  graph.write_put_edge("Fatum", "U881eb59c559f", "B310b66ab31fb" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U881eb59c559f", "B310b66ab31fb", -1.0, 0);
   graph.write_put_edge("cat", "U881eb59c559f", "Bc8526e892c5d", 1.0, 0);
   graph.write_put_edge("home", "Ub01f4ad1b03f", "B5ab3ad635025", 2.0, 0);
   graph.write_put_edge("Fatum", "U77a03e9a08af", "B9c01ce5718d1", 1.0, 0);
-  graph.write_put_edge("", "Ub20ed0f8f9b0", "Baadac7ab80fe" ,-1.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "Bfefe4e25c870" ,-6.0, 0);
+  graph.write_put_edge("", "Ub20ed0f8f9b0", "Baadac7ab80fe", -1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "Bfefe4e25c870", -6.0, 0);
   graph.write_put_edge("Glamour", "U163b54808a6b", "B5f6a16260bac", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B7f628ad203b5", 1.0, 0);
   graph.write_put_edge("", "U17b825d673df", "B7f628ad203b5", 1.0, 0);
   graph.write_put_edge("", "U163b54808a6b", "B4f00e7813add", 1.0, 0);
-  graph.write_put_edge("", "Uf82dbb4708ba", "B0e230e9108dd" ,-7.0, 0);
+  graph.write_put_edge("", "Uf82dbb4708ba", "B0e230e9108dd", -7.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B8fabb952bc4b", 3.0, 0);
-  graph.write_put_edge("tentura-test", "U163b54808a6b", "Be64122664ec6", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "U163b54808a6b",
+    "Be64122664ec6",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "B4b8fafa86526", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "Bea6112348aa2", 3.0, 0);
   graph.write_put_edge("game", "Ub01f4ad1b03f", "Bc4603804bacf", 4.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bed48703df71d" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bed48703df71d", -1.0, 0);
   graph.write_put_edge("Fatum", "Ucc6cc40df2b7", "B9c01ce5718d1", 1.0, 0);
   graph.write_put_edge("", "Uf82dbb4708ba", "B75a44a52fa29", 7.0, 0);
   graph.write_put_edge("cat", "Ub01f4ad1b03f", "Bc8526e892c5d", 4.0, 0);
   graph.write_put_edge("game", "U0080a5f2547d", "Bc4603804bacf", 1.0, 0);
   graph.write_put_edge("", "U76a293d70033", "B55cc136fc220", 6.0, 0);
   graph.write_put_edge("Fatum", "Ub7b49e360599", "B9c01ce5718d1", 1.0, 0);
-  graph.write_put_edge("Fatum", "U68c2a35a5c73", "B310b66ab31fb" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U68c2a35a5c73", "B310b66ab31fb", -1.0, 0);
   graph.write_put_edge("game", "U881eb59c559f", "Bc4603804bacf", 1.0, 0);
   graph.write_put_edge("", "Ucc6cc40df2b7", "Bfefe4e25c870", 1.0, 0);
-  graph.write_put_edge("", "Uce7e9acd408e", "Bed48703df71d" ,-2.0, 0);
+  graph.write_put_edge("", "Uce7e9acd408e", "Bed48703df71d", -2.0, 0);
   graph.write_put_edge("", "U881eb59c559f", "B7f628ad203b5", 1.0, 0);
   graph.write_put_edge("", "Ucc6cc40df2b7", "Ba3c4a280657d", 1.0, 0);
   graph.write_put_edge("", "Ucc6cc40df2b7", "B491d307dfe01", 1.0, 0);
@@ -3754,26 +4033,68 @@ fn regression_oom() {
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "B9c01ce5718d1", 0.0, 0);
   graph.write_put_edge("", "U17b825d673df", "B491d307dfe01", 6.0, 0);
   graph.write_put_edge("Glamour", "U3be62375581d", "B5f6a16260bac", 1.0, 0);
-  graph.write_put_edge("", "U77a03e9a08af", "Bad1c69de7837" ,-4.0, 0);
+  graph.write_put_edge("", "U77a03e9a08af", "Bad1c69de7837", -4.0, 0);
   graph.write_put_edge("", "U77a03e9a08af", "Bb78026d99388", 3.0, 0);
-  graph.write_put_edge("tentura-test", "U77a03e9a08af", "Be64122664ec6", 2.0, 0);
-  graph.write_put_edge("tentura-test", "U77a03e9a08af", "B500ed1ecb236", 7.0, 0);
-  graph.write_put_edge("tentura-test", "U163b54808a6b", "B500ed1ecb236", 1.0, 0);
-  graph.write_put_edge("", "U77a03e9a08af", "B45d72e29f004" ,-2.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "U77a03e9a08af",
+    "Be64122664ec6",
+    2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U77a03e9a08af",
+    "B500ed1ecb236",
+    7.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U163b54808a6b",
+    "B500ed1ecb236",
+    1.0,
+    0,
+  );
+  graph.write_put_edge("", "U77a03e9a08af", "B45d72e29f004", -2.0, 0);
   graph.write_put_edge("Fatum", "U163b54808a6b", "B4b8fafa86526", 1.0, 0);
   graph.write_put_edge("cat", "U46e5959770ad", "Bc8526e892c5d", 5.0, 0);
   graph.write_put_edge("", "U17b825d673df", "B30bf91bf5845", 5.0, 0);
   graph.write_put_edge("", "U75cddb09a54e", "B7fbe3633b4b0", 1.0, 0);
   graph.write_put_edge("home", "U46e5959770ad", "B5ab3ad635025", 5.0, 0);
   graph.write_put_edge("Fatum", "Ub4b46ee7a5e4", "B9c01ce5718d1", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Ub4b46ee7a5e4", "B500ed1ecb236", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Ub4b46ee7a5e4", "Be64122664ec6", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub4b46ee7a5e4",
+    "B500ed1ecb236",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub4b46ee7a5e4",
+    "Be64122664ec6",
+    1.0,
+    0,
+  );
   graph.write_put_edge("home", "U75cddb09a54e", "B5ab3ad635025", 2.0, 0);
   graph.write_put_edge("Fatum", "U3ea0a229ad85", "B310b66ab31fb", 1.0, 0);
   graph.write_put_edge("", "U75cddb09a54e", "Bca63d8a2057b", 1.0, 0);
   graph.write_put_edge("Photo", "U75cddb09a54e", "Bf97103a947f5", 1.0, 0);
-  graph.write_put_edge("tentura-test", "U3ea0a229ad85", "B500ed1ecb236", 1.0, 0);
-  graph.write_put_edge("tentura-test", "U3ea0a229ad85", "Be64122664ec6", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "U3ea0a229ad85",
+    "B500ed1ecb236",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U3ea0a229ad85",
+    "Be64122664ec6",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "U75cddb09a54e", "B68d3b36887e4", 1.0, 0);
   graph.write_put_edge("Glamour", "U75cddb09a54e", "B5f6a16260bac", 1.0, 0);
   graph.write_put_edge("", "U9de057150efc", "B91796a98a225", 1.0, 0);
@@ -3782,123 +4103,561 @@ fn regression_oom() {
   graph.write_put_edge("", "U29a00cc1c9c2", "B499bfc56e77b", 2.0, 0);
   graph.write_put_edge("Glamour", "Ub01f4ad1b03f", "B5f6a16260bac", 2.0, 0);
   graph.write_put_edge("", "U0da9b1b0859f", "B8fabb952bc4b", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Ub01f4ad1b03f", "B500ed1ecb236" ,-1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub01f4ad1b03f",
+    "B500ed1ecb236",
+    -1.0,
+    0,
+  );
   graph.write_put_edge("", "Ub01f4ad1b03f", "Bca63d8a2057b", 3.0, 0);
   graph.write_put_edge("", "U0ae9f5d0bf02", "B30bf91bf5845", 2.0, 0);
   graph.write_put_edge("", "U0ae9f5d0bf02", "Bad1c69de7837", 4.0, 0);
   graph.write_put_edge("Fatum", "U0ae9f5d0bf02", "B310b66ab31fb", 5.0, 0);
   graph.write_put_edge("", "U0ae9f5d0bf02", "Be2b46c17f1da", 3.0, 0);
-  graph.write_put_edge("", "U5cd05270c153", "Baadac7ab80fe" ,-1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "B0055751ce4cc", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "B521ff7422d52", 1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B55cc136fc220" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B790089851584" ,-1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U41906748a800", "B0055751ce4cc" ,-5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "Bc1cb783b0159", 4.0, 0);
-  graph.write_put_edge("QuestForGlory", "U050e67479957", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U6301c73d1354", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U8ebde6fbfd3f", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U2becfc64c13b", "Bc1cb783b0159", 1.0, 0);
+  graph.write_put_edge("", "U5cd05270c153", "Baadac7ab80fe", -1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "B0055751ce4cc",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "B521ff7422d52",
+    1.0,
+    0,
+  );
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B55cc136fc220", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B790089851584", -1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U41906748a800",
+    "B0055751ce4cc",
+    -5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "Bc1cb783b0159",
+    4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U050e67479957",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U6301c73d1354",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U8ebde6fbfd3f",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U2becfc64c13b",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "U1ada5dcdea2b", "Baf813d1b4acf", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U1ada5dcdea2b", "B20f3d51e498f", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "U286f94380611", "B0b176a4c7617" ,-2.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "U286f94380611", "B080a0d5de22d" ,-4.0, 0);
-  graph.write_put_edge("Community Support", "U41906748a800", "B3b1ee4d8fc29" ,-2.0, 0);
-  graph.write_put_edge("There and Back Again", "U41906748a800", "B0b176a4c7617" ,-1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U41906748a800", "B521ff7422d52" ,-5.0, 0);
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U1ada5dcdea2b",
+    "B20f3d51e498f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "U286f94380611",
+    "B0b176a4c7617",
+    -2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "U286f94380611",
+    "B080a0d5de22d",
+    -4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U41906748a800",
+    "B3b1ee4d8fc29",
+    -2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "U41906748a800",
+    "B0b176a4c7617",
+    -1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U41906748a800",
+    "B521ff7422d52",
+    -5.0,
+    0,
+  );
   graph.write_put_edge("", "U4d9267c70eab", "B7bade2c63598", 3.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B4268797cc8ee" ,-2.0, 0);
-  graph.write_put_edge("QuestForGlory", "U8c85f8c3bef7", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "U8c85f8c3bef7", "B080a0d5de22d", 1.0, 0);
-  graph.write_put_edge("Clean Architecture", "U8c85f8c3bef7", "B2b0525693165", 1.0, 0);
+  graph.write_put_edge("", "U41906748a800", "B4268797cc8ee", -2.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U8c85f8c3bef7",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "U8c85f8c3bef7",
+    "B080a0d5de22d",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U8c85f8c3bef7",
+    "B2b0525693165",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "U41906748a800", "Baadac7ab80fe", 2.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U41906748a800", "B20f3d51e498f", 5.0, 0);
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U41906748a800",
+    "B20f3d51e498f",
+    5.0,
+    0,
+  );
   graph.write_put_edge("", "U286f94380611", "B6d130d7414d1", 3.0, 0);
   graph.write_put_edge("", "U286f94380611", "B6bbf9d5766c3", 5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U4d9267c70eab", "Bc1cb783b0159" ,-5.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ud5984640e941", "Bc1cb783b0159", 5.0, 0);
-  graph.write_put_edge("Community Support", "U4d9267c70eab", "B86a6e5de190a" ,-4.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "Ud5984640e941", "B080a0d5de22d" ,-3.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U286f94380611", "B20f3d51e498f" ,-5.0, 0);
-  graph.write_put_edge("Clean Architecture", "U4d9267c70eab", "B2b0525693165", 4.0, 0);
-  graph.write_put_edge("", "U4d9267c70eab", "B6bbf9d5766c3" ,-5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U41906748a800", "Bc1cb783b0159" ,-5.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B6bbf9d5766c3" ,-5.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "U4d9267c70eab", "B080a0d5de22d", 5.0, 0);
-  graph.write_put_edge("Clean Architecture", "U41906748a800", "B2b0525693165", 5.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U4d9267c70eab",
+    "Bc1cb783b0159",
+    -5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ud5984640e941",
+    "Bc1cb783b0159",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U4d9267c70eab",
+    "B86a6e5de190a",
+    -4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "Ud5984640e941",
+    "B080a0d5de22d",
+    -3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U286f94380611",
+    "B20f3d51e498f",
+    -5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U4d9267c70eab",
+    "B2b0525693165",
+    4.0,
+    0,
+  );
+  graph.write_put_edge("", "U4d9267c70eab", "B6bbf9d5766c3", -5.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U41906748a800",
+    "Bc1cb783b0159",
+    -5.0,
+    0,
+  );
+  graph.write_put_edge("", "U41906748a800", "B6bbf9d5766c3", -5.0, 0);
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "U4d9267c70eab",
+    "B080a0d5de22d",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U41906748a800",
+    "B2b0525693165",
+    5.0,
+    0,
+  );
   graph.write_put_edge("", "U4d9267c70eab", "Baadac7ab80fe", 3.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B3c8ee2c064f6" ,-6.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B988f628fa22f" ,-5.0, 0);
+  graph.write_put_edge("", "U41906748a800", "B3c8ee2c064f6", -6.0, 0);
+  graph.write_put_edge("", "U41906748a800", "B988f628fa22f", -5.0, 0);
   graph.write_put_edge("", "U41906748a800", "Baf813d1b4acf", 7.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B6d130d7414d1" ,-5.0, 0);
+  graph.write_put_edge("", "U41906748a800", "B6d130d7414d1", -5.0, 0);
   graph.write_put_edge("", "U286f94380611", "B4342c0e949fb", 2.0, 0);
-  graph.write_put_edge("", "U4d9267c70eab", "B3c8ee2c064f6" ,-3.0, 0);
-  graph.write_put_edge("QuestForGlory", "U4d9267c70eab", "B0055751ce4cc" ,-3.0, 0);
+  graph.write_put_edge("", "U4d9267c70eab", "B3c8ee2c064f6", -3.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U4d9267c70eab",
+    "B0055751ce4cc",
+    -3.0,
+    0,
+  );
   graph.write_put_edge("", "U41906748a800", "B7bade2c63598", 5.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B4342c0e949fb" ,-5.0, 0);
-  graph.write_put_edge("Community Support", "U4d9267c70eab", "B3b1ee4d8fc29" ,-4.0, 0);
-  graph.write_put_edge("Community Support", "U4d9267c70eab", "B80372f051f17" ,-2.0, 0);
-  graph.write_put_edge("Community Support", "U41906748a800", "B86a6e5de190a" ,-2.0, 0);
-  graph.write_put_edge("Community Support", "U286f94380611", "B3b1ee4d8fc29", 2.0, 0);
-  graph.write_put_edge("Community Support", "U41906748a800", "Be8bb41f4353e" ,-2.0, 0);
+  graph.write_put_edge("", "U41906748a800", "B4342c0e949fb", -5.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "U4d9267c70eab",
+    "B3b1ee4d8fc29",
+    -4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U4d9267c70eab",
+    "B80372f051f17",
+    -2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U41906748a800",
+    "B86a6e5de190a",
+    -2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U286f94380611",
+    "B3b1ee4d8fc29",
+    2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U41906748a800",
+    "Be8bb41f4353e",
+    -2.0,
+    0,
+  );
   graph.write_put_edge("", "U286f94380611", "B7bade2c63598", 5.0, 0);
-  graph.write_put_edge("There and Back Again", "U41906748a800", "Bb4dbbb63b373" ,-1.0, 0);
-  graph.write_put_edge("", "U4d9267c70eab", "B4268797cc8ee" ,-3.0, 0);
-  graph.write_put_edge("There and Back Again", "U4d9267c70eab", "B0b176a4c7617" ,-3.0, 0);
-  graph.write_put_edge("QuestForGlory", "U4d9267c70eab", "B521ff7422d52" ,-6.0, 0);
-  graph.write_put_edge("Community Support", "U286f94380611", "Be8bb41f4353e", 4.0, 0);
-  graph.write_put_edge("QuestForGlory", "U4d9267c70eab", "Bdbd14ea14b6f" ,-1.0, 0);
-  graph.write_put_edge("Community Support", "U4d9267c70eab", "Be8bb41f4353e" ,-5.0, 0);
+  graph.write_put_edge(
+    "There and Back Again",
+    "U41906748a800",
+    "Bb4dbbb63b373",
+    -1.0,
+    0,
+  );
+  graph.write_put_edge("", "U4d9267c70eab", "B4268797cc8ee", -3.0, 0);
+  graph.write_put_edge(
+    "There and Back Again",
+    "U4d9267c70eab",
+    "B0b176a4c7617",
+    -3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U4d9267c70eab",
+    "B521ff7422d52",
+    -6.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U286f94380611",
+    "Be8bb41f4353e",
+    4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U4d9267c70eab",
+    "Bdbd14ea14b6f",
+    -1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U4d9267c70eab",
+    "Be8bb41f4353e",
+    -5.0,
+    0,
+  );
   graph.write_put_edge("", "U286f94380611", "B3c8ee2c064f6", 5.0, 0);
   graph.write_put_edge("", "U286f94380611", "B988f628fa22f", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "U4d9267c70eab", "Bb4dbbb63b373" ,-5.0, 0);
-  graph.write_put_edge("Clean Architecture", "U286f94380611", "B2b0525693165", 5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "B89b51dc35863", 3.0, 0);
-  graph.write_put_edge("Community Support", "U286f94380611", "B2005fe10663d" ,-3.0, 0);
-  graph.write_put_edge("There and Back Again", "U286f94380611", "Bb4dbbb63b373", 4.0, 0);
-  graph.write_put_edge("", "U286f94380611", "Baf813d1b4acf" ,-5.0, 0);
+  graph.write_put_edge(
+    "There and Back Again",
+    "U4d9267c70eab",
+    "Bb4dbbb63b373",
+    -5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U286f94380611",
+    "B2b0525693165",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "B89b51dc35863",
+    3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U286f94380611",
+    "B2005fe10663d",
+    -3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "U286f94380611",
+    "Bb4dbbb63b373",
+    4.0,
+    0,
+  );
+  graph.write_put_edge("", "U286f94380611", "Baf813d1b4acf", -5.0, 0);
   graph.write_put_edge("", "U286f94380611", "Bec4566ce9bd4", 3.0, 0);
   graph.write_put_edge("", "U286f94380611", "B4268797cc8ee", 4.0, 0);
-  graph.write_put_edge("Community Support", "U286f94380611", "B86a6e5de190a", 4.0, 0);
-  graph.write_put_edge("Community Support", "U286f94380611", "B80372f051f17" ,-3.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "U3a33697ffab9", "B080a0d5de22d" ,-3.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "Bdbd14ea14b6f", 3.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "B89b51dc35863", 4.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "B0cb05535835f", 3.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U3a33697ffab9", "B20f3d51e498f" ,-4.0, 0);
-  graph.write_put_edge("", "U286f94380611", "B7e7517882a1d" ,-3.0, 0);
-  graph.write_put_edge("Clean Architecture", "U3a33697ffab9", "B2b0525693165", 5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "Bc1cb783b0159", 5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "B0cb05535835f", 5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "Bdbd14ea14b6f", 4.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "U286f94380611",
+    "B86a6e5de190a",
+    4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U286f94380611",
+    "B80372f051f17",
+    -3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "U3a33697ffab9",
+    "B080a0d5de22d",
+    -3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "Bdbd14ea14b6f",
+    3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "B89b51dc35863",
+    4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "B0cb05535835f",
+    3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U3a33697ffab9",
+    "B20f3d51e498f",
+    -4.0,
+    0,
+  );
+  graph.write_put_edge("", "U286f94380611", "B7e7517882a1d", -3.0, 0);
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U3a33697ffab9",
+    "B2b0525693165",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "Bc1cb783b0159",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "B0cb05535835f",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "Bdbd14ea14b6f",
+    4.0,
+    0,
+  );
   graph.write_put_edge("", "U3a33697ffab9", "B7bade2c63598", 6.0, 0);
-  graph.write_put_edge("Community Support", "U3a33697ffab9", "B3b1ee4d8fc29", 3.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "U3a33697ffab9",
+    "B3b1ee4d8fc29",
+    3.0,
+    0,
+  );
   graph.write_put_edge("", "U3a33697ffab9", "Bec4566ce9bd4", 4.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "B521ff7422d52", 3.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "B0055751ce4cc", 4.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "B521ff7422d52",
+    3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "B0055751ce4cc",
+    4.0,
+    0,
+  );
   graph.write_put_edge("", "U3a33697ffab9", "B6d130d7414d1", 10.0, 0);
   graph.write_put_edge("", "U3a33697ffab9", "B4342c0e949fb", 2.0, 0);
-  graph.write_put_edge("", "U3a33697ffab9", "Baf813d1b4acf" ,-2.0, 0);
+  graph.write_put_edge("", "U3a33697ffab9", "Baf813d1b4acf", -2.0, 0);
   graph.write_put_edge("", "U3a33697ffab9", "B988f628fa22f", 3.0, 0);
-  graph.write_put_edge("", "U3a33697ffab9", "Baadac7ab80fe" ,-3.0, 0);
-  graph.write_put_edge("Community Support", "U3a33697ffab9", "B80372f051f17", 2.0, 0);
-  graph.write_put_edge("Community Support", "U3a33697ffab9", "B2005fe10663d", 4.0, 0);
+  graph.write_put_edge("", "U3a33697ffab9", "Baadac7ab80fe", -3.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "U3a33697ffab9",
+    "B80372f051f17",
+    2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U3a33697ffab9",
+    "B2005fe10663d",
+    4.0,
+    0,
+  );
   graph.write_put_edge("", "U3a33697ffab9", "B7e7517882a1d", 3.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U3a33697ffab9", "Bb9d31c168baf", 5.0, 0);
-  graph.write_put_edge("Community Support", "Ub01f4ad1b03f", "B86a6e5de190a", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "Ub01f4ad1b03f", "Bb9d31c168baf", 1.0, 0);
-  graph.write_put_edge("Community Support", "Ub01f4ad1b03f", "Be8bb41f4353e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "Bc1cb783b0159", 2.0, 0);
-  graph.write_put_edge("", "U5cd05270c153", "Bed48703df71d" ,-1.0, 0);
-  graph.write_put_edge("Clean Architecture", "Ub01f4ad1b03f", "B2b0525693165", 2.0, 0);
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U3a33697ffab9",
+    "Bb9d31c168baf",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "Ub01f4ad1b03f",
+    "B86a6e5de190a",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "Ub01f4ad1b03f",
+    "Bb9d31c168baf",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "Ub01f4ad1b03f",
+    "Be8bb41f4353e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "Bc1cb783b0159",
+    2.0,
+    0,
+  );
+  graph.write_put_edge("", "U5cd05270c153", "Bed48703df71d", -1.0, 0);
+  graph.write_put_edge(
+    "Clean Architecture",
+    "Ub01f4ad1b03f",
+    "B2b0525693165",
+    2.0,
+    0,
+  );
   graph.write_put_edge("", "Ub01f4ad1b03f", "B7bade2c63598", 2.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "B0cb05535835f", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "Bdbd14ea14b6f", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "B0cb05535835f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "Bdbd14ea14b6f",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "Ub01f4ad1b03f", "Bec4566ce9bd4", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "B89b51dc35863", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "B89b51dc35863",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Fatum", "Cdd6c827ecca3", "Ued8da07b9559", 1.0, 0);
   graph.write_put_edge("Fatum", "Ued8da07b9559", "Cdd6c827ecca3", 1.0, 0);
   graph.write_put_edge("", "Cb117f464e558", "U26aca0e369c7", 1.0, 0);
@@ -4075,40 +4834,208 @@ fn regression_oom() {
   graph.write_put_edge("", "U76a293d70033", "C748ed9d2dfb3", 1.0, 0);
   graph.write_put_edge("cat", "Cc01b87ceb830", "Ub01f4ad1b03f", 1.0, 0);
   graph.write_put_edge("cat", "Ub01f4ad1b03f", "Cc01b87ceb830", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C9b36f904697e", "U286f94380611", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C8bf3d2545b6b", "U7aa6bd888278", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "C8bf3d2545b6b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C757806312ae1", "U7aa6bd888278", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C359515064aae", "U050e67479957", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U050e67479957", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C98d9978b7d6c", "U6301c73d1354", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U6301c73d1354", "C98d9978b7d6c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C3fe79b19de5a", "Ub0100d7bad5f", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "C3fe79b19de5a", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C1b28e93382e1", "U8ebde6fbfd3f", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U8ebde6fbfd3f", "C1b28e93382e1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C7e507d2dd112", "U15f925d86858", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C7e507d2dd112", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C842a34fddec2", "U8ebde6fbfd3f", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U8ebde6fbfd3f", "C842a34fddec2", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C9b36f904697e",
+    "U286f94380611",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C8bf3d2545b6b",
+    "U7aa6bd888278",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "C8bf3d2545b6b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C757806312ae1",
+    "U7aa6bd888278",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C359515064aae",
+    "U050e67479957",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U050e67479957",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C98d9978b7d6c",
+    "U6301c73d1354",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U6301c73d1354",
+    "C98d9978b7d6c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C3fe79b19de5a",
+    "Ub0100d7bad5f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "C3fe79b19de5a",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C1b28e93382e1",
+    "U8ebde6fbfd3f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U8ebde6fbfd3f",
+    "C1b28e93382e1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C7e507d2dd112",
+    "U15f925d86858",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C7e507d2dd112",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C842a34fddec2",
+    "U8ebde6fbfd3f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U8ebde6fbfd3f",
+    "C842a34fddec2",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Fatum", "Cc2b3069cbe5d", "Ub01f4ad1b03f", 1.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cc2b3069cbe5d", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C25efb4fe632b", "Udab52ec61933", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C25efb4fe632b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C9b1d2b73215c", "U2becfc64c13b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U2becfc64c13b", "C9b1d2b73215c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C47a273145740", "U3a33697ffab9", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "C47a273145740", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C25efb4fe632b",
+    "Udab52ec61933",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C25efb4fe632b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C9b1d2b73215c",
+    "U2becfc64c13b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U2becfc64c13b",
+    "C9b1d2b73215c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C47a273145740",
+    "U3a33697ffab9",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "C47a273145740",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "C1aadfb8924d9", "U77a03e9a08af", 1.0, 0);
   graph.write_put_edge("", "U77a03e9a08af", "C1aadfb8924d9", 1.0, 0);
-  graph.write_put_edge("tentura-test", "C978221bee128", "Ub01f4ad1b03f", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Ub01f4ad1b03f", "C978221bee128", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "C978221bee128",
+    "Ub01f4ad1b03f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub01f4ad1b03f",
+    "C978221bee128",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "C6c30787a4fae", "U77a03e9a08af", 1.0, 0);
   graph.write_put_edge("", "U77a03e9a08af", "C6c30787a4fae", 1.0, 0);
-  graph.write_put_edge("tentura-test", "C415d72e2693c", "U77a03e9a08af", 1.0, 0);
-  graph.write_put_edge("tentura-test", "U77a03e9a08af", "C415d72e2693c", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "C415d72e2693c",
+    "U77a03e9a08af",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U77a03e9a08af",
+    "C415d72e2693c",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Glamour", "C5a518f7914ad", "U3ea0a229ad85", 1.0, 0);
   graph.write_put_edge("Glamour", "U3ea0a229ad85", "C5a518f7914ad", 1.0, 0);
   graph.write_put_edge("", "C55df2e744f76", "Ub01f4ad1b03f", 1.0, 0);
@@ -4125,8 +5052,20 @@ fn regression_oom() {
   graph.write_put_edge("", "U5d33a9be1633", "C72ab5060f2cb", 1.0, 0);
   graph.write_put_edge("Fatum", "Caf2370c548ce", "U0d2e9e0dc40e", 1.0, 0);
   graph.write_put_edge("Fatum", "U0d2e9e0dc40e", "Caf2370c548ce", 1.0, 0);
-  graph.write_put_edge("tentura-test", "C6bda754da97b", "Ub4b46ee7a5e4", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Ub4b46ee7a5e4", "C6bda754da97b", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "C6bda754da97b",
+    "Ub4b46ee7a5e4",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub4b46ee7a5e4",
+    "C6bda754da97b",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Glamour", "Cc3a1b76c43a1", "U3ea0a229ad85", 1.0, 0);
   graph.write_put_edge("Glamour", "U3ea0a229ad85", "Cc3a1b76c43a1", 1.0, 0);
   graph.write_put_edge("", "Cc7c6ce4cba1c", "U29a00cc1c9c2", 1.0, 0);
@@ -4149,13 +5088,13 @@ fn regression_oom() {
   graph.write_put_edge("", "U7a8d8324441d", "Cd06fea6a395f", 9.0, 0);
   graph.write_put_edge("", "Udece0afd9a8b", "C4f2dafca724f", 8.0, 0);
   graph.write_put_edge("", "Uadeb43da4abb", "C2bbd63b00224", 7.0, 0);
-  graph.write_put_edge("", "U80e22da6d8c4", "Cb76829a425d9" ,-1.0, 0);
+  graph.write_put_edge("", "U80e22da6d8c4", "Cb76829a425d9", -1.0, 0);
   graph.write_put_edge("", "U0c17798eaab4", "C588ffef22463", 5.0, 0);
-  graph.write_put_edge("", "Uaa4e2be7a87a", "C78d6fac93d00" ,-1.0, 0);
+  graph.write_put_edge("", "Uaa4e2be7a87a", "C78d6fac93d00", -1.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "C070e739180d6", 9.0, 0);
   graph.write_put_edge("", "U80e22da6d8c4", "C35678a54ef5f", 5.0, 0);
-  graph.write_put_edge("", "Uf5096f6ab14e", "C4893c40e481d" ,-1.0, 0);
-  graph.write_put_edge("", "Uadeb43da4abb", "C9462ca240ceb" ,-1.0, 0);
+  graph.write_put_edge("", "Uf5096f6ab14e", "C4893c40e481d", -1.0, 0);
+  graph.write_put_edge("", "Uadeb43da4abb", "C9462ca240ceb", -1.0, 0);
   graph.write_put_edge("", "Uef7fbf45ef11", "C2bbd63b00224", 8.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "C78ad459d3b81", 4.0, 0);
   graph.write_put_edge("", "Uad577360d968", "Cbce32a9b256a", 3.0, 0);
@@ -4167,13 +5106,13 @@ fn regression_oom() {
   graph.write_put_edge("", "U9a2c85753a6d", "Cfdde53c79a2d", 4.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "C78d6fac93d00", 2.0, 0);
   graph.write_put_edge("", "Ue7a29d5409f2", "Cfdde53c79a2d", 5.0, 0);
-  graph.write_put_edge("", "U9e42f6dab85a", "C0b19d314485e" ,-1.0, 0);
+  graph.write_put_edge("", "U9e42f6dab85a", "C0b19d314485e", -1.0, 0);
   graph.write_put_edge("", "U80e22da6d8c4", "Cb14487d862b3", 6.0, 0);
   graph.write_put_edge("", "U389f9f24b31c", "C4893c40e481d", 3.0, 0);
   graph.write_put_edge("", "U016217c34c6e", "Cb76829a425d9", 2.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "Cbbf2df46955b", 5.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "Cdcddfb230cb5", 4.0, 0);
-  graph.write_put_edge("", "U9a2c85753a6d", "C4893c40e481d" ,-1.0, 0);
+  graph.write_put_edge("", "U9a2c85753a6d", "C4893c40e481d", -1.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "Cdcddfb230cb5", 3.0, 0);
   graph.write_put_edge("", "U389f9f24b31c", "Cbbf2df46955b", 4.0, 0);
   graph.write_put_edge("", "Uad577360d968", "C2bbd63b00224", 9.0, 0);
@@ -4190,34 +5129,34 @@ fn regression_oom() {
   graph.write_put_edge("", "U80e22da6d8c4", "C3e84102071d1", 4.0, 0);
   graph.write_put_edge("", "Uc1158424318a", "Cfdde53c79a2d", 6.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "Ce1a7d8996eb0", 2.0, 0);
-  graph.write_put_edge("", "U9a89e0679dec", "Cd06fea6a395f" ,-1.0, 0);
+  graph.write_put_edge("", "U9a89e0679dec", "Cd06fea6a395f", -1.0, 0);
   graph.write_put_edge("", "Uf5096f6ab14e", "C6aebafa4fe8e", 8.0, 0);
   graph.write_put_edge("", "Uadeb43da4abb", "Cc9f863ff681b", 2.0, 0);
   graph.write_put_edge("", "Ue7a29d5409f2", "C399b6349ab02", 5.0, 0);
   graph.write_put_edge("", "Uc1158424318a", "C4e0db8dec53e", 4.0, 0);
   graph.write_put_edge("", "U9a89e0679dec", "C6aebafa4fe8e", 8.0, 0);
-  graph.write_put_edge("", "U80e22da6d8c4", "C6acd550a4ef3" ,-1.0, 0);
-  graph.write_put_edge("", "Uf2b0a6b1d423", "Ce1a7d8996eb0" ,-1.0, 0);
+  graph.write_put_edge("", "U80e22da6d8c4", "C6acd550a4ef3", -1.0, 0);
+  graph.write_put_edge("", "Uf2b0a6b1d423", "Ce1a7d8996eb0", -1.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "C30fef1977b4a", 8.0, 0);
   graph.write_put_edge("", "Uef7fbf45ef11", "C588ffef22463", 4.0, 0);
   graph.write_put_edge("", "Uef7fbf45ef11", "C94bb73c10a06", 3.0, 0);
-  graph.write_put_edge("", "Uad577360d968", "C588ffef22463" ,-1.0, 0);
+  graph.write_put_edge("", "Uad577360d968", "C588ffef22463", -1.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "C67e4476fda28", 6.0, 0);
   graph.write_put_edge("", "U0c17798eaab4", "C4893c40e481d", 7.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "C6a2263dc469e", 3.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "C3fd1fdebe0e9", 7.0, 0);
   graph.write_put_edge("", "Uef7fbf45ef11", "C3fd1fdebe0e9", 9.0, 0);
-  graph.write_put_edge("", "Uc1158424318a", "C9028c7415403" ,-1.0, 0);
+  graph.write_put_edge("", "Uc1158424318a", "C9028c7415403", -1.0, 0);
   graph.write_put_edge("", "U9e42f6dab85a", "C6a2263dc469e", 5.0, 0);
   graph.write_put_edge("", "Uad577360d968", "C399b6349ab02", 6.0, 0);
   graph.write_put_edge("", "U26aca0e369c7", "C9028c7415403", 8.0, 0);
   graph.write_put_edge("", "U1c285703fc63", "C30e7409c2d5f", 4.0, 0);
-  graph.write_put_edge("", "U9a89e0679dec", "Cbbf2df46955b" ,-1.0, 0);
+  graph.write_put_edge("", "U9a89e0679dec", "Cbbf2df46955b", -1.0, 0);
   graph.write_put_edge("", "Uf5096f6ab14e", "C3e84102071d1", 1.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "C94bb73c10a06", 9.0, 0);
   graph.write_put_edge("", "Uaa4e2be7a87a", "Cfdde53c79a2d", 3.0, 0);
   graph.write_put_edge("", "U26aca0e369c7", "C6acd550a4ef3", 4.0, 0);
-  graph.write_put_edge("", "Uc1158424318a", "C67e4476fda28" ,-1.0, 0);
+  graph.write_put_edge("", "Uc1158424318a", "C67e4476fda28", -1.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "C30e7409c2d5f", 9.0, 0);
   graph.write_put_edge("", "U389f9f24b31c", "C4f2dafca724f", 5.0, 0);
   graph.write_put_edge("", "U0c17798eaab4", "Ce1a7d8996eb0", 6.0, 0);
@@ -4226,7 +5165,7 @@ fn regression_oom() {
   graph.write_put_edge("", "Uaa4e2be7a87a", "C070e739180d6", 8.0, 0);
   graph.write_put_edge("", "U389f9f24b31c", "C6acd550a4ef3", 6.0, 0);
   graph.write_put_edge("Fatum", "U01814d1ec9ff", "C6d52e861b366", 3.0, 0);
-  graph.write_put_edge("", "U99a0f1f7e6ee", "C96bdee4f11e2" ,-18.0, 0);
+  graph.write_put_edge("", "U99a0f1f7e6ee", "C96bdee4f11e2", -18.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "C8d80016b8292", 1.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "C247501543b60", 1.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "C6f84810d3cd9", 1.0, 0);
@@ -4242,54 +5181,246 @@ fn regression_oom() {
   graph.write_put_edge("", "U0cd6bd2dde4f", "C7062e90f7422", 1.0, 0);
   graph.write_put_edge("Fatum", "U1bcba4fd7175", "Cd4417a5d718e", 5.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "C6a2263dc469e", 2.0, 0);
-  graph.write_put_edge("Fatum", "U1bcba4fd7175", "C6d52e861b366" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U1bcba4fd7175", "C6d52e861b366", -1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "C5782d559baad", 1.0, 0);
   graph.write_put_edge("", "U95f3426b8e5d", "C992d8370db6b", 1.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cd5983133fb67", 5.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cb11edc3d0bc7", 5.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "C6d52e861b366", 0.0, 0);
-  graph.write_put_edge("game", "Ub01f4ad1b03f", "C1f463ef711d7" ,-2.0, 0);
+  graph.write_put_edge("game", "Ub01f4ad1b03f", "C1f463ef711d7", -2.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cd6c9d5cba220", 4.0, 0);
-  graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cd4417a5d718e" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "C8343a6a576ff" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cd4417a5d718e", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "C8343a6a576ff", -1.0, 0);
   graph.write_put_edge("cat", "Ub01f4ad1b03f", "Cdc72f8f77531", 4.0, 0);
   graph.write_put_edge("", "Ua37f245cf686", "C2bbd63b00224", 1.0, 0);
-  graph.write_put_edge("", "Ua37f245cf686", "Cb117f464e558" ,-1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "C757806312ae1", 1.0, 0);
+  graph.write_put_edge("", "Ua37f245cf686", "Cb117f464e558", -1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "C0f761a65e114", 2.0, 0);
-  graph.write_put_edge("QuestForGlory", "U050e67479957", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U050e67479957", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U6301c73d1354", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U6301c73d1354", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U6301c73d1354", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "C98d9978b7d6c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C98d9978b7d6c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C3fe79b19de5a", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C1b28e93382e1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C7e507d2dd112", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C842a34fddec2" ,-1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U050e67479957",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U050e67479957",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U6301c73d1354",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U6301c73d1354",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U6301c73d1354",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "C98d9978b7d6c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C98d9978b7d6c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C3fe79b19de5a",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C1b28e93382e1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C7e507d2dd112",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C842a34fddec2",
+    -1.0,
+    0,
+  );
   graph.write_put_edge("Fatum", "U0ae9f5d0bf02", "C6d52e861b366", 1.0, 0);
   graph.write_put_edge("Fatum", "U0ae9f5d0bf02", "Cd5983133fb67", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C1b28e93382e1" ,-1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C3fe79b19de5a", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C98d9978b7d6c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C842a34fddec2", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C25efb4fe632b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C1b28e93382e1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C98d9978b7d6c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C9b36f904697e", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C1b28e93382e1",
+    -1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C3fe79b19de5a",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C98d9978b7d6c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C842a34fddec2",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C25efb4fe632b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C1b28e93382e1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C98d9978b7d6c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "U95f3426b8e5d", "U499f24158a40", 1.0, 0);
   graph.write_put_edge("", "U77a03e9a08af", "U6d2f25cc4264", 1.0, 0);
   graph.write_put_edge("", "Ub47d8c364c9e", "Ub01f4ad1b03f", 1.0, 0);
@@ -4297,10 +5428,10 @@ fn regression_oom() {
   graph.write_put_edge("", "U389f9f24b31c", "U7a8d8324441d", 1.0, 0);
   graph.write_put_edge("", "U016217c34c6e", "U9a89e0679dec", 1.0, 0);
   graph.write_put_edge("", "U80e22da6d8c4", "U0c17798eaab4", 1.0, 0);
-  graph.write_put_edge("", "U0c17798eaab4", "Udece0afd9a8b" ,-1.0, 0);
+  graph.write_put_edge("", "U0c17798eaab4", "Udece0afd9a8b", -1.0, 0);
   graph.write_put_edge("", "Udece0afd9a8b", "U1c285703fc63", 1.0, 0);
-  graph.write_put_edge("", "Udece0afd9a8b", "Uadeb43da4abb" ,-1.0, 0);
-  graph.write_put_edge("", "Ue7a29d5409f2", "Uc3c31b8a022f" ,-1.0, 0);
+  graph.write_put_edge("", "Udece0afd9a8b", "Uadeb43da4abb", -1.0, 0);
+  graph.write_put_edge("", "Ue7a29d5409f2", "Uc3c31b8a022f", -1.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "Udece0afd9a8b", 1.0, 0);
   graph.write_put_edge("", "U5d33a9be1633", "U0be96c3b9883", 1.0, 0);
   graph.write_put_edge("", "U0be96c3b9883", "U55272fd6c264", 1.0, 0);
@@ -4339,10 +5470,10 @@ fn regression_oom() {
   graph.write_put_edge("", "U28846d74623d", "U286f94380611", 1.0, 0);
   graph.write_put_edge("", "U28846d74623d", "Udab52ec61933", 1.0, 0);
   graph.write_put_edge("", "U1c285703fc63", "Uad577360d968", 1.0, 0);
-  graph.write_put_edge("", "Udece0afd9a8b", "Uc3c31b8a022f" ,-1.0, 0);
-  graph.write_put_edge("", "Uf5096f6ab14e", "U9e42f6dab85a" ,-1.0, 0);
-  graph.write_put_edge("", "Ue7a29d5409f2", "Uaa4e2be7a87a" ,-1.0, 0);
-  graph.write_put_edge("", "U7a8d8324441d", "U1c285703fc63" ,-1.0, 0);
+  graph.write_put_edge("", "Udece0afd9a8b", "Uc3c31b8a022f", -1.0, 0);
+  graph.write_put_edge("", "Uf5096f6ab14e", "U9e42f6dab85a", -1.0, 0);
+  graph.write_put_edge("", "Ue7a29d5409f2", "Uaa4e2be7a87a", -1.0, 0);
+  graph.write_put_edge("", "U7a8d8324441d", "U1c285703fc63", -1.0, 0);
   graph.write_put_edge("", "Udab52ec61933", "U28846d74623d", 1.0, 0);
   graph.write_put_edge("", "Udab52ec61933", "U286f94380611", 1.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "U1c285703fc63", 1.0, 0);
@@ -4542,14 +5673,50 @@ fn regression_oom() {
   graph.write_put_edge("Fatum", "U0080a5f2547d", "B5844890200e7", 1.0, 0);
   graph.write_put_edge("", "Bed48703df71d", "U0ae9f5d0bf02", 1.0, 0);
   graph.write_put_edge("", "U0ae9f5d0bf02", "Bed48703df71d", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Be64122664ec6", "U0ae9f5d0bf02", 1.0, 0);
-  graph.write_put_edge("tentura-test", "U0ae9f5d0bf02", "Be64122664ec6", 1.0, 0);
-  graph.write_put_edge("tentura-test", "B500ed1ecb236", "U0ae9f5d0bf02", 1.0, 0);
-  graph.write_put_edge("tentura-test", "U0ae9f5d0bf02", "B500ed1ecb236", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Be64122664ec6",
+    "U0ae9f5d0bf02",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U0ae9f5d0bf02",
+    "Be64122664ec6",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "B500ed1ecb236",
+    "U0ae9f5d0bf02",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U0ae9f5d0bf02",
+    "B500ed1ecb236",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "Bea6112348aa2", "U0be96c3b9883", 1.0, 0);
   graph.write_put_edge("", "U0be96c3b9883", "Bea6112348aa2", 1.0, 0);
-  graph.write_put_edge("Clean Architecture", "B2b0525693165", "U1ada5dcdea2b", 1.0, 0);
-  graph.write_put_edge("Clean Architecture", "U1ada5dcdea2b", "B2b0525693165", 1.0, 0);
+  graph.write_put_edge(
+    "Clean Architecture",
+    "B2b0525693165",
+    "U1ada5dcdea2b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U1ada5dcdea2b",
+    "B2b0525693165",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "Bca63d8a2057b", "Ub01f4ad1b03f", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "Bca63d8a2057b", 1.0, 0);
   graph.write_put_edge("", "B99e6c816679d", "Ub01f4ad1b03f", 1.0, 0);
@@ -4704,8 +5871,20 @@ fn regression_oom() {
   graph.write_put_edge("", "U8c85f8c3bef7", "B6d130d7414d1", 1.0, 0);
   graph.write_put_edge("", "B988f628fa22f", "U8c85f8c3bef7", 1.0, 0);
   graph.write_put_edge("", "U8c85f8c3bef7", "B988f628fa22f", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "B0cb05535835f", "U2becfc64c13b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U2becfc64c13b", "B0cb05535835f", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "B0cb05535835f",
+    "U2becfc64c13b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U2becfc64c13b",
+    "B0cb05535835f",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Volunteer", "Bc0dc1870dcb1", "Uf82dbb4708ba", 1.0, 0);
   graph.write_put_edge("Volunteer", "Uf82dbb4708ba", "Bc0dc1870dcb1", 1.0, 0);
   graph.write_put_edge("Life", "Bd3cfc011be87", "U46e5959770ad", 1.0, 0);
@@ -4722,48 +5901,240 @@ fn regression_oom() {
   graph.write_put_edge("", "U76a293d70033", "B790089851584", 1.0, 0);
   graph.write_put_edge("", "Bd46b3e9a38bb", "Ud10b3f42f87b", 1.0, 0);
   graph.write_put_edge("", "Ud10b3f42f87b", "Bd46b3e9a38bb", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Bc1cb783b0159", "U286f94380611", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "B521ff7422d52", "U286f94380611", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "B521ff7422d52", 1.0, 0);
-  graph.write_put_edge("Community Support", "B86a6e5de190a", "U3a33697ffab9", 1.0, 0);
-  graph.write_put_edge("Community Support", "U3a33697ffab9", "B86a6e5de190a", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "Bb4dbbb63b373", "U3a33697ffab9", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "U3a33697ffab9", "Bb4dbbb63b373", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "B0055751ce4cc", "U286f94380611", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "B0055751ce4cc", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "B0b176a4c7617", "U3a33697ffab9", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "U3a33697ffab9", "B0b176a4c7617", 1.0, 0);
-  graph.write_put_edge("Community Support", "Be8bb41f4353e", "U3a33697ffab9", 1.0, 0);
-  graph.write_put_edge("Community Support", "U3a33697ffab9", "Be8bb41f4353e", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Bc1cb783b0159",
+    "U286f94380611",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "B521ff7422d52",
+    "U286f94380611",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "B521ff7422d52",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "B86a6e5de190a",
+    "U3a33697ffab9",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U3a33697ffab9",
+    "B86a6e5de190a",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "Bb4dbbb63b373",
+    "U3a33697ffab9",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "U3a33697ffab9",
+    "Bb4dbbb63b373",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "B0055751ce4cc",
+    "U286f94380611",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "B0055751ce4cc",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "B0b176a4c7617",
+    "U3a33697ffab9",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "U3a33697ffab9",
+    "B0b176a4c7617",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "Be8bb41f4353e",
+    "U3a33697ffab9",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U3a33697ffab9",
+    "Be8bb41f4353e",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "B6bbf9d5766c3", "U3a33697ffab9", 1.0, 0);
   graph.write_put_edge("", "U3a33697ffab9", "B6bbf9d5766c3", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Bdbd14ea14b6f", "U2becfc64c13b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U2becfc64c13b", "Bdbd14ea14b6f", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Bdbd14ea14b6f",
+    "U2becfc64c13b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U2becfc64c13b",
+    "Bdbd14ea14b6f",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "B4268797cc8ee", "U3a33697ffab9", 1.0, 0);
   graph.write_put_edge("", "U3a33697ffab9", "B4268797cc8ee", 1.0, 0);
   graph.write_put_edge("", "Bec4566ce9bd4", "U2becfc64c13b", 1.0, 0);
   graph.write_put_edge("", "U2becfc64c13b", "Bec4566ce9bd4", 1.0, 0);
-  graph.write_put_edge("Community Support", "B3b1ee4d8fc29", "U2becfc64c13b", 1.0, 0);
-  graph.write_put_edge("Community Support", "U2becfc64c13b", "B3b1ee4d8fc29", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "B89b51dc35863", "U2becfc64c13b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U2becfc64c13b", "B89b51dc35863", 1.0, 0);
-  graph.write_put_edge("Community Support", "B2005fe10663d", "Ue479f7b03b5d", 1.0, 0);
-  graph.write_put_edge("Community Support", "Ue479f7b03b5d", "B2005fe10663d", 1.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "B3b1ee4d8fc29",
+    "U2becfc64c13b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U2becfc64c13b",
+    "B3b1ee4d8fc29",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "B89b51dc35863",
+    "U2becfc64c13b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U2becfc64c13b",
+    "B89b51dc35863",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "B2005fe10663d",
+    "Ue479f7b03b5d",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "Ue479f7b03b5d",
+    "B2005fe10663d",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "B7e7517882a1d", "Ue479f7b03b5d", 1.0, 0);
   graph.write_put_edge("", "Ue479f7b03b5d", "B7e7517882a1d", 1.0, 0);
-  graph.write_put_edge("Community Support", "B80372f051f17", "Ue479f7b03b5d", 1.0, 0);
-  graph.write_put_edge("Community Support", "Ue479f7b03b5d", "B80372f051f17", 1.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "B80372f051f17",
+    "Ue479f7b03b5d",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "Ue479f7b03b5d",
+    "B80372f051f17",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "Baadac7ab80fe", "U36906cde6568", 1.0, 0);
   graph.write_put_edge("", "U36906cde6568", "Baadac7ab80fe", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "Bcd0a6c69a705", "U4d9267c70eab", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U4d9267c70eab", "Bcd0a6c69a705", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "Bb9d31c168baf", "Ue79d43c03425", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "Ue79d43c03425", "Bb9d31c168baf", 1.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "B080a0d5de22d", "U41906748a800", 1.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "U41906748a800", "B080a0d5de22d", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "B20f3d51e498f", "U4d9267c70eab", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U4d9267c70eab", "B20f3d51e498f", 1.0, 0);
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "Bcd0a6c69a705",
+    "U4d9267c70eab",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U4d9267c70eab",
+    "Bcd0a6c69a705",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "Bb9d31c168baf",
+    "Ue79d43c03425",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "Ue79d43c03425",
+    "Bb9d31c168baf",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "B080a0d5de22d",
+    "U41906748a800",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "U41906748a800",
+    "B080a0d5de22d",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "B20f3d51e498f",
+    "U4d9267c70eab",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U4d9267c70eab",
+    "B20f3d51e498f",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "Baf813d1b4acf", "U4d9267c70eab", 1.0, 0);
   graph.write_put_edge("", "U4d9267c70eab", "Baf813d1b4acf", 1.0, 0);
   graph.write_put_edge("", "B7bade2c63598", "U1ada5dcdea2b", 1.0, 0);
@@ -4784,7 +6155,7 @@ fn regression_oom() {
   graph.write_put_edge("", "U9a2c85753a6d", "B3b3f2ecde430", 6.0, 0);
   graph.write_put_edge("", "Uf5096f6ab14e", "B60d725feca77", 8.0, 0);
   graph.write_put_edge("", "U9e42f6dab85a", "Bad1c69de7837", 3.0, 0);
-  graph.write_put_edge("", "Ud7002ae5a86c", "B75a44a52fa29" ,-2.0, 0);
+  graph.write_put_edge("", "Ud7002ae5a86c", "B75a44a52fa29", -2.0, 0);
   graph.write_put_edge("", "Uaa4e2be7a87a", "B7f628ad203b5", 9.0, 0);
   graph.write_put_edge("", "Uef7fbf45ef11", "B7f628ad203b5", 7.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "B5eb4c6be535a", 5.0, 0);
@@ -4796,16 +6167,16 @@ fn regression_oom() {
   graph.write_put_edge("", "Ub93799d9400e", "B73a44e2bbd44", 5.0, 0);
   graph.write_put_edge("", "Ub93799d9400e", "B491d307dfe01", 2.0, 0);
   graph.write_put_edge("", "U09cf1f359454", "B73a44e2bbd44", 1.0, 0);
-  graph.write_put_edge("Fatum", "U5cd05270c153", "B9c01ce5718d1" ,-56.0, 0);
+  graph.write_put_edge("Fatum", "U5cd05270c153", "B9c01ce5718d1", -56.0, 0);
   graph.write_put_edge("Fatum", "U01814d1ec9ff", "B9c01ce5718d1", 10.0, 0);
   graph.write_put_edge("Fatum", "U09cf1f359454", "B310b66ab31fb", 1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Be2b46c17f1da" ,-1.0, 0);
-  graph.write_put_edge("", "U01814d1ec9ff", "B63fbe1427d09" ,-3.0, 0);
-  graph.write_put_edge("", "U01814d1ec9ff", "B491d307dfe01" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Be2b46c17f1da", -1.0, 0);
+  graph.write_put_edge("", "U01814d1ec9ff", "B63fbe1427d09", -3.0, 0);
+  graph.write_put_edge("", "U01814d1ec9ff", "B491d307dfe01", -1.0, 0);
   graph.write_put_edge("", "U02fbd7c8df4c", "B75a44a52fa29", 7.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B63fbe1427d09" ,-1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B63fbe1427d09", -1.0, 0);
   graph.write_put_edge("Fatum", "U9605bd4d1218", "B9c01ce5718d1", 2.0, 0);
-  graph.write_put_edge("", "U02fbd7c8df4c", "Bad1c69de7837" ,-5.0, 0);
+  graph.write_put_edge("", "U02fbd7c8df4c", "Bad1c69de7837", -5.0, 0);
   graph.write_put_edge("", "Uc3c31b8a022f", "Bb78026d99388", 1.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "B3b3f2ecde430", 9.0, 0);
   graph.write_put_edge("", "Uaa4e2be7a87a", "B0e230e9108dd", 2.0, 0);
@@ -4815,84 +6186,84 @@ fn regression_oom() {
   graph.write_put_edge("", "U26aca0e369c7", "Be2b46c17f1da", 7.0, 0);
   graph.write_put_edge("", "U0c17798eaab4", "B0e230e9108dd", 3.0, 0);
   graph.write_put_edge("", "Udece0afd9a8b", "Bad1c69de7837", 9.0, 0);
-  graph.write_put_edge("", "Uef7fbf45ef11", "B0e230e9108dd" ,-1.0, 0);
+  graph.write_put_edge("", "Uef7fbf45ef11", "B0e230e9108dd", -1.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "B5eb4c6be535a", 1.0, 0);
-  graph.write_put_edge("", "Uc3c31b8a022f", "B3c467fb437b2" ,-1.0, 0);
+  graph.write_put_edge("", "Uc3c31b8a022f", "B3c467fb437b2", -1.0, 0);
   graph.write_put_edge("", "U016217c34c6e", "B3c467fb437b2", 2.0, 0);
   graph.write_put_edge("", "Uf5096f6ab14e", "B3b3f2ecde430", 3.0, 0);
   graph.write_put_edge("", "Uc3c31b8a022f", "B45d72e29f004", 3.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "Be2b46c17f1da", 5.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "B3c467fb437b2", 9.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Bad1c69de7837" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B8a531802473b" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B45d72e29f004" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Bad1c69de7837", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B8a531802473b", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B45d72e29f004", -1.0, 0);
   graph.write_put_edge("", "U9605bd4d1218", "B8a531802473b", 2.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B60d725feca77" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B3c467fb437b2" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B60d725feca77", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B3c467fb437b2", -1.0, 0);
   graph.write_put_edge("", "U01814d1ec9ff", "B8a531802473b", 8.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B5a1c1d3d0140" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B5a1c1d3d0140", -1.0, 0);
   graph.write_put_edge("", "U6661263fb410", "B75a44a52fa29", 3.0, 0);
   graph.write_put_edge("", "U9605bd4d1218", "B5a1c1d3d0140", 2.0, 0);
   graph.write_put_edge("", "U01814d1ec9ff", "Bd7a8bfcf3337", 3.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B3b3f2ecde430" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B3b3f2ecde430", -1.0, 0);
   graph.write_put_edge("Fatum", "Ud5b22ebf52f2", "B310b66ab31fb", 1.0, 0);
-  graph.write_put_edge("", "U01814d1ec9ff", "B3b3f2ecde430" ,-3.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B0e230e9108dd" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Bb78026d99388" ,-1.0, 0);
+  graph.write_put_edge("", "U01814d1ec9ff", "B3b3f2ecde430", -3.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B0e230e9108dd", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Bb78026d99388", -1.0, 0);
   graph.write_put_edge("", "U01814d1ec9ff", "B5a1c1d3d0140", 5.0, 0);
   graph.write_put_edge("", "U9605bd4d1218", "Bd7a8bfcf3337", 1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B5eb4c6be535a" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B25c85fe0df2d" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B5eb4c6be535a", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B25c85fe0df2d", -1.0, 0);
   graph.write_put_edge("Fatum", "U09cf1f359454", "B3f6f837bc345", 1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B63fbe1427d09" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B63fbe1427d09", -1.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "Ba3c4a280657d", 2.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "B491d307dfe01", 3.0, 0);
   graph.write_put_edge("", "Ub93799d9400e", "B75a44a52fa29", 5.0, 0);
   graph.write_put_edge("", "U682c3380036f", "B75a44a52fa29", 2.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B7f628ad203b5" ,-1.0, 0);
-  graph.write_put_edge("", "U01814d1ec9ff", "Bb78026d99388" ,-11.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B7f628ad203b5", -1.0, 0);
+  graph.write_put_edge("", "U01814d1ec9ff", "Bb78026d99388", -11.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "B79efabc4d8bf", 2.0, 0);
   graph.write_put_edge("Fatum", "Ub93799d9400e", "B9c01ce5718d1", 5.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "Bad1c69de7837" ,-1.0, 0);
-  graph.write_put_edge("Fatum", "U6240251593cd", "B9c01ce5718d1" ,-4.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "Bad1c69de7837", -1.0, 0);
+  graph.write_put_edge("Fatum", "U6240251593cd", "B9c01ce5718d1", -4.0, 0);
   graph.write_put_edge("", "U682c3380036f", "Bf34ee3bfc12b", 4.0, 0);
   graph.write_put_edge("", "U6240251593cd", "B75a44a52fa29", 4.0, 0);
   graph.write_put_edge("", "Ua12e78308f49", "B75a44a52fa29", 4.0, 0);
   graph.write_put_edge("Fatum", "Ud9df8116deba", "B310b66ab31fb", 1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B499bfc56e77b" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Be2b46c17f1da" ,-1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B499bfc56e77b", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Be2b46c17f1da", -1.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "Bfefe4e25c870", 4.0, 0);
   graph.write_put_edge("Fatum", "U1e41b5f3adff", "B310b66ab31fb", 5.0, 0);
   graph.write_put_edge("Fatum", "U6d2f25cc4264", "B9c01ce5718d1", 4.0, 0);
   graph.write_put_edge("Fatum", "U8a78048d60f7", "B9c01ce5718d1", 3.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "Bfefe4e25c870", 3.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B3c467fb437b2" ,-1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B3c467fb437b2", -1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "B491d307dfe01", 3.0, 0);
-  graph.write_put_edge("Test", "U8a78048d60f7", "Bd49e3dac97b0" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Bf3a0a1165271" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B8a531802473b" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Bdf39d0e1daf5" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B7f628ad203b5" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B45d72e29f004" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "Bdf39d0e1daf5" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B63fbe1427d09" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B60d725feca77" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Bb78026d99388" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B5eb4c6be535a" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B3b3f2ecde430" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B0e230e9108dd" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B25c85fe0df2d" ,-1.0, 0);
+  graph.write_put_edge("Test", "U8a78048d60f7", "Bd49e3dac97b0", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Bf3a0a1165271", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B8a531802473b", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Bdf39d0e1daf5", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B7f628ad203b5", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B45d72e29f004", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "Bdf39d0e1daf5", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B63fbe1427d09", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B60d725feca77", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Bb78026d99388", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B5eb4c6be535a", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B3b3f2ecde430", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B0e230e9108dd", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B25c85fe0df2d", -1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "Ba3c4a280657d", 3.0, 0);
   graph.write_put_edge("", "U0cd6bd2dde4f", "B7f628ad203b5", 1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "B75a44a52fa29", 3.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Bdf39d0e1daf5" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Ba5d64165e5d5" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Bf3a0a1165271" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B4f14b223b56d" ,-1.0, 0);
-  graph.write_put_edge("Test", "U09cf1f359454", "Bd49e3dac97b0" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Be29b4af3f7a5" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Be5bb2f3d56cb" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B499bfc56e77b" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Bdf39d0e1daf5", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Ba5d64165e5d5", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Bf3a0a1165271", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B4f14b223b56d", -1.0, 0);
+  graph.write_put_edge("Test", "U09cf1f359454", "Bd49e3dac97b0", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Be29b4af3f7a5", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Be5bb2f3d56cb", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B499bfc56e77b", -1.0, 0);
   graph.write_put_edge("", "U09cf1f359454", "B75a44a52fa29", 1.0, 0);
   graph.write_put_edge("", "U1bcba4fd7175", "B4f00e7813add", 3.0, 0);
   graph.write_put_edge("", "U0cd6bd2dde4f", "B92e4a185c654", 1.0, 0);
@@ -4905,66 +6276,66 @@ fn regression_oom() {
   graph.write_put_edge("", "U8a78048d60f7", "Bd90a1cf73384", 3.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "B0a87a669fc28", 3.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "B19ea554faf29", 3.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "Bb78026d99388" ,-1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "Bb78026d99388", -1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "Bb1e3630d2f4a", 3.0, 0);
   graph.write_put_edge("", "Ub20ed0f8f9b0", "B6d130d7414d1", 0.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "Bf34ee3bfc12b", 3.0, 0);
-  graph.write_put_edge("", "Uc35c445325f5", "B8a531802473b" ,-5.0, 0);
+  graph.write_put_edge("", "Uc35c445325f5", "B8a531802473b", -5.0, 0);
   graph.write_put_edge("", "U1bcba4fd7175", "Bfefe4e25c870", 5.0, 0);
   graph.write_put_edge("", "U3c63a9b6115a", "B75a44a52fa29", 5.0, 0);
   graph.write_put_edge("", "Ud04c89aaf453", "B73a44e2bbd44", 4.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B5eb4c6be535a" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B8a531802473b" ,-1.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "Bb78026d99388" ,-1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B5eb4c6be535a", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B8a531802473b", -1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "Bb78026d99388", -1.0, 0);
   graph.write_put_edge("Fatum", "U09cf1f359454", "B9c01ce5718d1", 2.0, 0);
   graph.write_put_edge("", "U09cf1f359454", "B491d307dfe01", 2.0, 0);
   graph.write_put_edge("", "U1bcba4fd7175", "Bc4addf09b79f", 3.0, 0);
-  graph.write_put_edge("", "U1bcba4fd7175", "B0e230e9108dd" ,-1.0, 0);
+  graph.write_put_edge("", "U1bcba4fd7175", "B0e230e9108dd", -1.0, 0);
   graph.write_put_edge("", "Uce7e9acd408e", "B8fabb952bc4b", 7.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "Be2b46c17f1da" ,-1.0, 0);
-  graph.write_put_edge("Fatum", "U79466f73dc0c", "B9c01ce5718d1" ,-6.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Ba5d64165e5d5" ,-1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "Be2b46c17f1da", -1.0, 0);
+  graph.write_put_edge("Fatum", "U79466f73dc0c", "B9c01ce5718d1", -6.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Ba5d64165e5d5", -1.0, 0);
   graph.write_put_edge("", "Uc35c445325f5", "B75a44a52fa29", 2.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "B60d725feca77" ,-1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "B60d725feca77", -1.0, 0);
   graph.write_put_edge("Fatum", "Uc35c445325f5", "B9c01ce5718d1", 4.0, 0);
   graph.write_put_edge("", "U1bcba4fd7175", "B73a44e2bbd44", 3.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "Be2b46c17f1da" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Be29b4af3f7a5" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B4f14b223b56d" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Be5bb2f3d56cb" ,-1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "Be2b46c17f1da", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Be29b4af3f7a5", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B4f14b223b56d", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Be5bb2f3d56cb", -1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "Bd7a8bfcf3337", 1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "B79efabc4d8bf", 1.0, 0);
   graph.write_put_edge("Fatum", "U0cd6bd2dde4f", "B9c01ce5718d1", 1.0, 0);
   graph.write_put_edge("", "U0cd6bd2dde4f", "B75a44a52fa29", 1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B499bfc56e77b" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B25c85fe0df2d" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B3c467fb437b2" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B3b3f2ecde430" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Bc896788cd2ef" ,-1.0, 0);
-  graph.write_put_edge("", "U1bcba4fd7175", "B45d72e29f004" ,-9.0, 0);
-  graph.write_put_edge("", "U1bcba4fd7175", "Be2b46c17f1da" ,-1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B499bfc56e77b", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B25c85fe0df2d", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B3c467fb437b2", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B3b3f2ecde430", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Bc896788cd2ef", -1.0, 0);
+  graph.write_put_edge("", "U1bcba4fd7175", "B45d72e29f004", -9.0, 0);
+  graph.write_put_edge("", "U1bcba4fd7175", "Be2b46c17f1da", -1.0, 0);
   graph.write_put_edge("Fatum", "U1bcba4fd7175", "B9c01ce5718d1", 9.0, 0);
   graph.write_put_edge("", "U79466f73dc0c", "B45d72e29f004", 5.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "B79efabc4d8bf" ,-1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "B79efabc4d8bf", -1.0, 0);
   graph.write_put_edge("", "U79466f73dc0c", "B7f628ad203b5", 6.0, 0);
-  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B9c01ce5718d1" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B9c01ce5718d1", -1.0, 0);
   graph.write_put_edge("", "U79466f73dc0c", "Be2b46c17f1da", 4.0, 0);
   graph.write_put_edge("", "U79466f73dc0c", "Bad1c69de7837", 2.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "B0e230e9108dd" ,-10.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "B0e230e9108dd", -10.0, 0);
   graph.write_put_edge("game", "U3ea0a229ad85", "Bc4603804bacf", 4.0, 0);
   graph.write_put_edge("", "Uce7e9acd408e", "Ba3c4a280657d", 0.0, 0);
   graph.write_put_edge("Fatum", "U638f5c19326f", "B9c01ce5718d1", 2.0, 0);
   graph.write_put_edge("", "U3ea0a229ad85", "Bea6112348aa2", 1.0, 0);
   graph.write_put_edge("cat", "U3ea0a229ad85", "Bc8526e892c5d", 1.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "B25c85fe0df2d" ,-7.0, 0);
-  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B310b66ab31fb" ,-12.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "B491d307dfe01" ,-7.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "B25c85fe0df2d", -7.0, 0);
+  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B310b66ab31fb", -12.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "B491d307dfe01", -7.0, 0);
   graph.write_put_edge("Fatum", "Ud2123c013577", "B310b66ab31fb", 2.0, 0);
   graph.write_put_edge("Fatum", "Ud2123c013577", "B9c01ce5718d1", 3.0, 0);
   graph.write_put_edge("", "Ueb139752b907", "B1533941e2773", 1.0, 0);
-  graph.write_put_edge("", "Uce7e9acd408e", "B60d725feca77" ,-1.0, 0);
+  graph.write_put_edge("", "Uce7e9acd408e", "B60d725feca77", -1.0, 0);
   graph.write_put_edge("", "Uce7e9acd408e", "B75a44a52fa29", 3.0, 0);
-  graph.write_put_edge("", "U11456af7d414", "Bad1c69de7837" ,-2.0, 0);
+  graph.write_put_edge("", "U11456af7d414", "Bad1c69de7837", -2.0, 0);
   graph.write_put_edge("", "U18a178de1dfb", "B491d307dfe01", 1.0, 0);
   graph.write_put_edge("", "U18a178de1dfb", "B75a44a52fa29", 1.0, 0);
   graph.write_put_edge("Fatum", "U18a178de1dfb", "B310b66ab31fb", 1.0, 0);
@@ -4974,8 +6345,8 @@ fn regression_oom() {
   graph.write_put_edge("", "Uce7e9acd408e", "Bea6112348aa2", 3.0, 0);
   graph.write_put_edge("game", "Uce7e9acd408e", "Bc4603804bacf", 8.0, 0);
   graph.write_put_edge("Fatum", "Uce7e9acd408e", "B3f6f837bc345", 4.0, 0);
-  graph.write_put_edge("Fatum", "U76a293d70033", "B310b66ab31fb" ,-2.0, 0);
-  graph.write_put_edge("Fatum", "U76a293d70033", "B3f6f837bc345" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U76a293d70033", "B310b66ab31fb", -2.0, 0);
+  graph.write_put_edge("Fatum", "U76a293d70033", "B3f6f837bc345", -1.0, 0);
   graph.write_put_edge("", "U3ea0a229ad85", "B7fbe3633b4b0", 1.0, 0);
   graph.write_put_edge("", "Ua37f245cf686", "B7f628ad203b5", 2.0, 0);
   graph.write_put_edge("", "Ua37f245cf686", "B491d307dfe01", 2.0, 0);
@@ -4985,12 +6356,18 @@ fn regression_oom() {
   graph.write_put_edge("", "U18a178de1dfb", "B1533941e2773", 1.0, 0);
   graph.write_put_edge("", "U18a178de1dfb", "Bc4addf09b79f", 1.0, 0);
   graph.write_put_edge("", "U18a178de1dfb", "B70df5dbab8c3", 1.0, 0);
-  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B3f6f837bc345" ,-11.0, 0);
-  graph.write_put_edge("Clean Architecture", "Ub20ed0f8f9b0", "B2b0525693165" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B3f6f837bc345", -11.0, 0);
+  graph.write_put_edge(
+    "Clean Architecture",
+    "Ub20ed0f8f9b0",
+    "B2b0525693165",
+    -1.0,
+    0,
+  );
   graph.write_put_edge("", "U0162cf4b43ae", "Bf3a0a1165271", 1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bd7a8bfcf3337" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bfefe4e25c870" ,-2.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Ba3c4a280657d" ,-2.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bd7a8bfcf3337", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bfefe4e25c870", -2.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Ba3c4a280657d", -2.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "B3f6f837bc345", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B75a44a52fa29", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B1533941e2773", 3.0, 0);
@@ -4998,83 +6375,107 @@ fn regression_oom() {
   graph.write_put_edge("", "Ub01f4ad1b03f", "Bc4addf09b79f", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B4f00e7813add", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B70df5dbab8c3", 1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Be2b46c17f1da" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B45d72e29f004" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B8a531802473b" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B5a1c1d3d0140" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B60d725feca77" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B3c467fb437b2" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B3b3f2ecde430" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B5eb4c6be535a" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bb78026d99388" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B0e230e9108dd" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B25c85fe0df2d" ,-1.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "Bed5126bc655d" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Be2b46c17f1da", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B45d72e29f004", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B8a531802473b", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B5a1c1d3d0140", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B60d725feca77", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B3c467fb437b2", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B3b3f2ecde430", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B5eb4c6be535a", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bb78026d99388", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B0e230e9108dd", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B25c85fe0df2d", -1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "Bed5126bc655d", -1.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "B310b66ab31fb", 2.0, 0);
   graph.write_put_edge("", "U95f3426b8e5d", "B79efabc4d8bf", 3.0, 0);
   graph.write_put_edge("Fatum", "U95f3426b8e5d", "B9c01ce5718d1", 2.0, 0);
   graph.write_put_edge("", "Ucc76e1b73be0", "B7f628ad203b5", 4.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bfae1726e4e87" ,-1.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "Bd7a8bfcf3337" ,-14.0, 0);
-  graph.write_put_edge("tentura-test", "Ub01f4ad1b03f", "Be64122664ec6" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bb1e3630d2f4a" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bfae1726e4e87", -1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "Bd7a8bfcf3337", -14.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub01f4ad1b03f",
+    "Be64122664ec6",
+    -1.0,
+    0,
+  );
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bb1e3630d2f4a", -1.0, 0);
   graph.write_put_edge("", "Ud2123c013577", "B79efabc4d8bf", 0.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B0a87a669fc28" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B0a87a669fc28", -1.0, 0);
   graph.write_put_edge("Fatum", "Ud2123c013577", "B3f6f837bc345", 1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B19ea554faf29" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B92e4a185c654" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B19ea554faf29", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B92e4a185c654", -1.0, 0);
   graph.write_put_edge("Fatum", "Ub9713d01f478", "B9c01ce5718d1", 6.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bd90a1cf73384" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B10d3f548efc4" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bf34ee3bfc12b" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bd90a1cf73384", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B10d3f548efc4", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bf34ee3bfc12b", -1.0, 0);
   graph.write_put_edge("", "Ud2123c013577", "B60d725feca77", 0.0, 0);
-  graph.write_put_edge("", "Uce7e9acd408e", "Bf34ee3bfc12b" ,-1.0, 0);
+  graph.write_put_edge("", "Uce7e9acd408e", "Bf34ee3bfc12b", -1.0, 0);
   graph.write_put_edge("Fatum", "U77a03e9a08af", "B4b8fafa86526", 0.0, 0);
-  graph.write_put_edge("game", "Ud2123c013577", "Bc4603804bacf" ,-1.0, 0);
+  graph.write_put_edge("game", "Ud2123c013577", "Bc4603804bacf", -1.0, 0);
   graph.write_put_edge("", "Uf82dbb4708ba", "B60d725feca77", 11.0, 0);
   graph.write_put_edge("", "Ud2123c013577", "B7f628ad203b5", 0.0, 0);
-  graph.write_put_edge("", "U77a03e9a08af", "B7f628ad203b5" ,-3.0, 0);
-  graph.write_put_edge("tentura-test", "Ud2123c013577", "B500ed1ecb236", 0.0, 0);
+  graph.write_put_edge("", "U77a03e9a08af", "B7f628ad203b5", -3.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Ud2123c013577",
+    "B500ed1ecb236",
+    0.0,
+    0,
+  );
   graph.write_put_edge("", "Uf82dbb4708ba", "Bad1c69de7837", 8.0, 0);
   graph.write_put_edge("home", "U3ea0a229ad85", "B5ab3ad635025", 2.0, 0);
-  graph.write_put_edge("tentura-test", "Uf82dbb4708ba", "Be64122664ec6", 3.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Uf82dbb4708ba",
+    "Be64122664ec6",
+    3.0,
+    0,
+  );
   graph.write_put_edge("", "U425e5e1ff39b", "B790089851584", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B491d307dfe01", 1.0, 0);
-  graph.write_put_edge("", "U0be96c3b9883", "B25c85fe0df2d" ,-4.0, 0);
+  graph.write_put_edge("", "U0be96c3b9883", "B25c85fe0df2d", -4.0, 0);
   graph.write_put_edge("Photo", "Ub01f4ad1b03f", "Bf97103a947f5", 3.0, 0);
-  graph.write_put_edge("", "U0be96c3b9883", "Be2b46c17f1da" ,-3.0, 0);
+  graph.write_put_edge("", "U0be96c3b9883", "Be2b46c17f1da", -3.0, 0);
   graph.write_put_edge("Fatum", "Ua37f245cf686", "B9c01ce5718d1", 2.0, 0);
   graph.write_put_edge("", "Ub9713d01f478", "Bd46b3e9a38bb", 2.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B68d3b36887e4", 4.0, 0);
   graph.write_put_edge("", "U881eb59c559f", "B491d307dfe01", 1.0, 0);
   graph.write_put_edge("", "U881eb59c559f", "Ba3c4a280657d", 1.0, 0);
-  graph.write_put_edge("Fatum", "U881eb59c559f", "B310b66ab31fb" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U881eb59c559f", "B310b66ab31fb", -1.0, 0);
   graph.write_put_edge("cat", "U881eb59c559f", "Bc8526e892c5d", 1.0, 0);
   graph.write_put_edge("home", "Ub01f4ad1b03f", "B5ab3ad635025", 2.0, 0);
   graph.write_put_edge("Fatum", "U77a03e9a08af", "B9c01ce5718d1", 1.0, 0);
-  graph.write_put_edge("", "Ub20ed0f8f9b0", "Baadac7ab80fe" ,-1.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "Bfefe4e25c870" ,-6.0, 0);
+  graph.write_put_edge("", "Ub20ed0f8f9b0", "Baadac7ab80fe", -1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "Bfefe4e25c870", -6.0, 0);
   graph.write_put_edge("Glamour", "U163b54808a6b", "B5f6a16260bac", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B7f628ad203b5", 1.0, 0);
   graph.write_put_edge("", "U17b825d673df", "B7f628ad203b5", 1.0, 0);
   graph.write_put_edge("", "U163b54808a6b", "B4f00e7813add", 1.0, 0);
-  graph.write_put_edge("", "Uf82dbb4708ba", "B0e230e9108dd" ,-7.0, 0);
+  graph.write_put_edge("", "Uf82dbb4708ba", "B0e230e9108dd", -7.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B8fabb952bc4b", 3.0, 0);
-  graph.write_put_edge("tentura-test", "U163b54808a6b", "Be64122664ec6", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "U163b54808a6b",
+    "Be64122664ec6",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "B4b8fafa86526", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "Bea6112348aa2", 3.0, 0);
   graph.write_put_edge("game", "Ub01f4ad1b03f", "Bc4603804bacf", 4.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bed48703df71d" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bed48703df71d", -1.0, 0);
   graph.write_put_edge("Fatum", "Ucc6cc40df2b7", "B9c01ce5718d1", 1.0, 0);
   graph.write_put_edge("", "Uf82dbb4708ba", "B75a44a52fa29", 7.0, 0);
   graph.write_put_edge("cat", "Ub01f4ad1b03f", "Bc8526e892c5d", 4.0, 0);
   graph.write_put_edge("game", "U0080a5f2547d", "Bc4603804bacf", 1.0, 0);
   graph.write_put_edge("", "U76a293d70033", "B55cc136fc220", 6.0, 0);
   graph.write_put_edge("Fatum", "Ub7b49e360599", "B9c01ce5718d1", 1.0, 0);
-  graph.write_put_edge("Fatum", "U68c2a35a5c73", "B310b66ab31fb" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U68c2a35a5c73", "B310b66ab31fb", -1.0, 0);
   graph.write_put_edge("game", "U881eb59c559f", "Bc4603804bacf", 1.0, 0);
   graph.write_put_edge("", "Ucc6cc40df2b7", "Bfefe4e25c870", 1.0, 0);
-  graph.write_put_edge("", "Uce7e9acd408e", "Bed48703df71d" ,-2.0, 0);
+  graph.write_put_edge("", "Uce7e9acd408e", "Bed48703df71d", -2.0, 0);
   graph.write_put_edge("", "U881eb59c559f", "B7f628ad203b5", 1.0, 0);
   graph.write_put_edge("", "Ucc6cc40df2b7", "Ba3c4a280657d", 1.0, 0);
   graph.write_put_edge("", "Ucc6cc40df2b7", "B491d307dfe01", 1.0, 0);
@@ -5082,26 +6483,68 @@ fn regression_oom() {
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "B9c01ce5718d1", 0.0, 0);
   graph.write_put_edge("", "U17b825d673df", "B491d307dfe01", 6.0, 0);
   graph.write_put_edge("Glamour", "U3be62375581d", "B5f6a16260bac", 1.0, 0);
-  graph.write_put_edge("", "U77a03e9a08af", "Bad1c69de7837" ,-4.0, 0);
+  graph.write_put_edge("", "U77a03e9a08af", "Bad1c69de7837", -4.0, 0);
   graph.write_put_edge("", "U77a03e9a08af", "Bb78026d99388", 3.0, 0);
-  graph.write_put_edge("tentura-test", "U77a03e9a08af", "Be64122664ec6", 2.0, 0);
-  graph.write_put_edge("tentura-test", "U77a03e9a08af", "B500ed1ecb236", 7.0, 0);
-  graph.write_put_edge("tentura-test", "U163b54808a6b", "B500ed1ecb236", 1.0, 0);
-  graph.write_put_edge("", "U77a03e9a08af", "B45d72e29f004" ,-2.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "U77a03e9a08af",
+    "Be64122664ec6",
+    2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U77a03e9a08af",
+    "B500ed1ecb236",
+    7.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U163b54808a6b",
+    "B500ed1ecb236",
+    1.0,
+    0,
+  );
+  graph.write_put_edge("", "U77a03e9a08af", "B45d72e29f004", -2.0, 0);
   graph.write_put_edge("Fatum", "U163b54808a6b", "B4b8fafa86526", 1.0, 0);
   graph.write_put_edge("cat", "U46e5959770ad", "Bc8526e892c5d", 5.0, 0);
   graph.write_put_edge("", "U17b825d673df", "B30bf91bf5845", 5.0, 0);
   graph.write_put_edge("", "U75cddb09a54e", "B7fbe3633b4b0", 1.0, 0);
   graph.write_put_edge("home", "U46e5959770ad", "B5ab3ad635025", 5.0, 0);
   graph.write_put_edge("Fatum", "Ub4b46ee7a5e4", "B9c01ce5718d1", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Ub4b46ee7a5e4", "B500ed1ecb236", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Ub4b46ee7a5e4", "Be64122664ec6", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub4b46ee7a5e4",
+    "B500ed1ecb236",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub4b46ee7a5e4",
+    "Be64122664ec6",
+    1.0,
+    0,
+  );
   graph.write_put_edge("home", "U75cddb09a54e", "B5ab3ad635025", 2.0, 0);
   graph.write_put_edge("Fatum", "U3ea0a229ad85", "B310b66ab31fb", 1.0, 0);
   graph.write_put_edge("", "U75cddb09a54e", "Bca63d8a2057b", 1.0, 0);
   graph.write_put_edge("Photo", "U75cddb09a54e", "Bf97103a947f5", 1.0, 0);
-  graph.write_put_edge("tentura-test", "U3ea0a229ad85", "B500ed1ecb236", 1.0, 0);
-  graph.write_put_edge("tentura-test", "U3ea0a229ad85", "Be64122664ec6", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "U3ea0a229ad85",
+    "B500ed1ecb236",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U3ea0a229ad85",
+    "Be64122664ec6",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "U75cddb09a54e", "B68d3b36887e4", 1.0, 0);
   graph.write_put_edge("Glamour", "U75cddb09a54e", "B5f6a16260bac", 1.0, 0);
   graph.write_put_edge("", "U9de057150efc", "B91796a98a225", 1.0, 0);
@@ -5110,123 +6553,561 @@ fn regression_oom() {
   graph.write_put_edge("", "U29a00cc1c9c2", "B499bfc56e77b", 2.0, 0);
   graph.write_put_edge("Glamour", "Ub01f4ad1b03f", "B5f6a16260bac", 2.0, 0);
   graph.write_put_edge("", "U0da9b1b0859f", "B8fabb952bc4b", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Ub01f4ad1b03f", "B500ed1ecb236" ,-1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub01f4ad1b03f",
+    "B500ed1ecb236",
+    -1.0,
+    0,
+  );
   graph.write_put_edge("", "Ub01f4ad1b03f", "Bca63d8a2057b", 3.0, 0);
   graph.write_put_edge("", "U0ae9f5d0bf02", "B30bf91bf5845", 2.0, 0);
   graph.write_put_edge("", "U0ae9f5d0bf02", "Bad1c69de7837", 4.0, 0);
   graph.write_put_edge("Fatum", "U0ae9f5d0bf02", "B310b66ab31fb", 5.0, 0);
   graph.write_put_edge("", "U0ae9f5d0bf02", "Be2b46c17f1da", 3.0, 0);
-  graph.write_put_edge("", "U5cd05270c153", "Baadac7ab80fe" ,-1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "B0055751ce4cc", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "B521ff7422d52", 1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B55cc136fc220" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B790089851584" ,-1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U41906748a800", "B0055751ce4cc" ,-5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "Bc1cb783b0159", 4.0, 0);
-  graph.write_put_edge("QuestForGlory", "U050e67479957", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U6301c73d1354", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U8ebde6fbfd3f", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U2becfc64c13b", "Bc1cb783b0159", 1.0, 0);
+  graph.write_put_edge("", "U5cd05270c153", "Baadac7ab80fe", -1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "B0055751ce4cc",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "B521ff7422d52",
+    1.0,
+    0,
+  );
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B55cc136fc220", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B790089851584", -1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U41906748a800",
+    "B0055751ce4cc",
+    -5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "Bc1cb783b0159",
+    4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U050e67479957",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U6301c73d1354",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U8ebde6fbfd3f",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U2becfc64c13b",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "U1ada5dcdea2b", "Baf813d1b4acf", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U1ada5dcdea2b", "B20f3d51e498f", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "U286f94380611", "B0b176a4c7617" ,-2.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "U286f94380611", "B080a0d5de22d" ,-4.0, 0);
-  graph.write_put_edge("Community Support", "U41906748a800", "B3b1ee4d8fc29" ,-2.0, 0);
-  graph.write_put_edge("There and Back Again", "U41906748a800", "B0b176a4c7617" ,-1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U41906748a800", "B521ff7422d52" ,-5.0, 0);
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U1ada5dcdea2b",
+    "B20f3d51e498f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "U286f94380611",
+    "B0b176a4c7617",
+    -2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "U286f94380611",
+    "B080a0d5de22d",
+    -4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U41906748a800",
+    "B3b1ee4d8fc29",
+    -2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "U41906748a800",
+    "B0b176a4c7617",
+    -1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U41906748a800",
+    "B521ff7422d52",
+    -5.0,
+    0,
+  );
   graph.write_put_edge("", "U4d9267c70eab", "B7bade2c63598", 3.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B4268797cc8ee" ,-2.0, 0);
-  graph.write_put_edge("QuestForGlory", "U8c85f8c3bef7", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "U8c85f8c3bef7", "B080a0d5de22d", 1.0, 0);
-  graph.write_put_edge("Clean Architecture", "U8c85f8c3bef7", "B2b0525693165", 1.0, 0);
+  graph.write_put_edge("", "U41906748a800", "B4268797cc8ee", -2.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U8c85f8c3bef7",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "U8c85f8c3bef7",
+    "B080a0d5de22d",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U8c85f8c3bef7",
+    "B2b0525693165",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "U41906748a800", "Baadac7ab80fe", 2.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U41906748a800", "B20f3d51e498f", 5.0, 0);
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U41906748a800",
+    "B20f3d51e498f",
+    5.0,
+    0,
+  );
   graph.write_put_edge("", "U286f94380611", "B6d130d7414d1", 3.0, 0);
   graph.write_put_edge("", "U286f94380611", "B6bbf9d5766c3", 5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U4d9267c70eab", "Bc1cb783b0159" ,-5.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ud5984640e941", "Bc1cb783b0159", 5.0, 0);
-  graph.write_put_edge("Community Support", "U4d9267c70eab", "B86a6e5de190a" ,-4.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "Ud5984640e941", "B080a0d5de22d" ,-3.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U286f94380611", "B20f3d51e498f" ,-5.0, 0);
-  graph.write_put_edge("Clean Architecture", "U4d9267c70eab", "B2b0525693165", 4.0, 0);
-  graph.write_put_edge("", "U4d9267c70eab", "B6bbf9d5766c3" ,-5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U41906748a800", "Bc1cb783b0159" ,-5.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B6bbf9d5766c3" ,-5.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "U4d9267c70eab", "B080a0d5de22d", 5.0, 0);
-  graph.write_put_edge("Clean Architecture", "U41906748a800", "B2b0525693165", 5.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U4d9267c70eab",
+    "Bc1cb783b0159",
+    -5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ud5984640e941",
+    "Bc1cb783b0159",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U4d9267c70eab",
+    "B86a6e5de190a",
+    -4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "Ud5984640e941",
+    "B080a0d5de22d",
+    -3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U286f94380611",
+    "B20f3d51e498f",
+    -5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U4d9267c70eab",
+    "B2b0525693165",
+    4.0,
+    0,
+  );
+  graph.write_put_edge("", "U4d9267c70eab", "B6bbf9d5766c3", -5.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U41906748a800",
+    "Bc1cb783b0159",
+    -5.0,
+    0,
+  );
+  graph.write_put_edge("", "U41906748a800", "B6bbf9d5766c3", -5.0, 0);
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "U4d9267c70eab",
+    "B080a0d5de22d",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U41906748a800",
+    "B2b0525693165",
+    5.0,
+    0,
+  );
   graph.write_put_edge("", "U4d9267c70eab", "Baadac7ab80fe", 3.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B3c8ee2c064f6" ,-6.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B988f628fa22f" ,-5.0, 0);
+  graph.write_put_edge("", "U41906748a800", "B3c8ee2c064f6", -6.0, 0);
+  graph.write_put_edge("", "U41906748a800", "B988f628fa22f", -5.0, 0);
   graph.write_put_edge("", "U41906748a800", "Baf813d1b4acf", 7.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B6d130d7414d1" ,-5.0, 0);
+  graph.write_put_edge("", "U41906748a800", "B6d130d7414d1", -5.0, 0);
   graph.write_put_edge("", "U286f94380611", "B4342c0e949fb", 2.0, 0);
-  graph.write_put_edge("", "U4d9267c70eab", "B3c8ee2c064f6" ,-3.0, 0);
-  graph.write_put_edge("QuestForGlory", "U4d9267c70eab", "B0055751ce4cc" ,-3.0, 0);
+  graph.write_put_edge("", "U4d9267c70eab", "B3c8ee2c064f6", -3.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U4d9267c70eab",
+    "B0055751ce4cc",
+    -3.0,
+    0,
+  );
   graph.write_put_edge("", "U41906748a800", "B7bade2c63598", 5.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B4342c0e949fb" ,-5.0, 0);
-  graph.write_put_edge("Community Support", "U4d9267c70eab", "B3b1ee4d8fc29" ,-4.0, 0);
-  graph.write_put_edge("Community Support", "U4d9267c70eab", "B80372f051f17" ,-2.0, 0);
-  graph.write_put_edge("Community Support", "U41906748a800", "B86a6e5de190a" ,-2.0, 0);
-  graph.write_put_edge("Community Support", "U286f94380611", "B3b1ee4d8fc29", 2.0, 0);
-  graph.write_put_edge("Community Support", "U41906748a800", "Be8bb41f4353e" ,-2.0, 0);
+  graph.write_put_edge("", "U41906748a800", "B4342c0e949fb", -5.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "U4d9267c70eab",
+    "B3b1ee4d8fc29",
+    -4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U4d9267c70eab",
+    "B80372f051f17",
+    -2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U41906748a800",
+    "B86a6e5de190a",
+    -2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U286f94380611",
+    "B3b1ee4d8fc29",
+    2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U41906748a800",
+    "Be8bb41f4353e",
+    -2.0,
+    0,
+  );
   graph.write_put_edge("", "U286f94380611", "B7bade2c63598", 5.0, 0);
-  graph.write_put_edge("There and Back Again", "U41906748a800", "Bb4dbbb63b373" ,-1.0, 0);
-  graph.write_put_edge("", "U4d9267c70eab", "B4268797cc8ee" ,-3.0, 0);
-  graph.write_put_edge("There and Back Again", "U4d9267c70eab", "B0b176a4c7617" ,-3.0, 0);
-  graph.write_put_edge("QuestForGlory", "U4d9267c70eab", "B521ff7422d52" ,-6.0, 0);
-  graph.write_put_edge("Community Support", "U286f94380611", "Be8bb41f4353e", 4.0, 0);
-  graph.write_put_edge("QuestForGlory", "U4d9267c70eab", "Bdbd14ea14b6f" ,-1.0, 0);
-  graph.write_put_edge("Community Support", "U4d9267c70eab", "Be8bb41f4353e" ,-5.0, 0);
+  graph.write_put_edge(
+    "There and Back Again",
+    "U41906748a800",
+    "Bb4dbbb63b373",
+    -1.0,
+    0,
+  );
+  graph.write_put_edge("", "U4d9267c70eab", "B4268797cc8ee", -3.0, 0);
+  graph.write_put_edge(
+    "There and Back Again",
+    "U4d9267c70eab",
+    "B0b176a4c7617",
+    -3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U4d9267c70eab",
+    "B521ff7422d52",
+    -6.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U286f94380611",
+    "Be8bb41f4353e",
+    4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U4d9267c70eab",
+    "Bdbd14ea14b6f",
+    -1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U4d9267c70eab",
+    "Be8bb41f4353e",
+    -5.0,
+    0,
+  );
   graph.write_put_edge("", "U286f94380611", "B3c8ee2c064f6", 5.0, 0);
   graph.write_put_edge("", "U286f94380611", "B988f628fa22f", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "U4d9267c70eab", "Bb4dbbb63b373" ,-5.0, 0);
-  graph.write_put_edge("Clean Architecture", "U286f94380611", "B2b0525693165", 5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "B89b51dc35863", 3.0, 0);
-  graph.write_put_edge("Community Support", "U286f94380611", "B2005fe10663d" ,-3.0, 0);
-  graph.write_put_edge("There and Back Again", "U286f94380611", "Bb4dbbb63b373", 4.0, 0);
-  graph.write_put_edge("", "U286f94380611", "Baf813d1b4acf" ,-5.0, 0);
+  graph.write_put_edge(
+    "There and Back Again",
+    "U4d9267c70eab",
+    "Bb4dbbb63b373",
+    -5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U286f94380611",
+    "B2b0525693165",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "B89b51dc35863",
+    3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U286f94380611",
+    "B2005fe10663d",
+    -3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "U286f94380611",
+    "Bb4dbbb63b373",
+    4.0,
+    0,
+  );
+  graph.write_put_edge("", "U286f94380611", "Baf813d1b4acf", -5.0, 0);
   graph.write_put_edge("", "U286f94380611", "Bec4566ce9bd4", 3.0, 0);
   graph.write_put_edge("", "U286f94380611", "B4268797cc8ee", 4.0, 0);
-  graph.write_put_edge("Community Support", "U286f94380611", "B86a6e5de190a", 4.0, 0);
-  graph.write_put_edge("Community Support", "U286f94380611", "B80372f051f17" ,-3.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "U3a33697ffab9", "B080a0d5de22d" ,-3.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "Bdbd14ea14b6f", 3.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "B89b51dc35863", 4.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "B0cb05535835f", 3.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U3a33697ffab9", "B20f3d51e498f" ,-4.0, 0);
-  graph.write_put_edge("", "U286f94380611", "B7e7517882a1d" ,-3.0, 0);
-  graph.write_put_edge("Clean Architecture", "U3a33697ffab9", "B2b0525693165", 5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "Bc1cb783b0159", 5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "B0cb05535835f", 5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "Bdbd14ea14b6f", 4.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "U286f94380611",
+    "B86a6e5de190a",
+    4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U286f94380611",
+    "B80372f051f17",
+    -3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "U3a33697ffab9",
+    "B080a0d5de22d",
+    -3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "Bdbd14ea14b6f",
+    3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "B89b51dc35863",
+    4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "B0cb05535835f",
+    3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U3a33697ffab9",
+    "B20f3d51e498f",
+    -4.0,
+    0,
+  );
+  graph.write_put_edge("", "U286f94380611", "B7e7517882a1d", -3.0, 0);
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U3a33697ffab9",
+    "B2b0525693165",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "Bc1cb783b0159",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "B0cb05535835f",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "Bdbd14ea14b6f",
+    4.0,
+    0,
+  );
   graph.write_put_edge("", "U3a33697ffab9", "B7bade2c63598", 6.0, 0);
-  graph.write_put_edge("Community Support", "U3a33697ffab9", "B3b1ee4d8fc29", 3.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "U3a33697ffab9",
+    "B3b1ee4d8fc29",
+    3.0,
+    0,
+  );
   graph.write_put_edge("", "U3a33697ffab9", "Bec4566ce9bd4", 4.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "B521ff7422d52", 3.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "B0055751ce4cc", 4.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "B521ff7422d52",
+    3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "B0055751ce4cc",
+    4.0,
+    0,
+  );
   graph.write_put_edge("", "U3a33697ffab9", "B6d130d7414d1", 10.0, 0);
   graph.write_put_edge("", "U3a33697ffab9", "B4342c0e949fb", 2.0, 0);
-  graph.write_put_edge("", "U3a33697ffab9", "Baf813d1b4acf" ,-2.0, 0);
+  graph.write_put_edge("", "U3a33697ffab9", "Baf813d1b4acf", -2.0, 0);
   graph.write_put_edge("", "U3a33697ffab9", "B988f628fa22f", 3.0, 0);
-  graph.write_put_edge("", "U3a33697ffab9", "Baadac7ab80fe" ,-3.0, 0);
-  graph.write_put_edge("Community Support", "U3a33697ffab9", "B80372f051f17", 2.0, 0);
-  graph.write_put_edge("Community Support", "U3a33697ffab9", "B2005fe10663d", 4.0, 0);
+  graph.write_put_edge("", "U3a33697ffab9", "Baadac7ab80fe", -3.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "U3a33697ffab9",
+    "B80372f051f17",
+    2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U3a33697ffab9",
+    "B2005fe10663d",
+    4.0,
+    0,
+  );
   graph.write_put_edge("", "U3a33697ffab9", "B7e7517882a1d", 3.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U3a33697ffab9", "Bb9d31c168baf", 5.0, 0);
-  graph.write_put_edge("Community Support", "Ub01f4ad1b03f", "B86a6e5de190a", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "Ub01f4ad1b03f", "Bb9d31c168baf", 1.0, 0);
-  graph.write_put_edge("Community Support", "Ub01f4ad1b03f", "Be8bb41f4353e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "Bc1cb783b0159", 2.0, 0);
-  graph.write_put_edge("", "U5cd05270c153", "Bed48703df71d" ,-1.0, 0);
-  graph.write_put_edge("Clean Architecture", "Ub01f4ad1b03f", "B2b0525693165", 2.0, 0);
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U3a33697ffab9",
+    "Bb9d31c168baf",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "Ub01f4ad1b03f",
+    "B86a6e5de190a",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "Ub01f4ad1b03f",
+    "Bb9d31c168baf",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "Ub01f4ad1b03f",
+    "Be8bb41f4353e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "Bc1cb783b0159",
+    2.0,
+    0,
+  );
+  graph.write_put_edge("", "U5cd05270c153", "Bed48703df71d", -1.0, 0);
+  graph.write_put_edge(
+    "Clean Architecture",
+    "Ub01f4ad1b03f",
+    "B2b0525693165",
+    2.0,
+    0,
+  );
   graph.write_put_edge("", "Ub01f4ad1b03f", "B7bade2c63598", 2.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "B0cb05535835f", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "Bdbd14ea14b6f", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "B0cb05535835f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "Bdbd14ea14b6f",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "Ub01f4ad1b03f", "Bec4566ce9bd4", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "B89b51dc35863", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "B89b51dc35863",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Fatum", "Cdd6c827ecca3", "Ued8da07b9559", 1.0, 0);
   graph.write_put_edge("Fatum", "Ued8da07b9559", "Cdd6c827ecca3", 1.0, 0);
   graph.write_put_edge("", "Cb117f464e558", "U26aca0e369c7", 1.0, 0);
@@ -5403,40 +7284,208 @@ fn regression_oom() {
   graph.write_put_edge("", "U76a293d70033", "C748ed9d2dfb3", 1.0, 0);
   graph.write_put_edge("cat", "Cc01b87ceb830", "Ub01f4ad1b03f", 1.0, 0);
   graph.write_put_edge("cat", "Ub01f4ad1b03f", "Cc01b87ceb830", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C9b36f904697e", "U286f94380611", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C8bf3d2545b6b", "U7aa6bd888278", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "C8bf3d2545b6b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C757806312ae1", "U7aa6bd888278", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C359515064aae", "U050e67479957", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U050e67479957", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C98d9978b7d6c", "U6301c73d1354", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U6301c73d1354", "C98d9978b7d6c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C3fe79b19de5a", "Ub0100d7bad5f", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "C3fe79b19de5a", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C1b28e93382e1", "U8ebde6fbfd3f", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U8ebde6fbfd3f", "C1b28e93382e1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C7e507d2dd112", "U15f925d86858", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C7e507d2dd112", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C842a34fddec2", "U8ebde6fbfd3f", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U8ebde6fbfd3f", "C842a34fddec2", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C9b36f904697e",
+    "U286f94380611",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C8bf3d2545b6b",
+    "U7aa6bd888278",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "C8bf3d2545b6b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C757806312ae1",
+    "U7aa6bd888278",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C359515064aae",
+    "U050e67479957",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U050e67479957",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C98d9978b7d6c",
+    "U6301c73d1354",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U6301c73d1354",
+    "C98d9978b7d6c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C3fe79b19de5a",
+    "Ub0100d7bad5f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "C3fe79b19de5a",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C1b28e93382e1",
+    "U8ebde6fbfd3f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U8ebde6fbfd3f",
+    "C1b28e93382e1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C7e507d2dd112",
+    "U15f925d86858",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C7e507d2dd112",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C842a34fddec2",
+    "U8ebde6fbfd3f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U8ebde6fbfd3f",
+    "C842a34fddec2",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Fatum", "Cc2b3069cbe5d", "Ub01f4ad1b03f", 1.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cc2b3069cbe5d", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C25efb4fe632b", "Udab52ec61933", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C25efb4fe632b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C9b1d2b73215c", "U2becfc64c13b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U2becfc64c13b", "C9b1d2b73215c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C47a273145740", "U3a33697ffab9", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "C47a273145740", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C25efb4fe632b",
+    "Udab52ec61933",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C25efb4fe632b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C9b1d2b73215c",
+    "U2becfc64c13b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U2becfc64c13b",
+    "C9b1d2b73215c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C47a273145740",
+    "U3a33697ffab9",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "C47a273145740",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "C1aadfb8924d9", "U77a03e9a08af", 1.0, 0);
   graph.write_put_edge("", "U77a03e9a08af", "C1aadfb8924d9", 1.0, 0);
-  graph.write_put_edge("tentura-test", "C978221bee128", "Ub01f4ad1b03f", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Ub01f4ad1b03f", "C978221bee128", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "C978221bee128",
+    "Ub01f4ad1b03f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub01f4ad1b03f",
+    "C978221bee128",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "C6c30787a4fae", "U77a03e9a08af", 1.0, 0);
   graph.write_put_edge("", "U77a03e9a08af", "C6c30787a4fae", 1.0, 0);
-  graph.write_put_edge("tentura-test", "C415d72e2693c", "U77a03e9a08af", 1.0, 0);
-  graph.write_put_edge("tentura-test", "U77a03e9a08af", "C415d72e2693c", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "C415d72e2693c",
+    "U77a03e9a08af",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U77a03e9a08af",
+    "C415d72e2693c",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Glamour", "C5a518f7914ad", "U3ea0a229ad85", 1.0, 0);
   graph.write_put_edge("Glamour", "U3ea0a229ad85", "C5a518f7914ad", 1.0, 0);
   graph.write_put_edge("", "C55df2e744f76", "Ub01f4ad1b03f", 1.0, 0);
@@ -5453,8 +7502,20 @@ fn regression_oom() {
   graph.write_put_edge("", "U5d33a9be1633", "C72ab5060f2cb", 1.0, 0);
   graph.write_put_edge("Fatum", "Caf2370c548ce", "U0d2e9e0dc40e", 1.0, 0);
   graph.write_put_edge("Fatum", "U0d2e9e0dc40e", "Caf2370c548ce", 1.0, 0);
-  graph.write_put_edge("tentura-test", "C6bda754da97b", "Ub4b46ee7a5e4", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Ub4b46ee7a5e4", "C6bda754da97b", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "C6bda754da97b",
+    "Ub4b46ee7a5e4",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub4b46ee7a5e4",
+    "C6bda754da97b",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Glamour", "Cc3a1b76c43a1", "U3ea0a229ad85", 1.0, 0);
   graph.write_put_edge("Glamour", "U3ea0a229ad85", "Cc3a1b76c43a1", 1.0, 0);
   graph.write_put_edge("", "Cc7c6ce4cba1c", "U29a00cc1c9c2", 1.0, 0);
@@ -5477,13 +7538,13 @@ fn regression_oom() {
   graph.write_put_edge("", "U7a8d8324441d", "Cd06fea6a395f", 9.0, 0);
   graph.write_put_edge("", "Udece0afd9a8b", "C4f2dafca724f", 8.0, 0);
   graph.write_put_edge("", "Uadeb43da4abb", "C2bbd63b00224", 7.0, 0);
-  graph.write_put_edge("", "U80e22da6d8c4", "Cb76829a425d9" ,-1.0, 0);
+  graph.write_put_edge("", "U80e22da6d8c4", "Cb76829a425d9", -1.0, 0);
   graph.write_put_edge("", "U0c17798eaab4", "C588ffef22463", 5.0, 0);
-  graph.write_put_edge("", "Uaa4e2be7a87a", "C78d6fac93d00" ,-1.0, 0);
+  graph.write_put_edge("", "Uaa4e2be7a87a", "C78d6fac93d00", -1.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "C070e739180d6", 9.0, 0);
   graph.write_put_edge("", "U80e22da6d8c4", "C35678a54ef5f", 5.0, 0);
-  graph.write_put_edge("", "Uf5096f6ab14e", "C4893c40e481d" ,-1.0, 0);
-  graph.write_put_edge("", "Uadeb43da4abb", "C9462ca240ceb" ,-1.0, 0);
+  graph.write_put_edge("", "Uf5096f6ab14e", "C4893c40e481d", -1.0, 0);
+  graph.write_put_edge("", "Uadeb43da4abb", "C9462ca240ceb", -1.0, 0);
   graph.write_put_edge("", "Uef7fbf45ef11", "C2bbd63b00224", 8.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "C78ad459d3b81", 4.0, 0);
   graph.write_put_edge("", "Uad577360d968", "Cbce32a9b256a", 3.0, 0);
@@ -5495,13 +7556,13 @@ fn regression_oom() {
   graph.write_put_edge("", "U9a2c85753a6d", "Cfdde53c79a2d", 4.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "C78d6fac93d00", 2.0, 0);
   graph.write_put_edge("", "Ue7a29d5409f2", "Cfdde53c79a2d", 5.0, 0);
-  graph.write_put_edge("", "U9e42f6dab85a", "C0b19d314485e" ,-1.0, 0);
+  graph.write_put_edge("", "U9e42f6dab85a", "C0b19d314485e", -1.0, 0);
   graph.write_put_edge("", "U80e22da6d8c4", "Cb14487d862b3", 6.0, 0);
   graph.write_put_edge("", "U389f9f24b31c", "C4893c40e481d", 3.0, 0);
   graph.write_put_edge("", "U016217c34c6e", "Cb76829a425d9", 2.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "Cbbf2df46955b", 5.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "Cdcddfb230cb5", 4.0, 0);
-  graph.write_put_edge("", "U9a2c85753a6d", "C4893c40e481d" ,-1.0, 0);
+  graph.write_put_edge("", "U9a2c85753a6d", "C4893c40e481d", -1.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "Cdcddfb230cb5", 3.0, 0);
   graph.write_put_edge("", "U389f9f24b31c", "Cbbf2df46955b", 4.0, 0);
   graph.write_put_edge("", "Uad577360d968", "C2bbd63b00224", 9.0, 0);
@@ -5518,34 +7579,34 @@ fn regression_oom() {
   graph.write_put_edge("", "U80e22da6d8c4", "C3e84102071d1", 4.0, 0);
   graph.write_put_edge("", "Uc1158424318a", "Cfdde53c79a2d", 6.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "Ce1a7d8996eb0", 2.0, 0);
-  graph.write_put_edge("", "U9a89e0679dec", "Cd06fea6a395f" ,-1.0, 0);
+  graph.write_put_edge("", "U9a89e0679dec", "Cd06fea6a395f", -1.0, 0);
   graph.write_put_edge("", "Uf5096f6ab14e", "C6aebafa4fe8e", 8.0, 0);
   graph.write_put_edge("", "Uadeb43da4abb", "Cc9f863ff681b", 2.0, 0);
   graph.write_put_edge("", "Ue7a29d5409f2", "C399b6349ab02", 5.0, 0);
   graph.write_put_edge("", "Uc1158424318a", "C4e0db8dec53e", 4.0, 0);
   graph.write_put_edge("", "U9a89e0679dec", "C6aebafa4fe8e", 8.0, 0);
-  graph.write_put_edge("", "U80e22da6d8c4", "C6acd550a4ef3" ,-1.0, 0);
-  graph.write_put_edge("", "Uf2b0a6b1d423", "Ce1a7d8996eb0" ,-1.0, 0);
+  graph.write_put_edge("", "U80e22da6d8c4", "C6acd550a4ef3", -1.0, 0);
+  graph.write_put_edge("", "Uf2b0a6b1d423", "Ce1a7d8996eb0", -1.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "C30fef1977b4a", 8.0, 0);
   graph.write_put_edge("", "Uef7fbf45ef11", "C588ffef22463", 4.0, 0);
   graph.write_put_edge("", "Uef7fbf45ef11", "C94bb73c10a06", 3.0, 0);
-  graph.write_put_edge("", "Uad577360d968", "C588ffef22463" ,-1.0, 0);
+  graph.write_put_edge("", "Uad577360d968", "C588ffef22463", -1.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "C67e4476fda28", 6.0, 0);
   graph.write_put_edge("", "U0c17798eaab4", "C4893c40e481d", 7.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "C6a2263dc469e", 3.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "C3fd1fdebe0e9", 7.0, 0);
   graph.write_put_edge("", "Uef7fbf45ef11", "C3fd1fdebe0e9", 9.0, 0);
-  graph.write_put_edge("", "Uc1158424318a", "C9028c7415403" ,-1.0, 0);
+  graph.write_put_edge("", "Uc1158424318a", "C9028c7415403", -1.0, 0);
   graph.write_put_edge("", "U9e42f6dab85a", "C6a2263dc469e", 5.0, 0);
   graph.write_put_edge("", "Uad577360d968", "C399b6349ab02", 6.0, 0);
   graph.write_put_edge("", "U26aca0e369c7", "C9028c7415403", 8.0, 0);
   graph.write_put_edge("", "U1c285703fc63", "C30e7409c2d5f", 4.0, 0);
-  graph.write_put_edge("", "U9a89e0679dec", "Cbbf2df46955b" ,-1.0, 0);
+  graph.write_put_edge("", "U9a89e0679dec", "Cbbf2df46955b", -1.0, 0);
   graph.write_put_edge("", "Uf5096f6ab14e", "C3e84102071d1", 1.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "C94bb73c10a06", 9.0, 0);
   graph.write_put_edge("", "Uaa4e2be7a87a", "Cfdde53c79a2d", 3.0, 0);
   graph.write_put_edge("", "U26aca0e369c7", "C6acd550a4ef3", 4.0, 0);
-  graph.write_put_edge("", "Uc1158424318a", "C67e4476fda28" ,-1.0, 0);
+  graph.write_put_edge("", "Uc1158424318a", "C67e4476fda28", -1.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "C30e7409c2d5f", 9.0, 0);
   graph.write_put_edge("", "U389f9f24b31c", "C4f2dafca724f", 5.0, 0);
   graph.write_put_edge("", "U0c17798eaab4", "Ce1a7d8996eb0", 6.0, 0);
@@ -5554,7 +7615,7 @@ fn regression_oom() {
   graph.write_put_edge("", "Uaa4e2be7a87a", "C070e739180d6", 8.0, 0);
   graph.write_put_edge("", "U389f9f24b31c", "C6acd550a4ef3", 6.0, 0);
   graph.write_put_edge("Fatum", "U01814d1ec9ff", "C6d52e861b366", 3.0, 0);
-  graph.write_put_edge("", "U99a0f1f7e6ee", "C96bdee4f11e2" ,-18.0, 0);
+  graph.write_put_edge("", "U99a0f1f7e6ee", "C96bdee4f11e2", -18.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "C8d80016b8292", 1.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "C247501543b60", 1.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "C6f84810d3cd9", 1.0, 0);
@@ -5570,54 +7631,246 @@ fn regression_oom() {
   graph.write_put_edge("", "U0cd6bd2dde4f", "C7062e90f7422", 1.0, 0);
   graph.write_put_edge("Fatum", "U1bcba4fd7175", "Cd4417a5d718e", 5.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "C6a2263dc469e", 2.0, 0);
-  graph.write_put_edge("Fatum", "U1bcba4fd7175", "C6d52e861b366" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U1bcba4fd7175", "C6d52e861b366", -1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "C5782d559baad", 1.0, 0);
   graph.write_put_edge("", "U95f3426b8e5d", "C992d8370db6b", 1.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cd5983133fb67", 5.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cb11edc3d0bc7", 5.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "C6d52e861b366", 0.0, 0);
-  graph.write_put_edge("game", "Ub01f4ad1b03f", "C1f463ef711d7" ,-2.0, 0);
+  graph.write_put_edge("game", "Ub01f4ad1b03f", "C1f463ef711d7", -2.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cd6c9d5cba220", 4.0, 0);
-  graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cd4417a5d718e" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "C8343a6a576ff" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cd4417a5d718e", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "C8343a6a576ff", -1.0, 0);
   graph.write_put_edge("cat", "Ub01f4ad1b03f", "Cdc72f8f77531", 4.0, 0);
   graph.write_put_edge("", "Ua37f245cf686", "C2bbd63b00224", 1.0, 0);
-  graph.write_put_edge("", "Ua37f245cf686", "Cb117f464e558" ,-1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "C757806312ae1", 1.0, 0);
+  graph.write_put_edge("", "Ua37f245cf686", "Cb117f464e558", -1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "C0f761a65e114", 2.0, 0);
-  graph.write_put_edge("QuestForGlory", "U050e67479957", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U050e67479957", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U6301c73d1354", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U6301c73d1354", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U6301c73d1354", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "C98d9978b7d6c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C98d9978b7d6c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C3fe79b19de5a", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C1b28e93382e1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C7e507d2dd112", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C842a34fddec2" ,-1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U050e67479957",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U050e67479957",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U6301c73d1354",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U6301c73d1354",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U6301c73d1354",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "C98d9978b7d6c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C98d9978b7d6c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C3fe79b19de5a",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C1b28e93382e1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C7e507d2dd112",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C842a34fddec2",
+    -1.0,
+    0,
+  );
   graph.write_put_edge("Fatum", "U0ae9f5d0bf02", "C6d52e861b366", 1.0, 0);
   graph.write_put_edge("Fatum", "U0ae9f5d0bf02", "Cd5983133fb67", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C1b28e93382e1" ,-1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C3fe79b19de5a", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C98d9978b7d6c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C842a34fddec2", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C25efb4fe632b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C1b28e93382e1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C98d9978b7d6c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C9b36f904697e", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C1b28e93382e1",
+    -1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C3fe79b19de5a",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C98d9978b7d6c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C842a34fddec2",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C25efb4fe632b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C1b28e93382e1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C98d9978b7d6c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
   graph.write_reset();
   graph.write_put_edge("", "U95f3426b8e5d", "U499f24158a40", 1.0, 0);
   graph.write_put_edge("", "U77a03e9a08af", "U6d2f25cc4264", 1.0, 0);
@@ -5626,10 +7879,10 @@ fn regression_oom() {
   graph.write_put_edge("", "U389f9f24b31c", "U7a8d8324441d", 1.0, 0);
   graph.write_put_edge("", "U016217c34c6e", "U9a89e0679dec", 1.0, 0);
   graph.write_put_edge("", "U80e22da6d8c4", "U0c17798eaab4", 1.0, 0);
-  graph.write_put_edge("", "U0c17798eaab4", "Udece0afd9a8b" ,-1.0, 0);
+  graph.write_put_edge("", "U0c17798eaab4", "Udece0afd9a8b", -1.0, 0);
   graph.write_put_edge("", "Udece0afd9a8b", "U1c285703fc63", 1.0, 0);
-  graph.write_put_edge("", "Udece0afd9a8b", "Uadeb43da4abb" ,-1.0, 0);
-  graph.write_put_edge("", "Ue7a29d5409f2", "Uc3c31b8a022f" ,-1.0, 0);
+  graph.write_put_edge("", "Udece0afd9a8b", "Uadeb43da4abb", -1.0, 0);
+  graph.write_put_edge("", "Ue7a29d5409f2", "Uc3c31b8a022f", -1.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "Udece0afd9a8b", 1.0, 0);
   graph.write_put_edge("", "U5d33a9be1633", "U0be96c3b9883", 1.0, 0);
   graph.write_put_edge("", "U0be96c3b9883", "U55272fd6c264", 1.0, 0);
@@ -5668,10 +7921,10 @@ fn regression_oom() {
   graph.write_put_edge("", "U28846d74623d", "U286f94380611", 1.0, 0);
   graph.write_put_edge("", "U28846d74623d", "Udab52ec61933", 1.0, 0);
   graph.write_put_edge("", "U1c285703fc63", "Uad577360d968", 1.0, 0);
-  graph.write_put_edge("", "Udece0afd9a8b", "Uc3c31b8a022f" ,-1.0, 0);
-  graph.write_put_edge("", "Uf5096f6ab14e", "U9e42f6dab85a" ,-1.0, 0);
-  graph.write_put_edge("", "Ue7a29d5409f2", "Uaa4e2be7a87a" ,-1.0, 0);
-  graph.write_put_edge("", "U7a8d8324441d", "U1c285703fc63" ,-1.0, 0);
+  graph.write_put_edge("", "Udece0afd9a8b", "Uc3c31b8a022f", -1.0, 0);
+  graph.write_put_edge("", "Uf5096f6ab14e", "U9e42f6dab85a", -1.0, 0);
+  graph.write_put_edge("", "Ue7a29d5409f2", "Uaa4e2be7a87a", -1.0, 0);
+  graph.write_put_edge("", "U7a8d8324441d", "U1c285703fc63", -1.0, 0);
   graph.write_put_edge("", "Udab52ec61933", "U28846d74623d", 1.0, 0);
   graph.write_put_edge("", "Udab52ec61933", "U286f94380611", 1.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "U1c285703fc63", 1.0, 0);
@@ -5871,14 +8124,50 @@ fn regression_oom() {
   graph.write_put_edge("Fatum", "U0080a5f2547d", "B5844890200e7", 1.0, 0);
   graph.write_put_edge("", "Bed48703df71d", "U0ae9f5d0bf02", 1.0, 0);
   graph.write_put_edge("", "U0ae9f5d0bf02", "Bed48703df71d", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Be64122664ec6", "U0ae9f5d0bf02", 1.0, 0);
-  graph.write_put_edge("tentura-test", "U0ae9f5d0bf02", "Be64122664ec6", 1.0, 0);
-  graph.write_put_edge("tentura-test", "B500ed1ecb236", "U0ae9f5d0bf02", 1.0, 0);
-  graph.write_put_edge("tentura-test", "U0ae9f5d0bf02", "B500ed1ecb236", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Be64122664ec6",
+    "U0ae9f5d0bf02",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U0ae9f5d0bf02",
+    "Be64122664ec6",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "B500ed1ecb236",
+    "U0ae9f5d0bf02",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U0ae9f5d0bf02",
+    "B500ed1ecb236",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "Bea6112348aa2", "U0be96c3b9883", 1.0, 0);
   graph.write_put_edge("", "U0be96c3b9883", "Bea6112348aa2", 1.0, 0);
-  graph.write_put_edge("Clean Architecture", "B2b0525693165", "U1ada5dcdea2b", 1.0, 0);
-  graph.write_put_edge("Clean Architecture", "U1ada5dcdea2b", "B2b0525693165", 1.0, 0);
+  graph.write_put_edge(
+    "Clean Architecture",
+    "B2b0525693165",
+    "U1ada5dcdea2b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U1ada5dcdea2b",
+    "B2b0525693165",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "Bca63d8a2057b", "Ub01f4ad1b03f", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "Bca63d8a2057b", 1.0, 0);
   graph.write_put_edge("", "B99e6c816679d", "Ub01f4ad1b03f", 1.0, 0);
@@ -6033,8 +8322,20 @@ fn regression_oom() {
   graph.write_put_edge("", "U8c85f8c3bef7", "B6d130d7414d1", 1.0, 0);
   graph.write_put_edge("", "B988f628fa22f", "U8c85f8c3bef7", 1.0, 0);
   graph.write_put_edge("", "U8c85f8c3bef7", "B988f628fa22f", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "B0cb05535835f", "U2becfc64c13b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U2becfc64c13b", "B0cb05535835f", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "B0cb05535835f",
+    "U2becfc64c13b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U2becfc64c13b",
+    "B0cb05535835f",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Volunteer", "Bc0dc1870dcb1", "Uf82dbb4708ba", 1.0, 0);
   graph.write_put_edge("Volunteer", "Uf82dbb4708ba", "Bc0dc1870dcb1", 1.0, 0);
   graph.write_put_edge("Life", "Bd3cfc011be87", "U46e5959770ad", 1.0, 0);
@@ -6051,48 +8352,240 @@ fn regression_oom() {
   graph.write_put_edge("", "U76a293d70033", "B790089851584", 1.0, 0);
   graph.write_put_edge("", "Bd46b3e9a38bb", "Ud10b3f42f87b", 1.0, 0);
   graph.write_put_edge("", "Ud10b3f42f87b", "Bd46b3e9a38bb", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Bc1cb783b0159", "U286f94380611", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "B521ff7422d52", "U286f94380611", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "B521ff7422d52", 1.0, 0);
-  graph.write_put_edge("Community Support", "B86a6e5de190a", "U3a33697ffab9", 1.0, 0);
-  graph.write_put_edge("Community Support", "U3a33697ffab9", "B86a6e5de190a", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "Bb4dbbb63b373", "U3a33697ffab9", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "U3a33697ffab9", "Bb4dbbb63b373", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "B0055751ce4cc", "U286f94380611", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "B0055751ce4cc", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "B0b176a4c7617", "U3a33697ffab9", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "U3a33697ffab9", "B0b176a4c7617", 1.0, 0);
-  graph.write_put_edge("Community Support", "Be8bb41f4353e", "U3a33697ffab9", 1.0, 0);
-  graph.write_put_edge("Community Support", "U3a33697ffab9", "Be8bb41f4353e", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Bc1cb783b0159",
+    "U286f94380611",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "B521ff7422d52",
+    "U286f94380611",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "B521ff7422d52",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "B86a6e5de190a",
+    "U3a33697ffab9",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U3a33697ffab9",
+    "B86a6e5de190a",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "Bb4dbbb63b373",
+    "U3a33697ffab9",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "U3a33697ffab9",
+    "Bb4dbbb63b373",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "B0055751ce4cc",
+    "U286f94380611",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "B0055751ce4cc",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "B0b176a4c7617",
+    "U3a33697ffab9",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "U3a33697ffab9",
+    "B0b176a4c7617",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "Be8bb41f4353e",
+    "U3a33697ffab9",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U3a33697ffab9",
+    "Be8bb41f4353e",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "B6bbf9d5766c3", "U3a33697ffab9", 1.0, 0);
   graph.write_put_edge("", "U3a33697ffab9", "B6bbf9d5766c3", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Bdbd14ea14b6f", "U2becfc64c13b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U2becfc64c13b", "Bdbd14ea14b6f", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Bdbd14ea14b6f",
+    "U2becfc64c13b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U2becfc64c13b",
+    "Bdbd14ea14b6f",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "B4268797cc8ee", "U3a33697ffab9", 1.0, 0);
   graph.write_put_edge("", "U3a33697ffab9", "B4268797cc8ee", 1.0, 0);
   graph.write_put_edge("", "Bec4566ce9bd4", "U2becfc64c13b", 1.0, 0);
   graph.write_put_edge("", "U2becfc64c13b", "Bec4566ce9bd4", 1.0, 0);
-  graph.write_put_edge("Community Support", "B3b1ee4d8fc29", "U2becfc64c13b", 1.0, 0);
-  graph.write_put_edge("Community Support", "U2becfc64c13b", "B3b1ee4d8fc29", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "B89b51dc35863", "U2becfc64c13b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U2becfc64c13b", "B89b51dc35863", 1.0, 0);
-  graph.write_put_edge("Community Support", "B2005fe10663d", "Ue479f7b03b5d", 1.0, 0);
-  graph.write_put_edge("Community Support", "Ue479f7b03b5d", "B2005fe10663d", 1.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "B3b1ee4d8fc29",
+    "U2becfc64c13b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U2becfc64c13b",
+    "B3b1ee4d8fc29",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "B89b51dc35863",
+    "U2becfc64c13b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U2becfc64c13b",
+    "B89b51dc35863",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "B2005fe10663d",
+    "Ue479f7b03b5d",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "Ue479f7b03b5d",
+    "B2005fe10663d",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "B7e7517882a1d", "Ue479f7b03b5d", 1.0, 0);
   graph.write_put_edge("", "Ue479f7b03b5d", "B7e7517882a1d", 1.0, 0);
-  graph.write_put_edge("Community Support", "B80372f051f17", "Ue479f7b03b5d", 1.0, 0);
-  graph.write_put_edge("Community Support", "Ue479f7b03b5d", "B80372f051f17", 1.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "B80372f051f17",
+    "Ue479f7b03b5d",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "Ue479f7b03b5d",
+    "B80372f051f17",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "Baadac7ab80fe", "U36906cde6568", 1.0, 0);
   graph.write_put_edge("", "U36906cde6568", "Baadac7ab80fe", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "Bcd0a6c69a705", "U4d9267c70eab", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U4d9267c70eab", "Bcd0a6c69a705", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "Bb9d31c168baf", "Ue79d43c03425", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "Ue79d43c03425", "Bb9d31c168baf", 1.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "B080a0d5de22d", "U41906748a800", 1.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "U41906748a800", "B080a0d5de22d", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "B20f3d51e498f", "U4d9267c70eab", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U4d9267c70eab", "B20f3d51e498f", 1.0, 0);
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "Bcd0a6c69a705",
+    "U4d9267c70eab",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U4d9267c70eab",
+    "Bcd0a6c69a705",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "Bb9d31c168baf",
+    "Ue79d43c03425",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "Ue79d43c03425",
+    "Bb9d31c168baf",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "B080a0d5de22d",
+    "U41906748a800",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "U41906748a800",
+    "B080a0d5de22d",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "B20f3d51e498f",
+    "U4d9267c70eab",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U4d9267c70eab",
+    "B20f3d51e498f",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "Baf813d1b4acf", "U4d9267c70eab", 1.0, 0);
   graph.write_put_edge("", "U4d9267c70eab", "Baf813d1b4acf", 1.0, 0);
   graph.write_put_edge("", "B7bade2c63598", "U1ada5dcdea2b", 1.0, 0);
@@ -6113,7 +8606,7 @@ fn regression_oom() {
   graph.write_put_edge("", "U9a2c85753a6d", "B3b3f2ecde430", 6.0, 0);
   graph.write_put_edge("", "Uf5096f6ab14e", "B60d725feca77", 8.0, 0);
   graph.write_put_edge("", "U9e42f6dab85a", "Bad1c69de7837", 3.0, 0);
-  graph.write_put_edge("", "Ud7002ae5a86c", "B75a44a52fa29" ,-2.0, 0);
+  graph.write_put_edge("", "Ud7002ae5a86c", "B75a44a52fa29", -2.0, 0);
   graph.write_put_edge("", "Uaa4e2be7a87a", "B7f628ad203b5", 9.0, 0);
   graph.write_put_edge("", "Uef7fbf45ef11", "B7f628ad203b5", 7.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "B5eb4c6be535a", 5.0, 0);
@@ -6125,16 +8618,16 @@ fn regression_oom() {
   graph.write_put_edge("", "Ub93799d9400e", "B73a44e2bbd44", 5.0, 0);
   graph.write_put_edge("", "Ub93799d9400e", "B491d307dfe01", 2.0, 0);
   graph.write_put_edge("", "U09cf1f359454", "B73a44e2bbd44", 1.0, 0);
-  graph.write_put_edge("Fatum", "U5cd05270c153", "B9c01ce5718d1" ,-56.0, 0);
+  graph.write_put_edge("Fatum", "U5cd05270c153", "B9c01ce5718d1", -56.0, 0);
   graph.write_put_edge("Fatum", "U01814d1ec9ff", "B9c01ce5718d1", 10.0, 0);
   graph.write_put_edge("Fatum", "U09cf1f359454", "B310b66ab31fb", 1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Be2b46c17f1da" ,-1.0, 0);
-  graph.write_put_edge("", "U01814d1ec9ff", "B63fbe1427d09" ,-3.0, 0);
-  graph.write_put_edge("", "U01814d1ec9ff", "B491d307dfe01" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Be2b46c17f1da", -1.0, 0);
+  graph.write_put_edge("", "U01814d1ec9ff", "B63fbe1427d09", -3.0, 0);
+  graph.write_put_edge("", "U01814d1ec9ff", "B491d307dfe01", -1.0, 0);
   graph.write_put_edge("", "U02fbd7c8df4c", "B75a44a52fa29", 7.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B63fbe1427d09" ,-1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B63fbe1427d09", -1.0, 0);
   graph.write_put_edge("Fatum", "U9605bd4d1218", "B9c01ce5718d1", 2.0, 0);
-  graph.write_put_edge("", "U02fbd7c8df4c", "Bad1c69de7837" ,-5.0, 0);
+  graph.write_put_edge("", "U02fbd7c8df4c", "Bad1c69de7837", -5.0, 0);
   graph.write_put_edge("", "Uc3c31b8a022f", "Bb78026d99388", 1.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "B3b3f2ecde430", 9.0, 0);
   graph.write_put_edge("", "Uaa4e2be7a87a", "B0e230e9108dd", 2.0, 0);
@@ -6144,84 +8637,84 @@ fn regression_oom() {
   graph.write_put_edge("", "U26aca0e369c7", "Be2b46c17f1da", 7.0, 0);
   graph.write_put_edge("", "U0c17798eaab4", "B0e230e9108dd", 3.0, 0);
   graph.write_put_edge("", "Udece0afd9a8b", "Bad1c69de7837", 9.0, 0);
-  graph.write_put_edge("", "Uef7fbf45ef11", "B0e230e9108dd" ,-1.0, 0);
+  graph.write_put_edge("", "Uef7fbf45ef11", "B0e230e9108dd", -1.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "B5eb4c6be535a", 1.0, 0);
-  graph.write_put_edge("", "Uc3c31b8a022f", "B3c467fb437b2" ,-1.0, 0);
+  graph.write_put_edge("", "Uc3c31b8a022f", "B3c467fb437b2", -1.0, 0);
   graph.write_put_edge("", "U016217c34c6e", "B3c467fb437b2", 2.0, 0);
   graph.write_put_edge("", "Uf5096f6ab14e", "B3b3f2ecde430", 3.0, 0);
   graph.write_put_edge("", "Uc3c31b8a022f", "B45d72e29f004", 3.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "Be2b46c17f1da", 5.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "B3c467fb437b2", 9.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Bad1c69de7837" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B8a531802473b" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B45d72e29f004" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Bad1c69de7837", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B8a531802473b", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B45d72e29f004", -1.0, 0);
   graph.write_put_edge("", "U9605bd4d1218", "B8a531802473b", 2.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B60d725feca77" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B3c467fb437b2" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B60d725feca77", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B3c467fb437b2", -1.0, 0);
   graph.write_put_edge("", "U01814d1ec9ff", "B8a531802473b", 8.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B5a1c1d3d0140" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B5a1c1d3d0140", -1.0, 0);
   graph.write_put_edge("", "U6661263fb410", "B75a44a52fa29", 3.0, 0);
   graph.write_put_edge("", "U9605bd4d1218", "B5a1c1d3d0140", 2.0, 0);
   graph.write_put_edge("", "U01814d1ec9ff", "Bd7a8bfcf3337", 3.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B3b3f2ecde430" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B3b3f2ecde430", -1.0, 0);
   graph.write_put_edge("Fatum", "Ud5b22ebf52f2", "B310b66ab31fb", 1.0, 0);
-  graph.write_put_edge("", "U01814d1ec9ff", "B3b3f2ecde430" ,-3.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B0e230e9108dd" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Bb78026d99388" ,-1.0, 0);
+  graph.write_put_edge("", "U01814d1ec9ff", "B3b3f2ecde430", -3.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B0e230e9108dd", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Bb78026d99388", -1.0, 0);
   graph.write_put_edge("", "U01814d1ec9ff", "B5a1c1d3d0140", 5.0, 0);
   graph.write_put_edge("", "U9605bd4d1218", "Bd7a8bfcf3337", 1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B5eb4c6be535a" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B25c85fe0df2d" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B5eb4c6be535a", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B25c85fe0df2d", -1.0, 0);
   graph.write_put_edge("Fatum", "U09cf1f359454", "B3f6f837bc345", 1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B63fbe1427d09" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B63fbe1427d09", -1.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "Ba3c4a280657d", 2.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "B491d307dfe01", 3.0, 0);
   graph.write_put_edge("", "Ub93799d9400e", "B75a44a52fa29", 5.0, 0);
   graph.write_put_edge("", "U682c3380036f", "B75a44a52fa29", 2.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B7f628ad203b5" ,-1.0, 0);
-  graph.write_put_edge("", "U01814d1ec9ff", "Bb78026d99388" ,-11.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B7f628ad203b5", -1.0, 0);
+  graph.write_put_edge("", "U01814d1ec9ff", "Bb78026d99388", -11.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "B79efabc4d8bf", 2.0, 0);
   graph.write_put_edge("Fatum", "Ub93799d9400e", "B9c01ce5718d1", 5.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "Bad1c69de7837" ,-1.0, 0);
-  graph.write_put_edge("Fatum", "U6240251593cd", "B9c01ce5718d1" ,-4.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "Bad1c69de7837", -1.0, 0);
+  graph.write_put_edge("Fatum", "U6240251593cd", "B9c01ce5718d1", -4.0, 0);
   graph.write_put_edge("", "U682c3380036f", "Bf34ee3bfc12b", 4.0, 0);
   graph.write_put_edge("", "U6240251593cd", "B75a44a52fa29", 4.0, 0);
   graph.write_put_edge("", "Ua12e78308f49", "B75a44a52fa29", 4.0, 0);
   graph.write_put_edge("Fatum", "Ud9df8116deba", "B310b66ab31fb", 1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B499bfc56e77b" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Be2b46c17f1da" ,-1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B499bfc56e77b", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Be2b46c17f1da", -1.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "Bfefe4e25c870", 4.0, 0);
   graph.write_put_edge("Fatum", "U1e41b5f3adff", "B310b66ab31fb", 5.0, 0);
   graph.write_put_edge("Fatum", "U6d2f25cc4264", "B9c01ce5718d1", 4.0, 0);
   graph.write_put_edge("Fatum", "U8a78048d60f7", "B9c01ce5718d1", 3.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "Bfefe4e25c870", 3.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B3c467fb437b2" ,-1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B3c467fb437b2", -1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "B491d307dfe01", 3.0, 0);
-  graph.write_put_edge("Test", "U8a78048d60f7", "Bd49e3dac97b0" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Bf3a0a1165271" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B8a531802473b" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Bdf39d0e1daf5" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B7f628ad203b5" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B45d72e29f004" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "Bdf39d0e1daf5" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B63fbe1427d09" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B60d725feca77" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Bb78026d99388" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B5eb4c6be535a" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B3b3f2ecde430" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B0e230e9108dd" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B25c85fe0df2d" ,-1.0, 0);
+  graph.write_put_edge("Test", "U8a78048d60f7", "Bd49e3dac97b0", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Bf3a0a1165271", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B8a531802473b", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Bdf39d0e1daf5", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B7f628ad203b5", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B45d72e29f004", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "Bdf39d0e1daf5", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B63fbe1427d09", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B60d725feca77", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Bb78026d99388", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B5eb4c6be535a", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B3b3f2ecde430", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B0e230e9108dd", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B25c85fe0df2d", -1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "Ba3c4a280657d", 3.0, 0);
   graph.write_put_edge("", "U0cd6bd2dde4f", "B7f628ad203b5", 1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "B75a44a52fa29", 3.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Bdf39d0e1daf5" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Ba5d64165e5d5" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Bf3a0a1165271" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B4f14b223b56d" ,-1.0, 0);
-  graph.write_put_edge("Test", "U09cf1f359454", "Bd49e3dac97b0" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Be29b4af3f7a5" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Be5bb2f3d56cb" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "B499bfc56e77b" ,-1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Bdf39d0e1daf5", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Ba5d64165e5d5", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Bf3a0a1165271", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B4f14b223b56d", -1.0, 0);
+  graph.write_put_edge("Test", "U09cf1f359454", "Bd49e3dac97b0", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Be29b4af3f7a5", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Be5bb2f3d56cb", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "B499bfc56e77b", -1.0, 0);
   graph.write_put_edge("", "U09cf1f359454", "B75a44a52fa29", 1.0, 0);
   graph.write_put_edge("", "U1bcba4fd7175", "B4f00e7813add", 3.0, 0);
   graph.write_put_edge("", "U0cd6bd2dde4f", "B92e4a185c654", 1.0, 0);
@@ -6234,66 +8727,66 @@ fn regression_oom() {
   graph.write_put_edge("", "U8a78048d60f7", "Bd90a1cf73384", 3.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "B0a87a669fc28", 3.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "B19ea554faf29", 3.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "Bb78026d99388" ,-1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "Bb78026d99388", -1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "Bb1e3630d2f4a", 3.0, 0);
   graph.write_put_edge("", "Ub20ed0f8f9b0", "B6d130d7414d1", 0.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "Bf34ee3bfc12b", 3.0, 0);
-  graph.write_put_edge("", "Uc35c445325f5", "B8a531802473b" ,-5.0, 0);
+  graph.write_put_edge("", "Uc35c445325f5", "B8a531802473b", -5.0, 0);
   graph.write_put_edge("", "U1bcba4fd7175", "Bfefe4e25c870", 5.0, 0);
   graph.write_put_edge("", "U3c63a9b6115a", "B75a44a52fa29", 5.0, 0);
   graph.write_put_edge("", "Ud04c89aaf453", "B73a44e2bbd44", 4.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B5eb4c6be535a" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B8a531802473b" ,-1.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "Bb78026d99388" ,-1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B5eb4c6be535a", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B8a531802473b", -1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "Bb78026d99388", -1.0, 0);
   graph.write_put_edge("Fatum", "U09cf1f359454", "B9c01ce5718d1", 2.0, 0);
   graph.write_put_edge("", "U09cf1f359454", "B491d307dfe01", 2.0, 0);
   graph.write_put_edge("", "U1bcba4fd7175", "Bc4addf09b79f", 3.0, 0);
-  graph.write_put_edge("", "U1bcba4fd7175", "B0e230e9108dd" ,-1.0, 0);
+  graph.write_put_edge("", "U1bcba4fd7175", "B0e230e9108dd", -1.0, 0);
   graph.write_put_edge("", "Uce7e9acd408e", "B8fabb952bc4b", 7.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "Be2b46c17f1da" ,-1.0, 0);
-  graph.write_put_edge("Fatum", "U79466f73dc0c", "B9c01ce5718d1" ,-6.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Ba5d64165e5d5" ,-1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "Be2b46c17f1da", -1.0, 0);
+  graph.write_put_edge("Fatum", "U79466f73dc0c", "B9c01ce5718d1", -6.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Ba5d64165e5d5", -1.0, 0);
   graph.write_put_edge("", "Uc35c445325f5", "B75a44a52fa29", 2.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "B60d725feca77" ,-1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "B60d725feca77", -1.0, 0);
   graph.write_put_edge("Fatum", "Uc35c445325f5", "B9c01ce5718d1", 4.0, 0);
   graph.write_put_edge("", "U1bcba4fd7175", "B73a44e2bbd44", 3.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "Be2b46c17f1da" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Be29b4af3f7a5" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "B4f14b223b56d" ,-1.0, 0);
-  graph.write_put_edge("", "U8a78048d60f7", "Be5bb2f3d56cb" ,-1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "Be2b46c17f1da", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Be29b4af3f7a5", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "B4f14b223b56d", -1.0, 0);
+  graph.write_put_edge("", "U8a78048d60f7", "Be5bb2f3d56cb", -1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "Bd7a8bfcf3337", 1.0, 0);
   graph.write_put_edge("", "U8a78048d60f7", "B79efabc4d8bf", 1.0, 0);
   graph.write_put_edge("Fatum", "U0cd6bd2dde4f", "B9c01ce5718d1", 1.0, 0);
   graph.write_put_edge("", "U0cd6bd2dde4f", "B75a44a52fa29", 1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B499bfc56e77b" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B25c85fe0df2d" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B3c467fb437b2" ,-1.0, 0);
-  graph.write_put_edge("", "U6d2f25cc4264", "B3b3f2ecde430" ,-1.0, 0);
-  graph.write_put_edge("", "U09cf1f359454", "Bc896788cd2ef" ,-1.0, 0);
-  graph.write_put_edge("", "U1bcba4fd7175", "B45d72e29f004" ,-9.0, 0);
-  graph.write_put_edge("", "U1bcba4fd7175", "Be2b46c17f1da" ,-1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B499bfc56e77b", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B25c85fe0df2d", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B3c467fb437b2", -1.0, 0);
+  graph.write_put_edge("", "U6d2f25cc4264", "B3b3f2ecde430", -1.0, 0);
+  graph.write_put_edge("", "U09cf1f359454", "Bc896788cd2ef", -1.0, 0);
+  graph.write_put_edge("", "U1bcba4fd7175", "B45d72e29f004", -9.0, 0);
+  graph.write_put_edge("", "U1bcba4fd7175", "Be2b46c17f1da", -1.0, 0);
   graph.write_put_edge("Fatum", "U1bcba4fd7175", "B9c01ce5718d1", 9.0, 0);
   graph.write_put_edge("", "U79466f73dc0c", "B45d72e29f004", 5.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "B79efabc4d8bf" ,-1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "B79efabc4d8bf", -1.0, 0);
   graph.write_put_edge("", "U79466f73dc0c", "B7f628ad203b5", 6.0, 0);
-  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B9c01ce5718d1" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B9c01ce5718d1", -1.0, 0);
   graph.write_put_edge("", "U79466f73dc0c", "Be2b46c17f1da", 4.0, 0);
   graph.write_put_edge("", "U79466f73dc0c", "Bad1c69de7837", 2.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "B0e230e9108dd" ,-10.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "B0e230e9108dd", -10.0, 0);
   graph.write_put_edge("game", "U3ea0a229ad85", "Bc4603804bacf", 4.0, 0);
   graph.write_put_edge("", "Uce7e9acd408e", "Ba3c4a280657d", 0.0, 0);
   graph.write_put_edge("Fatum", "U638f5c19326f", "B9c01ce5718d1", 2.0, 0);
   graph.write_put_edge("", "U3ea0a229ad85", "Bea6112348aa2", 1.0, 0);
   graph.write_put_edge("cat", "U3ea0a229ad85", "Bc8526e892c5d", 1.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "B25c85fe0df2d" ,-7.0, 0);
-  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B310b66ab31fb" ,-12.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "B491d307dfe01" ,-7.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "B25c85fe0df2d", -7.0, 0);
+  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B310b66ab31fb", -12.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "B491d307dfe01", -7.0, 0);
   graph.write_put_edge("Fatum", "Ud2123c013577", "B310b66ab31fb", 2.0, 0);
   graph.write_put_edge("Fatum", "Ud2123c013577", "B9c01ce5718d1", 3.0, 0);
   graph.write_put_edge("", "Ueb139752b907", "B1533941e2773", 1.0, 0);
-  graph.write_put_edge("", "Uce7e9acd408e", "B60d725feca77" ,-1.0, 0);
+  graph.write_put_edge("", "Uce7e9acd408e", "B60d725feca77", -1.0, 0);
   graph.write_put_edge("", "Uce7e9acd408e", "B75a44a52fa29", 3.0, 0);
-  graph.write_put_edge("", "U11456af7d414", "Bad1c69de7837" ,-2.0, 0);
+  graph.write_put_edge("", "U11456af7d414", "Bad1c69de7837", -2.0, 0);
   graph.write_put_edge("", "U18a178de1dfb", "B491d307dfe01", 1.0, 0);
   graph.write_put_edge("", "U18a178de1dfb", "B75a44a52fa29", 1.0, 0);
   graph.write_put_edge("Fatum", "U18a178de1dfb", "B310b66ab31fb", 1.0, 0);
@@ -6303,8 +8796,8 @@ fn regression_oom() {
   graph.write_put_edge("", "Uce7e9acd408e", "Bea6112348aa2", 3.0, 0);
   graph.write_put_edge("game", "Uce7e9acd408e", "Bc4603804bacf", 8.0, 0);
   graph.write_put_edge("Fatum", "Uce7e9acd408e", "B3f6f837bc345", 4.0, 0);
-  graph.write_put_edge("Fatum", "U76a293d70033", "B310b66ab31fb" ,-2.0, 0);
-  graph.write_put_edge("Fatum", "U76a293d70033", "B3f6f837bc345" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U76a293d70033", "B310b66ab31fb", -2.0, 0);
+  graph.write_put_edge("Fatum", "U76a293d70033", "B3f6f837bc345", -1.0, 0);
   graph.write_put_edge("", "U3ea0a229ad85", "B7fbe3633b4b0", 1.0, 0);
   graph.write_put_edge("", "Ua37f245cf686", "B7f628ad203b5", 2.0, 0);
   graph.write_put_edge("", "Ua37f245cf686", "B491d307dfe01", 2.0, 0);
@@ -6314,12 +8807,18 @@ fn regression_oom() {
   graph.write_put_edge("", "U18a178de1dfb", "B1533941e2773", 1.0, 0);
   graph.write_put_edge("", "U18a178de1dfb", "Bc4addf09b79f", 1.0, 0);
   graph.write_put_edge("", "U18a178de1dfb", "B70df5dbab8c3", 1.0, 0);
-  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B3f6f837bc345" ,-11.0, 0);
-  graph.write_put_edge("Clean Architecture", "Ub20ed0f8f9b0", "B2b0525693165" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U0162cf4b43ae", "B3f6f837bc345", -11.0, 0);
+  graph.write_put_edge(
+    "Clean Architecture",
+    "Ub20ed0f8f9b0",
+    "B2b0525693165",
+    -1.0,
+    0,
+  );
   graph.write_put_edge("", "U0162cf4b43ae", "Bf3a0a1165271", 1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bd7a8bfcf3337" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bfefe4e25c870" ,-2.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Ba3c4a280657d" ,-2.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bd7a8bfcf3337", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bfefe4e25c870", -2.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Ba3c4a280657d", -2.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "B3f6f837bc345", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B75a44a52fa29", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B1533941e2773", 3.0, 0);
@@ -6327,83 +8826,107 @@ fn regression_oom() {
   graph.write_put_edge("", "Ub01f4ad1b03f", "Bc4addf09b79f", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B4f00e7813add", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B70df5dbab8c3", 1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Be2b46c17f1da" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B45d72e29f004" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B8a531802473b" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B5a1c1d3d0140" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B60d725feca77" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B3c467fb437b2" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B3b3f2ecde430" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B5eb4c6be535a" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bb78026d99388" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B0e230e9108dd" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B25c85fe0df2d" ,-1.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "Bed5126bc655d" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Be2b46c17f1da", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B45d72e29f004", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B8a531802473b", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B5a1c1d3d0140", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B60d725feca77", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B3c467fb437b2", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B3b3f2ecde430", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B5eb4c6be535a", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bb78026d99388", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B0e230e9108dd", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B25c85fe0df2d", -1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "Bed5126bc655d", -1.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "B310b66ab31fb", 2.0, 0);
   graph.write_put_edge("", "U95f3426b8e5d", "B79efabc4d8bf", 3.0, 0);
   graph.write_put_edge("Fatum", "U95f3426b8e5d", "B9c01ce5718d1", 2.0, 0);
   graph.write_put_edge("", "Ucc76e1b73be0", "B7f628ad203b5", 4.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bfae1726e4e87" ,-1.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "Bd7a8bfcf3337" ,-14.0, 0);
-  graph.write_put_edge("tentura-test", "Ub01f4ad1b03f", "Be64122664ec6" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bb1e3630d2f4a" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bfae1726e4e87", -1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "Bd7a8bfcf3337", -14.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub01f4ad1b03f",
+    "Be64122664ec6",
+    -1.0,
+    0,
+  );
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bb1e3630d2f4a", -1.0, 0);
   graph.write_put_edge("", "Ud2123c013577", "B79efabc4d8bf", 0.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B0a87a669fc28" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B0a87a669fc28", -1.0, 0);
   graph.write_put_edge("Fatum", "Ud2123c013577", "B3f6f837bc345", 1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B19ea554faf29" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B92e4a185c654" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B19ea554faf29", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B92e4a185c654", -1.0, 0);
   graph.write_put_edge("Fatum", "Ub9713d01f478", "B9c01ce5718d1", 6.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bd90a1cf73384" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B10d3f548efc4" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bf34ee3bfc12b" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bd90a1cf73384", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B10d3f548efc4", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bf34ee3bfc12b", -1.0, 0);
   graph.write_put_edge("", "Ud2123c013577", "B60d725feca77", 0.0, 0);
-  graph.write_put_edge("", "Uce7e9acd408e", "Bf34ee3bfc12b" ,-1.0, 0);
+  graph.write_put_edge("", "Uce7e9acd408e", "Bf34ee3bfc12b", -1.0, 0);
   graph.write_put_edge("Fatum", "U77a03e9a08af", "B4b8fafa86526", 0.0, 0);
-  graph.write_put_edge("game", "Ud2123c013577", "Bc4603804bacf" ,-1.0, 0);
+  graph.write_put_edge("game", "Ud2123c013577", "Bc4603804bacf", -1.0, 0);
   graph.write_put_edge("", "Uf82dbb4708ba", "B60d725feca77", 11.0, 0);
   graph.write_put_edge("", "Ud2123c013577", "B7f628ad203b5", 0.0, 0);
-  graph.write_put_edge("", "U77a03e9a08af", "B7f628ad203b5" ,-3.0, 0);
-  graph.write_put_edge("tentura-test", "Ud2123c013577", "B500ed1ecb236", 0.0, 0);
+  graph.write_put_edge("", "U77a03e9a08af", "B7f628ad203b5", -3.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Ud2123c013577",
+    "B500ed1ecb236",
+    0.0,
+    0,
+  );
   graph.write_put_edge("", "Uf82dbb4708ba", "Bad1c69de7837", 8.0, 0);
   graph.write_put_edge("home", "U3ea0a229ad85", "B5ab3ad635025", 2.0, 0);
-  graph.write_put_edge("tentura-test", "Uf82dbb4708ba", "Be64122664ec6", 3.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Uf82dbb4708ba",
+    "Be64122664ec6",
+    3.0,
+    0,
+  );
   graph.write_put_edge("", "U425e5e1ff39b", "B790089851584", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B491d307dfe01", 1.0, 0);
-  graph.write_put_edge("", "U0be96c3b9883", "B25c85fe0df2d" ,-4.0, 0);
+  graph.write_put_edge("", "U0be96c3b9883", "B25c85fe0df2d", -4.0, 0);
   graph.write_put_edge("Photo", "Ub01f4ad1b03f", "Bf97103a947f5", 3.0, 0);
-  graph.write_put_edge("", "U0be96c3b9883", "Be2b46c17f1da" ,-3.0, 0);
+  graph.write_put_edge("", "U0be96c3b9883", "Be2b46c17f1da", -3.0, 0);
   graph.write_put_edge("Fatum", "Ua37f245cf686", "B9c01ce5718d1", 2.0, 0);
   graph.write_put_edge("", "Ub9713d01f478", "Bd46b3e9a38bb", 2.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B68d3b36887e4", 4.0, 0);
   graph.write_put_edge("", "U881eb59c559f", "B491d307dfe01", 1.0, 0);
   graph.write_put_edge("", "U881eb59c559f", "Ba3c4a280657d", 1.0, 0);
-  graph.write_put_edge("Fatum", "U881eb59c559f", "B310b66ab31fb" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U881eb59c559f", "B310b66ab31fb", -1.0, 0);
   graph.write_put_edge("cat", "U881eb59c559f", "Bc8526e892c5d", 1.0, 0);
   graph.write_put_edge("home", "Ub01f4ad1b03f", "B5ab3ad635025", 2.0, 0);
   graph.write_put_edge("Fatum", "U77a03e9a08af", "B9c01ce5718d1", 1.0, 0);
-  graph.write_put_edge("", "Ub20ed0f8f9b0", "Baadac7ab80fe" ,-1.0, 0);
-  graph.write_put_edge("", "U0162cf4b43ae", "Bfefe4e25c870" ,-6.0, 0);
+  graph.write_put_edge("", "Ub20ed0f8f9b0", "Baadac7ab80fe", -1.0, 0);
+  graph.write_put_edge("", "U0162cf4b43ae", "Bfefe4e25c870", -6.0, 0);
   graph.write_put_edge("Glamour", "U163b54808a6b", "B5f6a16260bac", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B7f628ad203b5", 1.0, 0);
   graph.write_put_edge("", "U17b825d673df", "B7f628ad203b5", 1.0, 0);
   graph.write_put_edge("", "U163b54808a6b", "B4f00e7813add", 1.0, 0);
-  graph.write_put_edge("", "Uf82dbb4708ba", "B0e230e9108dd" ,-7.0, 0);
+  graph.write_put_edge("", "Uf82dbb4708ba", "B0e230e9108dd", -7.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "B8fabb952bc4b", 3.0, 0);
-  graph.write_put_edge("tentura-test", "U163b54808a6b", "Be64122664ec6", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "U163b54808a6b",
+    "Be64122664ec6",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "B4b8fafa86526", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "Bea6112348aa2", 3.0, 0);
   graph.write_put_edge("game", "Ub01f4ad1b03f", "Bc4603804bacf", 4.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "Bed48703df71d" ,-1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "Bed48703df71d", -1.0, 0);
   graph.write_put_edge("Fatum", "Ucc6cc40df2b7", "B9c01ce5718d1", 1.0, 0);
   graph.write_put_edge("", "Uf82dbb4708ba", "B75a44a52fa29", 7.0, 0);
   graph.write_put_edge("cat", "Ub01f4ad1b03f", "Bc8526e892c5d", 4.0, 0);
   graph.write_put_edge("game", "U0080a5f2547d", "Bc4603804bacf", 1.0, 0);
   graph.write_put_edge("", "U76a293d70033", "B55cc136fc220", 6.0, 0);
   graph.write_put_edge("Fatum", "Ub7b49e360599", "B9c01ce5718d1", 1.0, 0);
-  graph.write_put_edge("Fatum", "U68c2a35a5c73", "B310b66ab31fb" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U68c2a35a5c73", "B310b66ab31fb", -1.0, 0);
   graph.write_put_edge("game", "U881eb59c559f", "Bc4603804bacf", 1.0, 0);
   graph.write_put_edge("", "Ucc6cc40df2b7", "Bfefe4e25c870", 1.0, 0);
-  graph.write_put_edge("", "Uce7e9acd408e", "Bed48703df71d" ,-2.0, 0);
+  graph.write_put_edge("", "Uce7e9acd408e", "Bed48703df71d", -2.0, 0);
   graph.write_put_edge("", "U881eb59c559f", "B7f628ad203b5", 1.0, 0);
   graph.write_put_edge("", "Ucc6cc40df2b7", "Ba3c4a280657d", 1.0, 0);
   graph.write_put_edge("", "Ucc6cc40df2b7", "B491d307dfe01", 1.0, 0);
@@ -6411,26 +8934,68 @@ fn regression_oom() {
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "B9c01ce5718d1", 0.0, 0);
   graph.write_put_edge("", "U17b825d673df", "B491d307dfe01", 6.0, 0);
   graph.write_put_edge("Glamour", "U3be62375581d", "B5f6a16260bac", 1.0, 0);
-  graph.write_put_edge("", "U77a03e9a08af", "Bad1c69de7837" ,-4.0, 0);
+  graph.write_put_edge("", "U77a03e9a08af", "Bad1c69de7837", -4.0, 0);
   graph.write_put_edge("", "U77a03e9a08af", "Bb78026d99388", 3.0, 0);
-  graph.write_put_edge("tentura-test", "U77a03e9a08af", "Be64122664ec6", 2.0, 0);
-  graph.write_put_edge("tentura-test", "U77a03e9a08af", "B500ed1ecb236", 7.0, 0);
-  graph.write_put_edge("tentura-test", "U163b54808a6b", "B500ed1ecb236", 1.0, 0);
-  graph.write_put_edge("", "U77a03e9a08af", "B45d72e29f004" ,-2.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "U77a03e9a08af",
+    "Be64122664ec6",
+    2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U77a03e9a08af",
+    "B500ed1ecb236",
+    7.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U163b54808a6b",
+    "B500ed1ecb236",
+    1.0,
+    0,
+  );
+  graph.write_put_edge("", "U77a03e9a08af", "B45d72e29f004", -2.0, 0);
   graph.write_put_edge("Fatum", "U163b54808a6b", "B4b8fafa86526", 1.0, 0);
   graph.write_put_edge("cat", "U46e5959770ad", "Bc8526e892c5d", 5.0, 0);
   graph.write_put_edge("", "U17b825d673df", "B30bf91bf5845", 5.0, 0);
   graph.write_put_edge("", "U75cddb09a54e", "B7fbe3633b4b0", 1.0, 0);
   graph.write_put_edge("home", "U46e5959770ad", "B5ab3ad635025", 5.0, 0);
   graph.write_put_edge("Fatum", "Ub4b46ee7a5e4", "B9c01ce5718d1", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Ub4b46ee7a5e4", "B500ed1ecb236", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Ub4b46ee7a5e4", "Be64122664ec6", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub4b46ee7a5e4",
+    "B500ed1ecb236",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub4b46ee7a5e4",
+    "Be64122664ec6",
+    1.0,
+    0,
+  );
   graph.write_put_edge("home", "U75cddb09a54e", "B5ab3ad635025", 2.0, 0);
   graph.write_put_edge("Fatum", "U3ea0a229ad85", "B310b66ab31fb", 1.0, 0);
   graph.write_put_edge("", "U75cddb09a54e", "Bca63d8a2057b", 1.0, 0);
   graph.write_put_edge("Photo", "U75cddb09a54e", "Bf97103a947f5", 1.0, 0);
-  graph.write_put_edge("tentura-test", "U3ea0a229ad85", "B500ed1ecb236", 1.0, 0);
-  graph.write_put_edge("tentura-test", "U3ea0a229ad85", "Be64122664ec6", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "U3ea0a229ad85",
+    "B500ed1ecb236",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U3ea0a229ad85",
+    "Be64122664ec6",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "U75cddb09a54e", "B68d3b36887e4", 1.0, 0);
   graph.write_put_edge("Glamour", "U75cddb09a54e", "B5f6a16260bac", 1.0, 0);
   graph.write_put_edge("", "U9de057150efc", "B91796a98a225", 1.0, 0);
@@ -6439,123 +9004,561 @@ fn regression_oom() {
   graph.write_put_edge("", "U29a00cc1c9c2", "B499bfc56e77b", 2.0, 0);
   graph.write_put_edge("Glamour", "Ub01f4ad1b03f", "B5f6a16260bac", 2.0, 0);
   graph.write_put_edge("", "U0da9b1b0859f", "B8fabb952bc4b", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Ub01f4ad1b03f", "B500ed1ecb236" ,-1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub01f4ad1b03f",
+    "B500ed1ecb236",
+    -1.0,
+    0,
+  );
   graph.write_put_edge("", "Ub01f4ad1b03f", "Bca63d8a2057b", 3.0, 0);
   graph.write_put_edge("", "U0ae9f5d0bf02", "B30bf91bf5845", 2.0, 0);
   graph.write_put_edge("", "U0ae9f5d0bf02", "Bad1c69de7837", 4.0, 0);
   graph.write_put_edge("Fatum", "U0ae9f5d0bf02", "B310b66ab31fb", 5.0, 0);
   graph.write_put_edge("", "U0ae9f5d0bf02", "Be2b46c17f1da", 3.0, 0);
-  graph.write_put_edge("", "U5cd05270c153", "Baadac7ab80fe" ,-1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "B0055751ce4cc", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "B521ff7422d52", 1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B55cc136fc220" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "B790089851584" ,-1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U41906748a800", "B0055751ce4cc" ,-5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "Bc1cb783b0159", 4.0, 0);
-  graph.write_put_edge("QuestForGlory", "U050e67479957", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U6301c73d1354", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U8ebde6fbfd3f", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U2becfc64c13b", "Bc1cb783b0159", 1.0, 0);
+  graph.write_put_edge("", "U5cd05270c153", "Baadac7ab80fe", -1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "B0055751ce4cc",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "B521ff7422d52",
+    1.0,
+    0,
+  );
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B55cc136fc220", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "B790089851584", -1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U41906748a800",
+    "B0055751ce4cc",
+    -5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "Bc1cb783b0159",
+    4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U050e67479957",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U6301c73d1354",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U8ebde6fbfd3f",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U2becfc64c13b",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "U1ada5dcdea2b", "Baf813d1b4acf", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U1ada5dcdea2b", "B20f3d51e498f", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "U286f94380611", "B0b176a4c7617" ,-2.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "U286f94380611", "B080a0d5de22d" ,-4.0, 0);
-  graph.write_put_edge("Community Support", "U41906748a800", "B3b1ee4d8fc29" ,-2.0, 0);
-  graph.write_put_edge("There and Back Again", "U41906748a800", "B0b176a4c7617" ,-1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U41906748a800", "B521ff7422d52" ,-5.0, 0);
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U1ada5dcdea2b",
+    "B20f3d51e498f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "U286f94380611",
+    "B0b176a4c7617",
+    -2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "U286f94380611",
+    "B080a0d5de22d",
+    -4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U41906748a800",
+    "B3b1ee4d8fc29",
+    -2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "U41906748a800",
+    "B0b176a4c7617",
+    -1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U41906748a800",
+    "B521ff7422d52",
+    -5.0,
+    0,
+  );
   graph.write_put_edge("", "U4d9267c70eab", "B7bade2c63598", 3.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B4268797cc8ee" ,-2.0, 0);
-  graph.write_put_edge("QuestForGlory", "U8c85f8c3bef7", "Bc1cb783b0159", 1.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "U8c85f8c3bef7", "B080a0d5de22d", 1.0, 0);
-  graph.write_put_edge("Clean Architecture", "U8c85f8c3bef7", "B2b0525693165", 1.0, 0);
+  graph.write_put_edge("", "U41906748a800", "B4268797cc8ee", -2.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U8c85f8c3bef7",
+    "Bc1cb783b0159",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "U8c85f8c3bef7",
+    "B080a0d5de22d",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U8c85f8c3bef7",
+    "B2b0525693165",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "U41906748a800", "Baadac7ab80fe", 2.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U41906748a800", "B20f3d51e498f", 5.0, 0);
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U41906748a800",
+    "B20f3d51e498f",
+    5.0,
+    0,
+  );
   graph.write_put_edge("", "U286f94380611", "B6d130d7414d1", 3.0, 0);
   graph.write_put_edge("", "U286f94380611", "B6bbf9d5766c3", 5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U4d9267c70eab", "Bc1cb783b0159" ,-5.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ud5984640e941", "Bc1cb783b0159", 5.0, 0);
-  graph.write_put_edge("Community Support", "U4d9267c70eab", "B86a6e5de190a" ,-4.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "Ud5984640e941", "B080a0d5de22d" ,-3.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U286f94380611", "B20f3d51e498f" ,-5.0, 0);
-  graph.write_put_edge("Clean Architecture", "U4d9267c70eab", "B2b0525693165", 4.0, 0);
-  graph.write_put_edge("", "U4d9267c70eab", "B6bbf9d5766c3" ,-5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U41906748a800", "Bc1cb783b0159" ,-5.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B6bbf9d5766c3" ,-5.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "U4d9267c70eab", "B080a0d5de22d", 5.0, 0);
-  graph.write_put_edge("Clean Architecture", "U41906748a800", "B2b0525693165", 5.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U4d9267c70eab",
+    "Bc1cb783b0159",
+    -5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ud5984640e941",
+    "Bc1cb783b0159",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U4d9267c70eab",
+    "B86a6e5de190a",
+    -4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "Ud5984640e941",
+    "B080a0d5de22d",
+    -3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U286f94380611",
+    "B20f3d51e498f",
+    -5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U4d9267c70eab",
+    "B2b0525693165",
+    4.0,
+    0,
+  );
+  graph.write_put_edge("", "U4d9267c70eab", "B6bbf9d5766c3", -5.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U41906748a800",
+    "Bc1cb783b0159",
+    -5.0,
+    0,
+  );
+  graph.write_put_edge("", "U41906748a800", "B6bbf9d5766c3", -5.0, 0);
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "U4d9267c70eab",
+    "B080a0d5de22d",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U41906748a800",
+    "B2b0525693165",
+    5.0,
+    0,
+  );
   graph.write_put_edge("", "U4d9267c70eab", "Baadac7ab80fe", 3.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B3c8ee2c064f6" ,-6.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B988f628fa22f" ,-5.0, 0);
+  graph.write_put_edge("", "U41906748a800", "B3c8ee2c064f6", -6.0, 0);
+  graph.write_put_edge("", "U41906748a800", "B988f628fa22f", -5.0, 0);
   graph.write_put_edge("", "U41906748a800", "Baf813d1b4acf", 7.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B6d130d7414d1" ,-5.0, 0);
+  graph.write_put_edge("", "U41906748a800", "B6d130d7414d1", -5.0, 0);
   graph.write_put_edge("", "U286f94380611", "B4342c0e949fb", 2.0, 0);
-  graph.write_put_edge("", "U4d9267c70eab", "B3c8ee2c064f6" ,-3.0, 0);
-  graph.write_put_edge("QuestForGlory", "U4d9267c70eab", "B0055751ce4cc" ,-3.0, 0);
+  graph.write_put_edge("", "U4d9267c70eab", "B3c8ee2c064f6", -3.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U4d9267c70eab",
+    "B0055751ce4cc",
+    -3.0,
+    0,
+  );
   graph.write_put_edge("", "U41906748a800", "B7bade2c63598", 5.0, 0);
-  graph.write_put_edge("", "U41906748a800", "B4342c0e949fb" ,-5.0, 0);
-  graph.write_put_edge("Community Support", "U4d9267c70eab", "B3b1ee4d8fc29" ,-4.0, 0);
-  graph.write_put_edge("Community Support", "U4d9267c70eab", "B80372f051f17" ,-2.0, 0);
-  graph.write_put_edge("Community Support", "U41906748a800", "B86a6e5de190a" ,-2.0, 0);
-  graph.write_put_edge("Community Support", "U286f94380611", "B3b1ee4d8fc29", 2.0, 0);
-  graph.write_put_edge("Community Support", "U41906748a800", "Be8bb41f4353e" ,-2.0, 0);
+  graph.write_put_edge("", "U41906748a800", "B4342c0e949fb", -5.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "U4d9267c70eab",
+    "B3b1ee4d8fc29",
+    -4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U4d9267c70eab",
+    "B80372f051f17",
+    -2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U41906748a800",
+    "B86a6e5de190a",
+    -2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U286f94380611",
+    "B3b1ee4d8fc29",
+    2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U41906748a800",
+    "Be8bb41f4353e",
+    -2.0,
+    0,
+  );
   graph.write_put_edge("", "U286f94380611", "B7bade2c63598", 5.0, 0);
-  graph.write_put_edge("There and Back Again", "U41906748a800", "Bb4dbbb63b373" ,-1.0, 0);
-  graph.write_put_edge("", "U4d9267c70eab", "B4268797cc8ee" ,-3.0, 0);
-  graph.write_put_edge("There and Back Again", "U4d9267c70eab", "B0b176a4c7617" ,-3.0, 0);
-  graph.write_put_edge("QuestForGlory", "U4d9267c70eab", "B521ff7422d52" ,-6.0, 0);
-  graph.write_put_edge("Community Support", "U286f94380611", "Be8bb41f4353e", 4.0, 0);
-  graph.write_put_edge("QuestForGlory", "U4d9267c70eab", "Bdbd14ea14b6f" ,-1.0, 0);
-  graph.write_put_edge("Community Support", "U4d9267c70eab", "Be8bb41f4353e" ,-5.0, 0);
+  graph.write_put_edge(
+    "There and Back Again",
+    "U41906748a800",
+    "Bb4dbbb63b373",
+    -1.0,
+    0,
+  );
+  graph.write_put_edge("", "U4d9267c70eab", "B4268797cc8ee", -3.0, 0);
+  graph.write_put_edge(
+    "There and Back Again",
+    "U4d9267c70eab",
+    "B0b176a4c7617",
+    -3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U4d9267c70eab",
+    "B521ff7422d52",
+    -6.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U286f94380611",
+    "Be8bb41f4353e",
+    4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U4d9267c70eab",
+    "Bdbd14ea14b6f",
+    -1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U4d9267c70eab",
+    "Be8bb41f4353e",
+    -5.0,
+    0,
+  );
   graph.write_put_edge("", "U286f94380611", "B3c8ee2c064f6", 5.0, 0);
   graph.write_put_edge("", "U286f94380611", "B988f628fa22f", 1.0, 0);
-  graph.write_put_edge("There and Back Again", "U4d9267c70eab", "Bb4dbbb63b373" ,-5.0, 0);
-  graph.write_put_edge("Clean Architecture", "U286f94380611", "B2b0525693165", 5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "B89b51dc35863", 3.0, 0);
-  graph.write_put_edge("Community Support", "U286f94380611", "B2005fe10663d" ,-3.0, 0);
-  graph.write_put_edge("There and Back Again", "U286f94380611", "Bb4dbbb63b373", 4.0, 0);
-  graph.write_put_edge("", "U286f94380611", "Baf813d1b4acf" ,-5.0, 0);
+  graph.write_put_edge(
+    "There and Back Again",
+    "U4d9267c70eab",
+    "Bb4dbbb63b373",
+    -5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U286f94380611",
+    "B2b0525693165",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "B89b51dc35863",
+    3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U286f94380611",
+    "B2005fe10663d",
+    -3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "There and Back Again",
+    "U286f94380611",
+    "Bb4dbbb63b373",
+    4.0,
+    0,
+  );
+  graph.write_put_edge("", "U286f94380611", "Baf813d1b4acf", -5.0, 0);
   graph.write_put_edge("", "U286f94380611", "Bec4566ce9bd4", 3.0, 0);
   graph.write_put_edge("", "U286f94380611", "B4268797cc8ee", 4.0, 0);
-  graph.write_put_edge("Community Support", "U286f94380611", "B86a6e5de190a", 4.0, 0);
-  graph.write_put_edge("Community Support", "U286f94380611", "B80372f051f17" ,-3.0, 0);
-  graph.write_put_edge("SMAUG SPEAKS", "U3a33697ffab9", "B080a0d5de22d" ,-3.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "Bdbd14ea14b6f", 3.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "B89b51dc35863", 4.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "B0cb05535835f", 3.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U3a33697ffab9", "B20f3d51e498f" ,-4.0, 0);
-  graph.write_put_edge("", "U286f94380611", "B7e7517882a1d" ,-3.0, 0);
-  graph.write_put_edge("Clean Architecture", "U3a33697ffab9", "B2b0525693165", 5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "Bc1cb783b0159", 5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "B0cb05535835f", 5.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "Bdbd14ea14b6f", 4.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "U286f94380611",
+    "B86a6e5de190a",
+    4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U286f94380611",
+    "B80372f051f17",
+    -3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "SMAUG SPEAKS",
+    "U3a33697ffab9",
+    "B080a0d5de22d",
+    -3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "Bdbd14ea14b6f",
+    3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "B89b51dc35863",
+    4.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "B0cb05535835f",
+    3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U3a33697ffab9",
+    "B20f3d51e498f",
+    -4.0,
+    0,
+  );
+  graph.write_put_edge("", "U286f94380611", "B7e7517882a1d", -3.0, 0);
+  graph.write_put_edge(
+    "Clean Architecture",
+    "U3a33697ffab9",
+    "B2b0525693165",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "Bc1cb783b0159",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "B0cb05535835f",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "Bdbd14ea14b6f",
+    4.0,
+    0,
+  );
   graph.write_put_edge("", "U3a33697ffab9", "B7bade2c63598", 6.0, 0);
-  graph.write_put_edge("Community Support", "U3a33697ffab9", "B3b1ee4d8fc29", 3.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "U3a33697ffab9",
+    "B3b1ee4d8fc29",
+    3.0,
+    0,
+  );
   graph.write_put_edge("", "U3a33697ffab9", "Bec4566ce9bd4", 4.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "B521ff7422d52", 3.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "B0055751ce4cc", 4.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "B521ff7422d52",
+    3.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "B0055751ce4cc",
+    4.0,
+    0,
+  );
   graph.write_put_edge("", "U3a33697ffab9", "B6d130d7414d1", 10.0, 0);
   graph.write_put_edge("", "U3a33697ffab9", "B4342c0e949fb", 2.0, 0);
-  graph.write_put_edge("", "U3a33697ffab9", "Baf813d1b4acf" ,-2.0, 0);
+  graph.write_put_edge("", "U3a33697ffab9", "Baf813d1b4acf", -2.0, 0);
   graph.write_put_edge("", "U3a33697ffab9", "B988f628fa22f", 3.0, 0);
-  graph.write_put_edge("", "U3a33697ffab9", "Baadac7ab80fe" ,-3.0, 0);
-  graph.write_put_edge("Community Support", "U3a33697ffab9", "B80372f051f17", 2.0, 0);
-  graph.write_put_edge("Community Support", "U3a33697ffab9", "B2005fe10663d", 4.0, 0);
+  graph.write_put_edge("", "U3a33697ffab9", "Baadac7ab80fe", -3.0, 0);
+  graph.write_put_edge(
+    "Community Support",
+    "U3a33697ffab9",
+    "B80372f051f17",
+    2.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "U3a33697ffab9",
+    "B2005fe10663d",
+    4.0,
+    0,
+  );
   graph.write_put_edge("", "U3a33697ffab9", "B7e7517882a1d", 3.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "U3a33697ffab9", "Bb9d31c168baf", 5.0, 0);
-  graph.write_put_edge("Community Support", "Ub01f4ad1b03f", "B86a6e5de190a", 1.0, 0);
-  graph.write_put_edge("Save the Middle-Earth", "Ub01f4ad1b03f", "Bb9d31c168baf", 1.0, 0);
-  graph.write_put_edge("Community Support", "Ub01f4ad1b03f", "Be8bb41f4353e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "Bc1cb783b0159", 2.0, 0);
-  graph.write_put_edge("", "U5cd05270c153", "Bed48703df71d" ,-1.0, 0);
-  graph.write_put_edge("Clean Architecture", "Ub01f4ad1b03f", "B2b0525693165", 2.0, 0);
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "U3a33697ffab9",
+    "Bb9d31c168baf",
+    5.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "Ub01f4ad1b03f",
+    "B86a6e5de190a",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Save the Middle-Earth",
+    "Ub01f4ad1b03f",
+    "Bb9d31c168baf",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "Community Support",
+    "Ub01f4ad1b03f",
+    "Be8bb41f4353e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "Bc1cb783b0159",
+    2.0,
+    0,
+  );
+  graph.write_put_edge("", "U5cd05270c153", "Bed48703df71d", -1.0, 0);
+  graph.write_put_edge(
+    "Clean Architecture",
+    "Ub01f4ad1b03f",
+    "B2b0525693165",
+    2.0,
+    0,
+  );
   graph.write_put_edge("", "Ub01f4ad1b03f", "B7bade2c63598", 2.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "B0cb05535835f", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "Bdbd14ea14b6f", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "B0cb05535835f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "Bdbd14ea14b6f",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "Ub01f4ad1b03f", "Bec4566ce9bd4", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "B89b51dc35863", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "B89b51dc35863",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Fatum", "Cdd6c827ecca3", "Ued8da07b9559", 1.0, 0);
   graph.write_put_edge("Fatum", "Ued8da07b9559", "Cdd6c827ecca3", 1.0, 0);
   graph.write_put_edge("", "Cb117f464e558", "U26aca0e369c7", 1.0, 0);
@@ -6732,40 +9735,208 @@ fn regression_oom() {
   graph.write_put_edge("", "U76a293d70033", "C748ed9d2dfb3", 1.0, 0);
   graph.write_put_edge("cat", "Cc01b87ceb830", "Ub01f4ad1b03f", 1.0, 0);
   graph.write_put_edge("cat", "Ub01f4ad1b03f", "Cc01b87ceb830", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C9b36f904697e", "U286f94380611", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C8bf3d2545b6b", "U7aa6bd888278", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "C8bf3d2545b6b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C757806312ae1", "U7aa6bd888278", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C359515064aae", "U050e67479957", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U050e67479957", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C98d9978b7d6c", "U6301c73d1354", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U6301c73d1354", "C98d9978b7d6c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C3fe79b19de5a", "Ub0100d7bad5f", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "C3fe79b19de5a", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C1b28e93382e1", "U8ebde6fbfd3f", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U8ebde6fbfd3f", "C1b28e93382e1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C7e507d2dd112", "U15f925d86858", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C7e507d2dd112", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C842a34fddec2", "U8ebde6fbfd3f", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U8ebde6fbfd3f", "C842a34fddec2", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C9b36f904697e",
+    "U286f94380611",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C8bf3d2545b6b",
+    "U7aa6bd888278",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "C8bf3d2545b6b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C757806312ae1",
+    "U7aa6bd888278",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C359515064aae",
+    "U050e67479957",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U050e67479957",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C98d9978b7d6c",
+    "U6301c73d1354",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U6301c73d1354",
+    "C98d9978b7d6c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C3fe79b19de5a",
+    "Ub0100d7bad5f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "C3fe79b19de5a",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C1b28e93382e1",
+    "U8ebde6fbfd3f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U8ebde6fbfd3f",
+    "C1b28e93382e1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C7e507d2dd112",
+    "U15f925d86858",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C7e507d2dd112",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C842a34fddec2",
+    "U8ebde6fbfd3f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U8ebde6fbfd3f",
+    "C842a34fddec2",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Fatum", "Cc2b3069cbe5d", "Ub01f4ad1b03f", 1.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cc2b3069cbe5d", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C25efb4fe632b", "Udab52ec61933", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C25efb4fe632b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C9b1d2b73215c", "U2becfc64c13b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U2becfc64c13b", "C9b1d2b73215c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "C47a273145740", "U3a33697ffab9", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U3a33697ffab9", "C47a273145740", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C25efb4fe632b",
+    "Udab52ec61933",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C25efb4fe632b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C9b1d2b73215c",
+    "U2becfc64c13b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U2becfc64c13b",
+    "C9b1d2b73215c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "C47a273145740",
+    "U3a33697ffab9",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U3a33697ffab9",
+    "C47a273145740",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "C1aadfb8924d9", "U77a03e9a08af", 1.0, 0);
   graph.write_put_edge("", "U77a03e9a08af", "C1aadfb8924d9", 1.0, 0);
-  graph.write_put_edge("tentura-test", "C978221bee128", "Ub01f4ad1b03f", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Ub01f4ad1b03f", "C978221bee128", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "C978221bee128",
+    "Ub01f4ad1b03f",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub01f4ad1b03f",
+    "C978221bee128",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "C6c30787a4fae", "U77a03e9a08af", 1.0, 0);
   graph.write_put_edge("", "U77a03e9a08af", "C6c30787a4fae", 1.0, 0);
-  graph.write_put_edge("tentura-test", "C415d72e2693c", "U77a03e9a08af", 1.0, 0);
-  graph.write_put_edge("tentura-test", "U77a03e9a08af", "C415d72e2693c", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "C415d72e2693c",
+    "U77a03e9a08af",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "U77a03e9a08af",
+    "C415d72e2693c",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Glamour", "C5a518f7914ad", "U3ea0a229ad85", 1.0, 0);
   graph.write_put_edge("Glamour", "U3ea0a229ad85", "C5a518f7914ad", 1.0, 0);
   graph.write_put_edge("", "C55df2e744f76", "Ub01f4ad1b03f", 1.0, 0);
@@ -6782,8 +9953,20 @@ fn regression_oom() {
   graph.write_put_edge("", "U5d33a9be1633", "C72ab5060f2cb", 1.0, 0);
   graph.write_put_edge("Fatum", "Caf2370c548ce", "U0d2e9e0dc40e", 1.0, 0);
   graph.write_put_edge("Fatum", "U0d2e9e0dc40e", "Caf2370c548ce", 1.0, 0);
-  graph.write_put_edge("tentura-test", "C6bda754da97b", "Ub4b46ee7a5e4", 1.0, 0);
-  graph.write_put_edge("tentura-test", "Ub4b46ee7a5e4", "C6bda754da97b", 1.0, 0);
+  graph.write_put_edge(
+    "tentura-test",
+    "C6bda754da97b",
+    "Ub4b46ee7a5e4",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "tentura-test",
+    "Ub4b46ee7a5e4",
+    "C6bda754da97b",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Glamour", "Cc3a1b76c43a1", "U3ea0a229ad85", 1.0, 0);
   graph.write_put_edge("Glamour", "U3ea0a229ad85", "Cc3a1b76c43a1", 1.0, 0);
   graph.write_put_edge("", "Cc7c6ce4cba1c", "U29a00cc1c9c2", 1.0, 0);
@@ -6806,13 +9989,13 @@ fn regression_oom() {
   graph.write_put_edge("", "U7a8d8324441d", "Cd06fea6a395f", 9.0, 0);
   graph.write_put_edge("", "Udece0afd9a8b", "C4f2dafca724f", 8.0, 0);
   graph.write_put_edge("", "Uadeb43da4abb", "C2bbd63b00224", 7.0, 0);
-  graph.write_put_edge("", "U80e22da6d8c4", "Cb76829a425d9" ,-1.0, 0);
+  graph.write_put_edge("", "U80e22da6d8c4", "Cb76829a425d9", -1.0, 0);
   graph.write_put_edge("", "U0c17798eaab4", "C588ffef22463", 5.0, 0);
-  graph.write_put_edge("", "Uaa4e2be7a87a", "C78d6fac93d00" ,-1.0, 0);
+  graph.write_put_edge("", "Uaa4e2be7a87a", "C78d6fac93d00", -1.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "C070e739180d6", 9.0, 0);
   graph.write_put_edge("", "U80e22da6d8c4", "C35678a54ef5f", 5.0, 0);
-  graph.write_put_edge("", "Uf5096f6ab14e", "C4893c40e481d" ,-1.0, 0);
-  graph.write_put_edge("", "Uadeb43da4abb", "C9462ca240ceb" ,-1.0, 0);
+  graph.write_put_edge("", "Uf5096f6ab14e", "C4893c40e481d", -1.0, 0);
+  graph.write_put_edge("", "Uadeb43da4abb", "C9462ca240ceb", -1.0, 0);
   graph.write_put_edge("", "Uef7fbf45ef11", "C2bbd63b00224", 8.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "C78ad459d3b81", 4.0, 0);
   graph.write_put_edge("", "Uad577360d968", "Cbce32a9b256a", 3.0, 0);
@@ -6824,13 +10007,13 @@ fn regression_oom() {
   graph.write_put_edge("", "U9a2c85753a6d", "Cfdde53c79a2d", 4.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "C78d6fac93d00", 2.0, 0);
   graph.write_put_edge("", "Ue7a29d5409f2", "Cfdde53c79a2d", 5.0, 0);
-  graph.write_put_edge("", "U9e42f6dab85a", "C0b19d314485e" ,-1.0, 0);
+  graph.write_put_edge("", "U9e42f6dab85a", "C0b19d314485e", -1.0, 0);
   graph.write_put_edge("", "U80e22da6d8c4", "Cb14487d862b3", 6.0, 0);
   graph.write_put_edge("", "U389f9f24b31c", "C4893c40e481d", 3.0, 0);
   graph.write_put_edge("", "U016217c34c6e", "Cb76829a425d9", 2.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "Cbbf2df46955b", 5.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "Cdcddfb230cb5", 4.0, 0);
-  graph.write_put_edge("", "U9a2c85753a6d", "C4893c40e481d" ,-1.0, 0);
+  graph.write_put_edge("", "U9a2c85753a6d", "C4893c40e481d", -1.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "Cdcddfb230cb5", 3.0, 0);
   graph.write_put_edge("", "U389f9f24b31c", "Cbbf2df46955b", 4.0, 0);
   graph.write_put_edge("", "Uad577360d968", "C2bbd63b00224", 9.0, 0);
@@ -6847,34 +10030,34 @@ fn regression_oom() {
   graph.write_put_edge("", "U80e22da6d8c4", "C3e84102071d1", 4.0, 0);
   graph.write_put_edge("", "Uc1158424318a", "Cfdde53c79a2d", 6.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "Ce1a7d8996eb0", 2.0, 0);
-  graph.write_put_edge("", "U9a89e0679dec", "Cd06fea6a395f" ,-1.0, 0);
+  graph.write_put_edge("", "U9a89e0679dec", "Cd06fea6a395f", -1.0, 0);
   graph.write_put_edge("", "Uf5096f6ab14e", "C6aebafa4fe8e", 8.0, 0);
   graph.write_put_edge("", "Uadeb43da4abb", "Cc9f863ff681b", 2.0, 0);
   graph.write_put_edge("", "Ue7a29d5409f2", "C399b6349ab02", 5.0, 0);
   graph.write_put_edge("", "Uc1158424318a", "C4e0db8dec53e", 4.0, 0);
   graph.write_put_edge("", "U9a89e0679dec", "C6aebafa4fe8e", 8.0, 0);
-  graph.write_put_edge("", "U80e22da6d8c4", "C6acd550a4ef3" ,-1.0, 0);
-  graph.write_put_edge("", "Uf2b0a6b1d423", "Ce1a7d8996eb0" ,-1.0, 0);
+  graph.write_put_edge("", "U80e22da6d8c4", "C6acd550a4ef3", -1.0, 0);
+  graph.write_put_edge("", "Uf2b0a6b1d423", "Ce1a7d8996eb0", -1.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "C30fef1977b4a", 8.0, 0);
   graph.write_put_edge("", "Uef7fbf45ef11", "C588ffef22463", 4.0, 0);
   graph.write_put_edge("", "Uef7fbf45ef11", "C94bb73c10a06", 3.0, 0);
-  graph.write_put_edge("", "Uad577360d968", "C588ffef22463" ,-1.0, 0);
+  graph.write_put_edge("", "Uad577360d968", "C588ffef22463", -1.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "C67e4476fda28", 6.0, 0);
   graph.write_put_edge("", "U0c17798eaab4", "C4893c40e481d", 7.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "C6a2263dc469e", 3.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "C3fd1fdebe0e9", 7.0, 0);
   graph.write_put_edge("", "Uef7fbf45ef11", "C3fd1fdebe0e9", 9.0, 0);
-  graph.write_put_edge("", "Uc1158424318a", "C9028c7415403" ,-1.0, 0);
+  graph.write_put_edge("", "Uc1158424318a", "C9028c7415403", -1.0, 0);
   graph.write_put_edge("", "U9e42f6dab85a", "C6a2263dc469e", 5.0, 0);
   graph.write_put_edge("", "Uad577360d968", "C399b6349ab02", 6.0, 0);
   graph.write_put_edge("", "U26aca0e369c7", "C9028c7415403", 8.0, 0);
   graph.write_put_edge("", "U1c285703fc63", "C30e7409c2d5f", 4.0, 0);
-  graph.write_put_edge("", "U9a89e0679dec", "Cbbf2df46955b" ,-1.0, 0);
+  graph.write_put_edge("", "U9a89e0679dec", "Cbbf2df46955b", -1.0, 0);
   graph.write_put_edge("", "Uf5096f6ab14e", "C3e84102071d1", 1.0, 0);
   graph.write_put_edge("", "U7a8d8324441d", "C94bb73c10a06", 9.0, 0);
   graph.write_put_edge("", "Uaa4e2be7a87a", "Cfdde53c79a2d", 3.0, 0);
   graph.write_put_edge("", "U26aca0e369c7", "C6acd550a4ef3", 4.0, 0);
-  graph.write_put_edge("", "Uc1158424318a", "C67e4476fda28" ,-1.0, 0);
+  graph.write_put_edge("", "Uc1158424318a", "C67e4476fda28", -1.0, 0);
   graph.write_put_edge("", "Uf2b0a6b1d423", "C30e7409c2d5f", 9.0, 0);
   graph.write_put_edge("", "U389f9f24b31c", "C4f2dafca724f", 5.0, 0);
   graph.write_put_edge("", "U0c17798eaab4", "Ce1a7d8996eb0", 6.0, 0);
@@ -6883,7 +10066,7 @@ fn regression_oom() {
   graph.write_put_edge("", "Uaa4e2be7a87a", "C070e739180d6", 8.0, 0);
   graph.write_put_edge("", "U389f9f24b31c", "C6acd550a4ef3", 6.0, 0);
   graph.write_put_edge("Fatum", "U01814d1ec9ff", "C6d52e861b366", 3.0, 0);
-  graph.write_put_edge("", "U99a0f1f7e6ee", "C96bdee4f11e2" ,-18.0, 0);
+  graph.write_put_edge("", "U99a0f1f7e6ee", "C96bdee4f11e2", -18.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "C8d80016b8292", 1.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "C247501543b60", 1.0, 0);
   graph.write_put_edge("", "U6d2f25cc4264", "C6f84810d3cd9", 1.0, 0);
@@ -6899,54 +10082,246 @@ fn regression_oom() {
   graph.write_put_edge("", "U0cd6bd2dde4f", "C7062e90f7422", 1.0, 0);
   graph.write_put_edge("Fatum", "U1bcba4fd7175", "Cd4417a5d718e", 5.0, 0);
   graph.write_put_edge("", "U9a2c85753a6d", "C6a2263dc469e", 2.0, 0);
-  graph.write_put_edge("Fatum", "U1bcba4fd7175", "C6d52e861b366" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "U1bcba4fd7175", "C6d52e861b366", -1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "C5782d559baad", 1.0, 0);
   graph.write_put_edge("", "U95f3426b8e5d", "C992d8370db6b", 1.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cd5983133fb67", 5.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cb11edc3d0bc7", 5.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "C6d52e861b366", 0.0, 0);
-  graph.write_put_edge("game", "Ub01f4ad1b03f", "C1f463ef711d7" ,-2.0, 0);
+  graph.write_put_edge("game", "Ub01f4ad1b03f", "C1f463ef711d7", -2.0, 0);
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cd6c9d5cba220", 4.0, 0);
-  graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cd4417a5d718e" ,-1.0, 0);
-  graph.write_put_edge("", "Ub01f4ad1b03f", "C8343a6a576ff" ,-1.0, 0);
+  graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "Cd4417a5d718e", -1.0, 0);
+  graph.write_put_edge("", "Ub01f4ad1b03f", "C8343a6a576ff", -1.0, 0);
   graph.write_put_edge("cat", "Ub01f4ad1b03f", "Cdc72f8f77531", 4.0, 0);
   graph.write_put_edge("", "Ua37f245cf686", "C2bbd63b00224", 1.0, 0);
-  graph.write_put_edge("", "Ua37f245cf686", "Cb117f464e558" ,-1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U7aa6bd888278", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U286f94380611", "C757806312ae1", 1.0, 0);
+  graph.write_put_edge("", "Ua37f245cf686", "Cb117f464e558", -1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U7aa6bd888278",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U286f94380611",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
   graph.write_put_edge("Fatum", "Ub01f4ad1b03f", "C0f761a65e114", 2.0, 0);
-  graph.write_put_edge("QuestForGlory", "U050e67479957", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U050e67479957", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U6301c73d1354", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U6301c73d1354", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U6301c73d1354", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "C98d9978b7d6c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub0100d7bad5f", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C98d9978b7d6c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C3fe79b19de5a", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C1b28e93382e1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "U15f925d86858", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C7e507d2dd112", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C842a34fddec2" ,-1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U050e67479957",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U050e67479957",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U6301c73d1354",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U6301c73d1354",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U6301c73d1354",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "C98d9978b7d6c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub0100d7bad5f",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C98d9978b7d6c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C3fe79b19de5a",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C1b28e93382e1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "U15f925d86858",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C7e507d2dd112",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C842a34fddec2",
+    -1.0,
+    0,
+  );
   graph.write_put_edge("Fatum", "U0ae9f5d0bf02", "C6d52e861b366", 1.0, 0);
   graph.write_put_edge("Fatum", "U0ae9f5d0bf02", "Cd5983133fb67", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C1b28e93382e1" ,-1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C3fe79b19de5a", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C98d9978b7d6c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Udab52ec61933", "C9b36f904697e", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C757806312ae1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C842a34fddec2", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C25efb4fe632b", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C1b28e93382e1", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C98d9978b7d6c", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C359515064aae", 1.0, 0);
-  graph.write_put_edge("QuestForGlory", "Ub01f4ad1b03f", "C9b36f904697e", 1.0, 0);
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C1b28e93382e1",
+    -1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C3fe79b19de5a",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C98d9978b7d6c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Udab52ec61933",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C757806312ae1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C842a34fddec2",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C25efb4fe632b",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C1b28e93382e1",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C98d9978b7d6c",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C359515064aae",
+    1.0,
+    0,
+  );
+  graph.write_put_edge(
+    "QuestForGlory",
+    "Ub01f4ad1b03f",
+    "C9b36f904697e",
+    1.0,
+    0,
+  );
   graph.write_put_edge("", "U3ea0a229ad85", "Ofe86002c5126", 1.0, 0);
   graph.write_put_edge("", "Ofe86002c5126", "U3ea0a229ad85", 1.0, 0);
   graph.write_put_edge("", "Ofe86002c5126", "Ub01f4ad1b03f", 1.0, 0);
@@ -6970,7 +10345,7 @@ fn regression_oom() {
   graph.write_put_edge("", "O7adde95fc1b2", "U3ea0a229ad85", 1.0, 0);
   graph.write_put_edge("", "Ub01f4ad1b03f", "O286c338e585b", 1.0, 0);
   graph.write_put_edge("", "O286c338e585b", "Ub01f4ad1b03f", 1.0, 0);
-  graph.write_put_edge("", "O286c338e585b", "Uc4ebbce44401" ,-1.0, 0);
+  graph.write_put_edge("", "O286c338e585b", "Uc4ebbce44401", -1.0, 0);
   graph.write_put_edge("", "U3ea0a229ad85", "O7d196c3490dc", 1.0, 0);
   graph.write_put_edge("", "O7d196c3490dc", "U3ea0a229ad85", 1.0, 0);
   graph.write_put_edge("", "O7d196c3490dc", "U1691db0d4d7f", 1.0, 0);
@@ -6980,6 +10355,18 @@ fn regression_oom() {
   graph.write_put_edge("", "U3ea0a229ad85", "Oe654a0e656d3", 1.0, 0);
   graph.write_put_edge("", "Oe654a0e656d3", "U3ea0a229ad85", 1.0, 0);
   graph.write_put_edge("", "Oe654a0e656d3", "U6d2f25cc4264", 1.0, 0);
-  graph.write_new_edges_filter("Ub01f4ad1b03f", &[105, 105, 105, 105, 105, 105, 105, 105, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 101, 101, 101, 101, 101, 101, 101, 101, 2, 2, 2, 2, 2, 2, 2, 2, 52, 52, 52, 52, 52, 52, 52, 52, 137, 137, 137, 137, 137, 137, 137, 137, 41, 41, 41, 41, 41, 41, 41, 41, 8, 8, 8, 8, 8, 8, 8, 8, 33, 33, 33, 33, 33, 33, 33, 33, 176, 176, 176, 176, 176, 176, 176, 176, 17, 17, 17, 17, 17, 17, 17, 17, 114, 114, 114, 114, 114, 114, 114, 114, 83, 83, 83, 83, 83, 83, 83, 83, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2]);
+  graph.write_new_edges_filter(
+    "Ub01f4ad1b03f",
+    &[
+      105, 105, 105, 105, 105, 105, 105, 105, 10, 10, 10, 10, 10, 10, 10, 10,
+      10, 10, 10, 10, 10, 10, 10, 10, 101, 101, 101, 101, 101, 101, 101, 101,
+      2, 2, 2, 2, 2, 2, 2, 2, 52, 52, 52, 52, 52, 52, 52, 52, 137, 137, 137,
+      137, 137, 137, 137, 137, 41, 41, 41, 41, 41, 41, 41, 41, 8, 8, 8, 8, 8,
+      8, 8, 8, 33, 33, 33, 33, 33, 33, 33, 33, 176, 176, 176, 176, 176, 176,
+      176, 176, 17, 17, 17, 17, 17, 17, 17, 17, 114, 114, 114, 114, 114, 114,
+      114, 114, 83, 83, 83, 83, 83, 83, 83, 83, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2,
+      2, 2, 2, 2, 2, 2,
+    ],
+  );
   graph.write_recalculate_zero();
 }
