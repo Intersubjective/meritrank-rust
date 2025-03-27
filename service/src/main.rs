@@ -8,6 +8,9 @@ pub mod vsids;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod test_data;
+
 use crate::service::main_async;
 use ctrlc;
 
