@@ -191,7 +191,7 @@ fn recalculate_zero_reset_perf() {
 
 #[test]
 fn recalculate_zero_scores() {
-  let mut graph = default_graph();
+  let mut graph = default_graph_zero();
 
   put_testing_edges_0(&mut graph);
 
@@ -898,7 +898,7 @@ fn node_score_uncontexted() {
 
 #[test]
 fn node_score_reversed() {
-  let mut graph = default_graph();
+  let mut graph = default_graph_zero();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -935,7 +935,7 @@ fn node_score_contexted() {
 
 #[test]
 fn mutual_scores_uncontexted() {
-  let mut graph = default_graph();
+  let mut graph = default_graph_zero();
 
   graph.write_put_edge("", "U1", "U2", 3.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -1110,7 +1110,7 @@ fn graph_uncontexted() {
 
 #[test]
 fn graph_reversed() {
-  let mut graph = default_graph();
+  let mut graph = default_graph_zero();
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -1445,13 +1445,16 @@ fn five_user_scores_clustering() {
 
 #[test]
 fn five_beacon_scores_clustering() {
-  let mut graph = default_graph();
+  let mut graph = AugMultiGraph::new(AugMultiGraphSettings {
+    num_walks: 500,
+    ..AugMultiGraphSettings::default()
+  });
 
   graph.write_put_edge("", "U1", "B2", 5.0, -1);
   graph.write_put_edge("", "U1", "B3", 1.0, -1);
   graph.write_put_edge("", "U1", "B4", 2.0, -1);
   graph.write_put_edge("", "U1", "B5", 3.0, -1);
-  graph.write_put_edge("", "U1", "B6", 3.0, -1);
+  graph.write_put_edge("", "U1", "B6", 4.0, -1);
 
   let res: Vec<_> = graph.read_scores(
     "",
