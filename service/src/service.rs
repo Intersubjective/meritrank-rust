@@ -520,6 +520,12 @@ pub fn parse_settings() -> Result<AugMultiGraphSettings, ()> {
     0,
     1000000,
   )?;
+  parse_and_set_value(
+    &mut settings.zero_opinion_num_walks,
+    "MERITRANK_ZERO_OPINION_NUM_WALKS",
+    0,
+    1000000,
+  )?;
 
   match parse_env_var("MERITRANK_ZERO_OPINION_FACTOR", 0, 100)? {
     Some(n) => settings.zero_opinion_factor = (n as f64) * 0.01,
