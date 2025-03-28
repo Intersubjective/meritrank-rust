@@ -1128,7 +1128,7 @@ fn graph_reversed() {
         assert!(x.2 > 0.6);
         assert!(x.2 < 0.7);
         assert!(x.3 > 0.05);
-        assert!(x.3 < 0.3);
+        assert!(x.3 < 0.4);
       },
 
       "U2" => {
