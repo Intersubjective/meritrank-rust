@@ -7,6 +7,15 @@ fn default_graph() -> AugMultiGraph {
   AugMultiGraph::new(AugMultiGraphSettings {
     num_walks: 50,
     zero_opinion_num_walks: 50,
+    zero_opinion_factor: 0.0,
+    ..AugMultiGraphSettings::default()
+  })
+}
+
+fn default_graph_zero() -> AugMultiGraph {
+  AugMultiGraph::new(AugMultiGraphSettings {
+    num_walks: 50,
+    zero_opinion_num_walks: 50,
     ..AugMultiGraphSettings::default()
   })
 }
@@ -264,7 +273,7 @@ fn scores_without_recalculate() {
 
 #[test]
 fn scores_with_recalculate() {
-  let mut graph = default_graph();
+  let mut graph = default_graph_zero();
 
   put_testing_edges_1(&mut graph);
 
@@ -345,7 +354,7 @@ fn new_user_with_recalculate() {
 
 #[test]
 fn user_with_recalculate_negative_score() {
-  let mut graph = default_graph();
+  let mut graph = default_graph_zero();
 
   graph.write_put_edge("", "U2", "U3", 1.0, -1);
 
@@ -1574,7 +1583,7 @@ fn separate_clusters_self_score() {
 
 #[test]
 fn set_zero_opinion_uncontexted() {
-  let mut graph = default_graph();
+  let mut graph = default_graph_zero();
   graph.write_put_edge("", "U1", "U2", -5.0, -1);
   let s0 = graph.read_node_score("", "U1", "U2")[0].2;
   graph.write_set_zero_opinion("", "U2", 10.0);
@@ -1586,7 +1595,7 @@ fn set_zero_opinion_uncontexted() {
 
 #[test]
 fn set_zero_opinion_contexted() {
-  let mut graph = default_graph();
+  let mut graph = default_graph_zero();
   graph.write_put_edge("X", "U1", "U2", -5.0, -1);
   let s0 = graph.read_node_score("X", "U1", "U2")[0].2;
   graph.write_set_zero_opinion("X", "U2", 10.0);
@@ -1755,7 +1764,7 @@ fn regression_delete_self_reference_panic() {
 
 #[test]
 fn regression_beacons_clustering() {
-  let mut graph = default_graph();
+  let mut graph = default_graph_zero();
 
   put_testing_edges_2(&mut graph);
 
