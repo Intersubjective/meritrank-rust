@@ -1183,7 +1183,7 @@ impl AugMultiGraph {
     dst: NodeId,
     amount: f64,
   ) {
-    log_trace!("{:?} {:?} {:?} {}", context, src, dst, amount);
+    log_trace!("{:?} {} {} {}", context, src, dst, amount);
 
     if src == dst {
       log_error!("Self-reference is not allowed.");
@@ -1216,7 +1216,7 @@ impl AugMultiGraph {
         .meritrank_data
         .set_edge(src, dst, amount);
     } else {
-      let null_weight = self.subgraph_from_context(context).edge_weight(src, dst);
+      let null_weight = self.subgraph_from_context("").edge_weight(src, dst);
       let old_weight = self.subgraph_from_context(context).edge_weight(src, dst);
       let delta = null_weight + amount - old_weight;
 

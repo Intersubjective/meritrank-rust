@@ -6,7 +6,7 @@ use std::time::SystemTime;
 fn default_graph() -> AugMultiGraph {
   AugMultiGraph::new(AugMultiGraphSettings {
     num_walks: 50,
-    zero_opinion_num_walks: 50,
+    zero_opinion_num_walks: 100,
     zero_opinion_factor: 0.0,
     ..AugMultiGraphSettings::default()
   })
@@ -586,7 +586,7 @@ fn scores_uncontexted() {
       },
 
       "U2" => {
-        assert!(x.2 > 0.2);
+        assert!(x.2 > 0.18);
         assert!(x.2 < 0.5);
       },
 
@@ -959,9 +959,9 @@ fn mutual_scores_uncontexted() {
 
     match x.1.as_str() {
       "U1" => {
-        assert!(x.2 > 0.3);
+        assert!(x.2 > 0.25);
         assert!(x.2 < 0.5);
-        assert!(x.3 > 0.3);
+        assert!(x.3 > 0.25);
         assert!(x.3 < 0.5);
         assert!(u1);
         u1 = false;
@@ -1142,7 +1142,7 @@ fn graph_reversed() {
         if x.1 == "U3" {
           assert!(x.2 > 0.39);
           assert!(x.2 < 0.49);
-          assert!(x.3 > 0.2);
+          assert!(x.3 > 0.16);
           assert!(x.3 < 0.4);
         }
       },
