@@ -1731,13 +1731,17 @@ fn vsids_edges_churn() {
     graph.write_put_edge("", "U1", &*dst, 1.0, n);
   }
 
+  //  FIXME: This test is too low-level.
+  //         It should not rely on edge_weight_normalized.
+  //         Such low-level functions are not stable.
+
   // Check that only the most recent edges remain
   for n in 0..1000 {
     let dst = format!("U{}", n + 2);
-    let edge = graph.edge_weight_normalized(
-      "",
-      *graph.node_ids.get("U1").unwrap(),
-      *graph.node_ids.get(&dst).unwrap(),
+    let src_id = *graph.node_ids.get("U1").unwrap();
+    let dst_id = *graph.node_ids.get(&dst).unwrap();
+    let edge = graph.subgraph_from_context("").edge_weight_normalized(
+      src_id, dst_id
     );
     if n >= 990 {
       // Assuming the last 10 edges remain

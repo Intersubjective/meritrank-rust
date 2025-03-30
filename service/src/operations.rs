@@ -145,44 +145,6 @@ impl IndexMut<NodeKind> for ScoreClustersByKind {
   }
 }
 
-//  Augmented multi-context graph settings
-//
-#[derive(Clone)]
-pub struct AugMultiGraphSettings {
-  pub num_walks:              usize,
-  pub zero_opinion_num_walks: usize,
-  pub top_nodes_limit:        usize,
-  pub zero_opinion_factor:    f64,
-  pub score_clusters_timeout: u64,
-  pub scores_cache_size:      NonZeroUsize,
-  pub walks_cache_size:       NonZeroUsize,
-  pub filter_num_hashes:      usize,
-  pub filter_max_size:        usize,
-  pub filter_min_size:        usize,
-}
-
-#[derive(Clone)]
-pub struct Subgraph {
-  meritrank_data:        MeritRank,
-  zero_opinion:          Vec<Weight>,
-  cached_scores:         LruCache<(NodeId, NodeId), Weight>,
-  cached_walks:          LruCache<NodeId, ()>,
-  cached_score_clusters: Vec<ScoreClustersByKind>,
-}
-
-//  Augmented multi-layer graph
-//
-#[derive(Clone)]
-pub struct AugMultiGraph {
-  pub settings:   AugMultiGraphSettings,
-  pub node_count: usize,
-  pub node_infos: Vec<NodeInfo>,
-  pub node_ids:   HashMap<String, NodeId>,
-  pub subgraphs:  HashMap<String, Subgraph>,
-  pub time_begin: Instant,
-  pub vsids:      VSIDSManager,
-}
-
 //  ================================================================
 //
 //    Bloom filter
@@ -245,109 +207,6 @@ pub fn bloom_filter_contains(
   }
 
   return true;
-}
-
-//  ================================================================
-//
-//    Caches
-//
-//  ================================================================
-
-impl Subgraph {
-  pub fn cache_score_add(
-    &mut self,
-    ego: NodeId,
-    dst: NodeId,
-    score: Weight,
-  ) {
-    log_trace!("{} {} {}", ego, dst, score);
-    self.cached_scores.put((ego, dst), score);
-  }
-
-  pub fn cache_score_get(
-    &mut self,
-    ego: NodeId,
-    dst: NodeId,
-  ) -> Option<Weight> {
-    log_trace!("{} {}", ego, dst);
-    self.cached_scores.get(&(ego, dst)).copied()
-  }
-
-  pub fn cache_walk_add(
-    &mut self,
-    ego: NodeId,
-  ) {
-    log_trace!("{}", ego);
-
-    if let Some((old_ego, _)) = self.cached_walks.push(ego, ()) {
-      if old_ego != ego {
-        log_verbose!("Drop walks {}", old_ego);
-
-        // HACK!!!
-        // We "drop" the walks by recalculating the node with 0.
-        match self.meritrank_data.calculate(old_ego, 0) {
-          Ok(()) => {},
-          Err(e) => {
-            log_error!("{}", e);
-          },
-        }
-      }
-    }
-  }
-
-  pub fn cache_walk_get(
-    &mut self,
-    ego: NodeId,
-  ) -> bool {
-    log_trace!();
-
-    self.cached_walks.get(&ego).is_some()
-  }
-}
-
-impl AugMultiGraph {
-  pub fn cache_score_add(
-    &mut self,
-    context: &str,
-    ego: NodeId,
-    dst: NodeId,
-    score: Weight,
-  ) {
-    log_trace!("{:?} {} {} {}", context, ego, dst, score);
-    self
-      .subgraph_from_ctx_mut(context)
-      .cache_score_add(ego, dst, score);
-  }
-
-  pub fn cache_score_get(
-    &mut self,
-    context: &str,
-    ego: NodeId,
-    dst: NodeId,
-  ) -> Option<Weight> {
-    log_trace!("{:?} {} {}", context, ego, dst);
-    self
-      .subgraph_from_ctx_mut(context)
-      .cache_score_get(ego, dst)
-  }
-
-  pub fn cache_walk_add(
-    &mut self,
-    context: &str,
-    ego: NodeId,
-  ) {
-    log_trace!("{:?} {}", context, ego);
-    self.subgraph_from_ctx_mut(context).cache_walk_add(ego);
-  }
-
-  pub fn cache_walk_get(
-    &mut self,
-    context: &str,
-    ego: NodeId,
-  ) -> bool {
-    log_trace!("{:?} {}", context, ego);
-    self.subgraph_from_ctx_mut(context).cache_walk_get(ego)
-  }
 }
 
 //  ================================================================
@@ -453,7 +312,181 @@ pub fn node_kind_from_id(
   }
 }
 
+fn nodes_by_kind(kind: NodeKind, node_infos: &[NodeInfo]) -> Vec<NodeId> {
+  node_infos
+    .into_iter()
+    .enumerate()
+    .filter(|(_, info)| info.kind == kind)
+    .map(|(id, _)| id)
+    .collect()
+}
+
+//  ================================================================
+//
+//    Subgraph
+//
+//  ================================================================
+
+#[derive(Clone)]
+pub struct Subgraph {
+  meritrank_data:        MeritRank,
+  zero_opinion:          Vec<Weight>,
+  cached_scores:         LruCache<(NodeId, NodeId), Weight>,
+  cached_walks:          LruCache<NodeId, ()>,
+  cached_score_clusters: Vec<ScoreClustersByKind>,
+}
+
 impl Subgraph {
+  pub fn cache_score_add(
+    &mut self,
+    ego: NodeId,
+    dst: NodeId,
+    score: Weight,
+  ) {
+    log_trace!("{} {} {}", ego, dst, score);
+    self.cached_scores.put((ego, dst), score);
+  }
+
+  pub fn cache_score_get(
+    &mut self,
+    ego: NodeId,
+    dst: NodeId,
+  ) -> Option<Weight> {
+    log_trace!("{} {}", ego, dst);
+    self.cached_scores.get(&(ego, dst)).copied()
+  }
+
+  pub fn cache_walk_add(
+    &mut self,
+    ego: NodeId,
+  ) {
+    log_trace!("{}", ego);
+
+    if let Some((old_ego, _)) = self.cached_walks.push(ego, ()) {
+      if old_ego != ego {
+        log_verbose!("Drop walks {}", old_ego);
+
+        // HACK!!!
+        // We "drop" the walks by recalculating the node with 0.
+        match self.meritrank_data.calculate(old_ego, 0) {
+          Ok(()) => {},
+          Err(e) => {
+            log_error!("{}", e);
+          },
+        }
+      }
+    }
+  }
+
+  pub fn cache_walk_get(
+    &mut self,
+    ego: NodeId,
+  ) -> bool {
+    log_trace!();
+
+    self.cached_walks.get(&ego).is_some()
+  }
+
+  pub fn edge_weight(
+    &mut self,
+    src: NodeId,
+    dst: NodeId,
+  ) -> Weight {
+    log_trace!("{} {}", src, dst);
+
+    self
+      .meritrank_data
+      .graph
+      .edge_weight(src, dst)
+      .unwrap_or(None)
+      .unwrap_or(0.0)
+  }
+
+  pub fn edge_weight_normalized(
+    &mut self,
+    src: NodeId,
+    dst: NodeId,
+  ) -> Weight {
+    log_trace!("{} {}", src, dst);
+
+    let pos_sum = match self.meritrank_data.graph.get_node_data(src) {
+      Some(x) => {
+        if x.pos_sum < EPSILON {
+          log_warning!(
+            "Unable to normalize node weight, positive sum is zero."
+          );
+          1.0
+        } else {
+          x.pos_sum
+        }
+      },
+
+      None => 1.0,
+    };
+
+    self.meritrank_data
+      .graph
+      .edge_weight(src, dst)
+      .unwrap_or(None)
+      .unwrap_or(0.0)
+      / pos_sum
+  }
+
+  pub fn all_outbound_neighbors_normalized(
+    &mut self,
+    node: NodeId,
+  ) -> Vec<(NodeId, Weight)> {
+    log_trace!("{}", node);
+
+    let mut v = vec![];
+
+    match self
+      .meritrank_data
+      .graph
+      .get_node_data(node)
+    {
+      None => {},
+      Some(data) => {
+        v.reserve_exact(data.pos_edges.len() + data.neg_edges.len());
+
+        let pos_sum = if data.pos_sum < EPSILON {
+          log_warning!(
+            "Unable to normalize node weight, positive sum is zero."
+          );
+          1.0
+        } else {
+          data.pos_sum
+        };
+
+        for x in &data.pos_edges {
+          v.push((*x.0, *x.1 / pos_sum));
+        }
+
+        for x in &data.neg_edges {
+          v.push((*x.0, *x.1 / pos_sum));
+        }
+      },
+    }
+
+    v
+  }
+
+  fn with_zero_opinion(
+    &mut self,
+    dst_id: NodeId,
+    score: Weight,
+    zero_opinion_factor: f64,
+  ) -> Weight {
+    log_trace!("{} {}", dst_id, score);
+
+    let zero_score =
+      match self.zero_opinion.get(dst_id) {
+        Some(x) => *x,
+        _ => 0.0,
+      };
+    score * (1.0 - zero_opinion_factor) + zero_opinion_factor * zero_score
+  }
+
   fn with_zero_opinions(
     &self,
     scores: Vec<(NodeId, Weight)>,
@@ -493,7 +526,7 @@ impl Subgraph {
     num_walks: usize,
     zero_opinion_factor: f64,
   ) -> Vec<(NodeId, Weight)> {
-    log_trace!("{}", ego_id);
+    log_trace!("{} {} {}", ego_id, num_walks, zero_opinion_factor);
 
     if self.cache_walk_get(ego_id) {
       let data = &self.meritrank_data;
@@ -533,6 +566,123 @@ impl Subgraph {
       }
     }
   }
+
+  fn fetch_raw_score(
+    &mut self,
+    ego_id: NodeId,
+    dst_id: NodeId,
+    num_walks: usize,
+    zero_opinion_factor: f64,
+  ) -> Weight {
+    log_trace!("{} {} {} {}", ego_id, dst_id, num_walks, zero_opinion_factor);
+
+    if !self.cache_walk_get(ego_id) {
+      if let Err(e) = self
+        .meritrank_data
+        .calculate(ego_id, num_walks)
+      {
+        log_error!("Failed to calculate: {}", e);
+        return 0.0;
+      }
+      self.cache_walk_add(ego_id);
+    }
+
+    match self
+      .meritrank_data
+      .get_node_score(ego_id, dst_id)
+    {
+      Ok(score) => {
+        self.cache_score_add(ego_id, dst_id, score);
+        self.with_zero_opinion(dst_id, score, zero_opinion_factor)
+      },
+      Err(e) => {
+        log_error!("Failed to get node score: {}", e);
+        0.0
+      },
+    }
+  }
+
+  fn calculate_score_clusters_bounds(
+    &mut self,
+    ego: NodeId,
+    kind: NodeKind,
+    num_walks: usize,
+    zero_opinion_factor: f64,
+    node_ids: &[NodeId],
+  ) -> [Weight; NUM_SCORE_QUANTILES - 1] {
+    log_trace!("{} {:?} {} {}", ego, kind, num_walks, zero_opinion_factor);
+
+    let scores: Vec<Weight> = node_ids
+      .into_iter()
+      .map(|dst| self.fetch_raw_score(ego, *dst, num_walks, zero_opinion_factor))
+      .filter(|score| *score >= EPSILON)
+      .collect();
+
+    if scores.is_empty() {
+      return [0.0; NUM_SCORE_QUANTILES - 1];
+    }
+
+    calculate_quantiles_bounds(scores)
+  }
+
+  fn update_node_score_clustering(
+    &mut self,
+    ego: NodeId,
+    kind: NodeKind,
+    time_secs: u64,
+    node_count: usize,
+    num_walks: usize,
+    zero_opinion_factor: f64,
+    node_ids: &[NodeId],
+  ) {
+    log_trace!("{} {:?} {} {} {} {}", ego, kind, time_secs, node_count, num_walks, zero_opinion_factor);
+
+    let bounds = self.calculate_score_clusters_bounds(ego, kind, num_walks, zero_opinion_factor, node_ids);
+
+    if ego >= node_count {
+      log_error!("Node does not exist: {}", ego);
+      return;
+    }
+
+    let clusters = &mut self.cached_score_clusters;
+
+    clusters.resize(node_count, Default::default());
+
+    clusters[ego][kind].updated_sec = time_secs;
+    clusters[ego][kind].bounds = bounds;
+  }
+
+}
+
+//  ================================================================
+//
+//    Augmented multi-layer graph
+//
+//  ================================================================
+
+#[derive(Clone)]
+pub struct AugMultiGraphSettings {
+  pub num_walks:              usize,
+  pub zero_opinion_num_walks: usize,
+  pub top_nodes_limit:        usize,
+  pub zero_opinion_factor:    f64,
+  pub score_clusters_timeout: u64,
+  pub scores_cache_size:      NonZeroUsize,
+  pub walks_cache_size:       NonZeroUsize,
+  pub filter_num_hashes:      usize,
+  pub filter_max_size:        usize,
+  pub filter_min_size:        usize,
+}
+
+#[derive(Clone)]
+pub struct AugMultiGraph {
+  pub settings:   AugMultiGraphSettings,
+  pub node_count: usize,
+  pub node_infos: Vec<NodeInfo>,
+  pub node_ids:   HashMap<String, NodeId>,
+  pub subgraphs:  HashMap<String, Subgraph>,
+  pub time_begin: Instant,
+  pub vsids:      VSIDSManager,
 }
 
 impl Default for AugMultiGraphSettings {
@@ -559,6 +709,19 @@ impl Default for AugMultiGraph {
 }
 
 impl AugMultiGraph {
+  pub fn cache_score_add(
+    &mut self,
+    context: &str,
+    ego: NodeId,
+    dst: NodeId,
+    score: Weight,
+  ) {
+    log_trace!("{:?} {} {} {}", context, ego, dst, score);
+    self
+      .subgraph_from_context(context)
+      .cache_score_add(ego, dst, score);
+  }
+
   pub fn new(settings: AugMultiGraphSettings) -> AugMultiGraph {
     log_trace!();
 
@@ -602,12 +765,10 @@ impl AugMultiGraph {
     &self,
     node_name: &str,
   ) -> bool {
-    log_trace!("{:?}", node_name);
-
     self.node_ids.get(node_name).is_some()
   }
 
-  pub fn create_subgraph_if_does_not_exist(
+  pub fn subgraph_from_context(
     &mut self,
     context: &str,
   ) -> &mut Subgraph {
@@ -674,221 +835,6 @@ impl AugMultiGraph {
     }
   }
 
-  pub fn subgraph_from_ctx_mut(
-    &mut self,
-    context: &str,
-  ) -> &mut Subgraph {
-    log_trace!("{:?}", context);
-
-    self.create_subgraph_if_does_not_exist(context)
-  }
-
-  pub fn subgraph_from_ctx(
-    &mut self,
-    context: &str,
-  ) -> &Subgraph {
-    log_trace!("{:?}", context);
-
-    self.create_subgraph_if_does_not_exist(context);
-
-    self.subgraphs.get(context).unwrap_or_else(|| {
-      panic!("Failed to get context {:?} after creation attempt. This is likely a bug in the create_subgraph_if_does_not_exist function.", context)
-    })
-  }
-
-  pub fn edge_weight(
-    &mut self,
-    context: &str,
-    src: NodeId,
-    dst: NodeId,
-  ) -> Weight {
-    log_trace!("{:?} {} {}", context, src, dst);
-
-    self
-      .subgraph_from_ctx(context)
-      .meritrank_data
-      .graph
-      .edge_weight(src, dst)
-      .unwrap_or(None)
-      .unwrap_or(0.0)
-  }
-
-  pub fn edge_weight_normalized(
-    &mut self,
-    context: &str,
-    src: NodeId,
-    dst: NodeId,
-  ) -> Weight {
-    log_trace!("{:?} {} {}", context, src, dst);
-
-    let data = &self.subgraph_from_ctx(context).meritrank_data;
-
-    let pos_sum = match data.graph.get_node_data(src) {
-      Some(x) => {
-        if x.pos_sum < EPSILON {
-          log_warning!(
-            "Unable to normalize node weight, positive sum is zero."
-          );
-          1.0
-        } else {
-          x.pos_sum
-        }
-      },
-
-      None => 1.0,
-    };
-
-    data
-      .graph
-      .edge_weight(src, dst)
-      .unwrap_or(None)
-      .unwrap_or(0.0)
-      / pos_sum
-  }
-
-  pub fn all_outbound_neighbors_normalized(
-    &mut self,
-    context: &str,
-    node: NodeId,
-  ) -> Vec<(NodeId, Weight)> {
-    log_trace!("{:?} {}", context, node);
-
-    let mut v = vec![];
-
-    match self
-      .subgraph_from_ctx(context)
-      .meritrank_data
-      .graph
-      .get_node_data(node)
-    {
-      None => {},
-      Some(data) => {
-        v.reserve_exact(data.pos_edges.len() + data.neg_edges.len());
-
-        let pos_sum = if data.pos_sum < EPSILON {
-          log_warning!(
-            "Unable to normalize node weight, positive sum is zero."
-          );
-          1.0
-        } else {
-          data.pos_sum
-        };
-
-        for x in &data.pos_edges {
-          v.push((*x.0, *x.1 / pos_sum));
-        }
-
-        for x in &data.neg_edges {
-          v.push((*x.0, *x.1 / pos_sum));
-        }
-      },
-    }
-
-    v
-  }
-
-  fn with_zero_opinion(
-    &mut self,
-    context: &str,
-    dst_id: NodeId,
-    score: Weight,
-  ) -> Weight {
-    log_trace!("{:?} {} {}", context, dst_id, score);
-
-    let zero_score =
-      match self.subgraph_from_ctx(context).zero_opinion.get(dst_id) {
-        Some(x) => *x,
-        _ => 0.0,
-      };
-    let k = self.settings.zero_opinion_factor;
-    score * (1.0 - k) + k * zero_score
-  }
-
-  fn fetch_all_raw_scores(
-    &mut self,
-    context: &str,
-    ego_id: NodeId,
-  ) -> Vec<(NodeId, Weight)> {
-    log_trace!("{:?} {}", context, ego_id);
-
-    let num_walks = self.settings.num_walks;
-    let k = self.settings.zero_opinion_factor;
-
-    self
-      .subgraph_from_ctx_mut(context)
-      .fetch_all_raw_scores(ego_id, num_walks, k)
-  }
-
-  fn fetch_raw_score(
-    &mut self,
-    context: &str,
-    ego_id: NodeId,
-    dst_id: NodeId,
-  ) -> Weight {
-    log_trace!("{:?} {} {}", context, ego_id, dst_id);
-
-    let num_walks = self.settings.num_walks;
-
-    if !self.cache_walk_get(context, ego_id) {
-      if let Err(e) = self
-        .subgraph_from_ctx_mut(context)
-        .meritrank_data
-        .calculate(ego_id, num_walks)
-      {
-        log_error!("Failed to calculate: {}", e);
-        return 0.0;
-      }
-      self.cache_walk_add(context, ego_id);
-    }
-
-    match self
-      .subgraph_from_ctx(context)
-      .meritrank_data
-      .get_node_score(ego_id, dst_id)
-    {
-      Ok(score) => {
-        self.cache_score_add(context, ego_id, dst_id, score);
-        self.with_zero_opinion(context, dst_id, score)
-      },
-      Err(e) => {
-        log_error!("Failed to get node score: {}", e);
-        0.0
-      },
-    }
-  }
-
-  fn calculate_score_clusters_bounds(
-    &mut self,
-    context: &str,
-    ego: NodeId,
-    kind: NodeKind,
-  ) -> [Weight; NUM_SCORE_QUANTILES - 1] {
-    log_trace!("{:?} {} {:?}", ego, context, kind);
-
-    let scores: Vec<Weight> = (0..self.node_count)
-      .filter(|dst| node_kind_from_id(&self.node_infos, *dst) == kind)
-      .collect::<Vec<_>>()
-      .into_iter()
-      .map(|dst| self.fetch_raw_score(context, ego, dst))
-      .filter(|score| *score >= EPSILON)
-      .collect();
-
-    if scores.is_empty() {
-      return [0.0; NUM_SCORE_QUANTILES - 1];
-    }
-
-    calculate_quantiles_bounds(scores)
-  }
-
-  fn clusters_from(
-    &mut self,
-    context: &str,
-  ) -> &mut Vec<ScoreClustersByKind> {
-    log_trace!("{:?}", context);
-
-    &mut self.subgraph_from_ctx_mut(context).cached_score_clusters
-  }
-
   fn update_node_score_clustering(
     &mut self,
     context: &str,
@@ -897,22 +843,18 @@ impl AugMultiGraph {
   ) {
     log_trace!("{:?} {} {:?}", context, ego, kind);
 
-    let time = self.time_begin.elapsed().as_secs() as u64;
-    let bounds = self.calculate_score_clusters_bounds(context, ego, kind);
-
-    if ego >= self.node_count {
-      log_error!("Node does not exist: {}", ego);
-      return;
-    }
+    let num_walks = self.settings.num_walks;
+    let k = self.settings.zero_opinion_factor;
 
     let node_count = self.node_count;
 
-    let clusters = self.clusters_from(context);
+    let time_secs = self.time_begin.elapsed().as_secs() as u64;
 
-    clusters.resize(node_count, Default::default());
+    let node_ids = nodes_by_kind(kind, &self.node_infos);
 
-    clusters[ego][kind].updated_sec = time;
-    clusters[ego][kind].bounds = bounds;
+    self
+      .subgraph_from_context(context)
+      .update_node_score_clustering(ego, kind, time_secs, node_count, num_walks, k, &node_ids)
   }
 
   fn update_all_nodes_score_clustering(&mut self) {
@@ -935,15 +877,24 @@ impl AugMultiGraph {
   ) {
     log_trace!("{:?} {}", context, ego);
 
+    let num_walks = self.settings.num_walks;
+    let k = self.settings.zero_opinion_factor;
+
     let node_count = self.node_count;
 
-    self
-      .clusters_from(context)
-      .resize(node_count, Default::default());
+    let time_secs = self.time_begin.elapsed().as_secs() as u64;
+
+    let node_infos = self.node_infos.clone();
+
+    let subgraph = self.subgraph_from_context(context);
+
+    subgraph.cached_score_clusters.resize(node_count, Default::default());
 
     for kind in ALL_NODE_KINDS {
-      if bounds_are_empty(&self.clusters_from(context)[ego][kind].bounds) {
-        self.update_node_score_clustering(context, ego, kind);
+      if bounds_are_empty(&subgraph.cached_score_clusters[ego][kind].bounds) {
+        let node_ids = nodes_by_kind(kind, &node_infos);
+
+        subgraph.update_node_score_clustering(ego, kind, time_secs, node_count, num_walks, k, &node_ids);
       }
     }
   }
@@ -976,7 +927,7 @@ impl AugMultiGraph {
 
     let elapsed_secs = self.time_begin.elapsed().as_secs();
 
-    let clusters = self.clusters_from(context);
+    let clusters = &self.subgraph_from_context(context).cached_score_clusters;
 
     let updated_sec = clusters[ego][kind].updated_sec;
 
@@ -985,7 +936,7 @@ impl AugMultiGraph {
       self.update_node_score_clustering(context, ego, kind);
     }
 
-    let clusters = self.clusters_from(context);
+    let clusters = &self.subgraph_from_context(context).cached_score_clusters;
 
     let bounds = &clusters[ego][kind].bounds;
 
@@ -1014,8 +965,12 @@ impl AugMultiGraph {
   ) -> Vec<(NodeId, Weight, Cluster)> {
     log_trace!("{:?} {}", context, ego_id);
 
+    let num_walks = self.settings.num_walks;
+    let k = self.settings.zero_opinion_factor;
+
     self
-      .fetch_all_raw_scores(context, ego_id)
+      .subgraph_from_context(context)
+      .fetch_all_raw_scores(ego_id, num_walks, k)
       .iter()
       .map(|(dst_id, score)| {
         let kind = node_kind_from_id(&self.node_infos, *dst_id);
@@ -1041,7 +996,7 @@ impl AugMultiGraph {
     match dir {
       NeighborDirection::Outbound => {
         match self
-          .subgraph_from_ctx(context)
+          .subgraph_from_context(context)
           .meritrank_data
           .graph
           .get_node_data(ego)
@@ -1063,7 +1018,7 @@ impl AugMultiGraph {
       _ => {
         for src in 0..self.node_infos.len() {
           match self
-            .subgraph_from_ctx(context)
+            .subgraph_from_context(context)
             .meritrank_data
             .graph
             .get_node_data(src)
@@ -1085,9 +1040,12 @@ impl AugMultiGraph {
       },
     };
 
+    let num_walks = self.settings.num_walks;
+    let k = self.settings.zero_opinion_factor;
+
     for i in 0..v.len() {
       let dst = v[i].0;
-      let score = self.fetch_raw_score(context, ego, dst);
+      let score = self.subgraph_from_context(context).fetch_raw_score(ego, dst, num_walks, k);
       let kind = node_kind_from_id(&self.node_infos, dst);
       let cluster = self.apply_score_clustering(context, ego, score, kind).1;
 
@@ -1101,14 +1059,17 @@ impl AugMultiGraph {
   fn fetch_score(
     &mut self,
     context: &str,
-    ego_id: NodeId,
-    dst_id: NodeId,
+    ego: NodeId,
+    dst: NodeId,
   ) -> (Weight, Cluster) {
-    log_trace!("{:?} {} {}", context, ego_id, dst_id);
+    log_trace!("{:?} {} {}", context, ego, dst);
 
-    let score = self.fetch_raw_score(context, ego_id, dst_id);
-    let kind = node_kind_from_id(&self.node_infos, dst_id);
-    self.apply_score_clustering(context, ego_id, score, kind)
+    let num_walks = self.settings.num_walks;
+    let k = self.settings.zero_opinion_factor;
+
+      let score = self.subgraph_from_context(context).fetch_raw_score(ego, dst, num_walks, k);
+    let kind = node_kind_from_id(&self.node_infos, dst);
+    self.apply_score_clustering(context, ego, score, kind)
   }
 
   fn fetch_score_reversed(
@@ -1119,10 +1080,16 @@ impl AugMultiGraph {
   ) -> (Weight, Cluster) {
     log_trace!("{:?} {} {}", context, dst_id, ego_id);
 
-    let score = match self.cache_score_get(context, ego_id, dst_id) {
-      Some(score) => self.with_zero_opinion(context, dst_id, score),
-      None => self.fetch_raw_score(context, ego_id, dst_id),
+    let num_walks = self.settings.num_walks;
+    let k = self.settings.zero_opinion_factor;
+
+    let subgraph = self.subgraph_from_context(context);
+
+    let score = match subgraph.cache_score_get(ego_id, dst_id) {
+      Some(score) => subgraph.with_zero_opinion(dst_id, score, k),
+      None => subgraph.fetch_raw_score(ego_id, dst_id, num_walks, k),
     };
+
     let kind = node_kind_from_id(&self.node_infos, dst_id);
 
     self.apply_score_clustering(context, ego_id, score, kind)
@@ -1141,7 +1108,7 @@ impl AugMultiGraph {
     }
 
     match self
-      .subgraph_from_ctx(context)
+      .subgraph_from_context(context)
       .meritrank_data
       .graph
       .get_node_data(ego_id)
@@ -1227,9 +1194,9 @@ impl AugMultiGraph {
       && node_kind_from_id(&self.node_infos, dst) == NodeKind::User
     {
       // TODO: move this to the initializer
-      self.subgraph_from_ctx("");
+      self.subgraph_from_context("");
       if !context.is_empty() {
-        self.subgraph_from_ctx(context);
+        self.subgraph_from_context(context);
       }
 
       for (enum_context, subgraph) in &mut self.subgraphs {
@@ -1245,17 +1212,17 @@ impl AugMultiGraph {
     } else if context.is_empty() {
       log_verbose!("Set edge in \"\": {} -> {} for {}", src, dst, amount);
       self
-        .subgraph_from_ctx_mut(context)
+        .subgraph_from_context(context)
         .meritrank_data
         .set_edge(src, dst, amount);
     } else {
-      let null_weight = self.edge_weight("", src, dst);
-      let old_weight = self.edge_weight(context, src, dst);
+      let null_weight = self.subgraph_from_context(context).edge_weight(src, dst);
+      let old_weight = self.subgraph_from_context(context).edge_weight(src, dst);
       let delta = null_weight + amount - old_weight;
 
       log_verbose!("Set edge in \"\": {} -> {} for {}", src, dst, delta);
       self
-        .subgraph_from_ctx_mut("")
+        .subgraph_from_context("")
         .meritrank_data
         .set_edge(src, dst, delta);
 
@@ -1267,7 +1234,7 @@ impl AugMultiGraph {
         amount
       );
       self
-        .subgraph_from_ctx_mut(context)
+        .subgraph_from_context(context)
         .meritrank_data
         .set_edge(src, dst, amount);
     }
@@ -1378,7 +1345,7 @@ impl AugMultiGraph {
           return true;
         }
         match self
-          .subgraph_from_ctx(context)
+          .subgraph_from_context(context)
           .meritrank_data
           .graph
           .edge_weight(*target_id, ego_id)
@@ -1556,7 +1523,7 @@ impl AugMultiGraph {
     context: &str,
   ) {
     log_command!("{:?}", context);
-    self.create_subgraph_if_does_not_exist(context);
+    self.subgraph_from_context(context);
   }
 
   pub fn write_put_edge(
@@ -1608,7 +1575,7 @@ impl AugMultiGraph {
       // In principle, we could have optimized this by storing the edges in a sorted heap structure.
       //new_min_weight = new_max_weight;
       let (edges_to_modify, new_min_weight_from_scan) = self
-        .subgraph_from_ctx(context)
+        .subgraph_from_context(context)
         .meritrank_data
         .graph
         .get_node_data(src_id)
@@ -1698,7 +1665,7 @@ impl AugMultiGraph {
 
     // Collect the outgoing edges first
     let outgoing_edges: Vec<NodeId> = self
-      .subgraph_from_ctx(context)
+      .subgraph_from_context(context)
       .meritrank_data
       .graph
       .get_node_data(id)
@@ -1764,16 +1731,23 @@ impl AugMultiGraph {
       ids.insert(index, focus_id);
     }
 
+    let num_walks = self.settings.num_walks;
+    let zero_opinion_factor = self.settings.zero_opinion_factor;
+
+    let node_infos = self.node_infos.clone();
+
+    let subgraph = self.subgraph_from_context(context);
+
     log_verbose!("Enumerate focus neighbors");
 
     let focus_neighbors =
-      self.all_outbound_neighbors_normalized(context, focus_id);
+      subgraph.all_outbound_neighbors_normalized(focus_id);
 
     for (dst_id, focus_dst_weight) in focus_neighbors {
-      let dst_kind = node_kind_from_id(&self.node_infos, dst_id);
+      let dst_kind = node_kind_from_id(&node_infos, dst_id);
 
       if dst_kind == NodeKind::User {
-        if positive_only && self.fetch_raw_score(context, ego_id, dst_id) <= 0.0
+        if positive_only && subgraph.fetch_raw_score(ego_id, dst_id, num_walks, zero_opinion_factor) <= 0.0
         {
           continue;
         }
@@ -1796,12 +1770,12 @@ impl AugMultiGraph {
         || dst_kind == NodeKind::Opinion
       {
         let dst_neighbors =
-          self.all_outbound_neighbors_normalized(context, dst_id);
+          subgraph.all_outbound_neighbors_normalized(dst_id);
 
         for (ngh_id, dst_ngh_weight) in dst_neighbors {
           if (positive_only && dst_ngh_weight <= 0.0)
             || ngh_id == focus_id
-            || node_kind_from_id(&self.node_infos, ngh_id) != NodeKind::User
+            || node_kind_from_id(&node_infos, ngh_id) != NodeKind::User
           {
             continue;
           }
@@ -1840,7 +1814,7 @@ impl AugMultiGraph {
       log_verbose!("Search shortest path");
 
       let graph_cloned =
-        self.subgraph_from_ctx(context).meritrank_data.graph.clone();
+        subgraph.meritrank_data.graph.clone();
 
       //  ================================
       //
@@ -1926,7 +1900,7 @@ impl AugMultiGraph {
       ego_to_focus.resize(n, 0);
 
       for node in ego_to_focus.iter() {
-        log_verbose!("Path: {}", node_name_from_id(&self.node_infos, *node));
+        log_verbose!("Path: {}", node_name_from_id(&node_infos, *node));
       }
 
       //  ================================
@@ -1940,10 +1914,10 @@ impl AugMultiGraph {
         let a = ego_to_focus[k];
         let b = ego_to_focus[k + 1];
 
-        let a_kind = node_kind_from_id(&self.node_infos, a);
-        let b_kind = node_kind_from_id(&self.node_infos, b);
+        let a_kind = node_kind_from_id(&node_infos, a);
+        let b_kind = node_kind_from_id(&node_infos, b);
 
-        let a_b_weight = self.edge_weight_normalized(context, a, b);
+        let a_b_weight = subgraph.edge_weight_normalized(a, b);
 
         if k + 2 == ego_to_focus.len() {
           if a_kind == NodeKind::User {
@@ -1951,16 +1925,16 @@ impl AugMultiGraph {
           } else {
             log_verbose!(
               "Ignore node {}",
-              node_name_from_id(&self.node_infos, a)
+              node_name_from_id(&node_infos, a)
             );
           }
         } else if b_kind != NodeKind::User {
           log_verbose!(
             "Ignore node {}",
-            node_name_from_id(&self.node_infos, b)
+            node_name_from_id(&node_infos, b)
           );
           let c = ego_to_focus[k + 2];
-          let b_c_weight = self.edge_weight_normalized(context, b, c);
+          let b_c_weight = subgraph.edge_weight_normalized(b, c);
           let a_c_weight = a_b_weight
             * b_c_weight
             * if a_b_weight < 0.0 && b_c_weight < 0.0 {
@@ -1974,7 +1948,7 @@ impl AugMultiGraph {
         } else {
           log_verbose!(
             "Ignore node {}",
-            node_name_from_id(&self.node_infos, a)
+            node_name_from_id(&node_infos, a)
           );
         }
       }
@@ -2099,7 +2073,7 @@ impl AugMultiGraph {
     let src_id = self.find_or_add_node_by_name(ego);
 
     let outgoing_edges: Vec<_> = self
-      .subgraph_from_ctx(context)
+      .subgraph_from_context(context)
       .meritrank_data
       .graph
       .get_node_data(src_id)
@@ -2145,7 +2119,7 @@ impl AugMultiGraph {
       let src_name = infos[src_id].name.as_str();
 
       match self
-        .subgraph_from_ctx(context)
+        .subgraph_from_context(context)
         .meritrank_data
         .graph
         .get_node_data(src_id)
@@ -2361,7 +2335,10 @@ impl AugMultiGraph {
 
         //  FIXME Probably we should use NodeKind here.
         if self.node_infos[dst_id].name.starts_with(prefix) {
-          let score = self.fetch_raw_score("", src_id, dst_id);
+          let num_walks = self.settings.num_walks;
+          let k = self.settings.zero_opinion_factor;
+          
+          let score = self.subgraph_from_context("").fetch_raw_score(src_id, dst_id, num_walks, k);
 
           if !(score < EPSILON) {
             bloom_filter_add(&mut seen_nodes, &bits);
@@ -2407,7 +2384,7 @@ impl AugMultiGraph {
 
     let id = self.find_or_add_node_by_name(node);
 
-    let zero_opinion = &mut self.subgraph_from_ctx_mut(context).zero_opinion;
+    let zero_opinion = &mut self.subgraph_from_context(context).zero_opinion;
 
     if id >= zero_opinion.len() {
       zero_opinion.resize(id + 1, 0.0);
