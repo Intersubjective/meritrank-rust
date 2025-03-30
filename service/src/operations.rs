@@ -1,1277 +1,22 @@
-use lru::LruCache;
-use meritrank_core::{constants::EPSILON, Graph, MeritRank, NodeId};
-use petgraph::{
-  graph::{DiGraph, NodeIndex},
-  visit::EdgeRef,
-};
-use simple_pagerank::Pagerank;
-use std::{
-  collections::HashMap, string::ToString, sync::atomic::Ordering, time::Instant,
-};
-
-use crate::astar::*;
-use crate::log::*;
-use crate::log_command;
-use crate::log_error;
-use crate::log_trace;
-use crate::log_verbose;
-use crate::log_warning;
-use crate::protocol::*;
-use crate::vsids::VSIDSManager;
-
-pub use meritrank_core::Weight;
-pub use std::num::NonZeroUsize;
-pub type Cluster = i32;
-
-//  ================================================================
-//
-//    Constants
-//
-//  ================================================================
-
-pub const VERSION: &str = match option_env!("CARGO_PKG_VERSION") {
-  Some(x) => x,
-  None => "dev",
-};
-
-pub const NUM_SCORE_QUANTILES: usize = 100;
-
-pub const DEFAULT_NUM_WALKS: usize = 50;
-pub const DEFAULT_TOP_NODES_LIMIT: usize = 100;
-pub const DEFAULT_ZERO_OPINION_FACTOR: f64 = 0.20;
-pub const DEFAULT_SCORE_CLUSTERS_TIMEOUT: u64 = 60 * 60 * 6; // 6 hours
-pub const DEFAULT_SCORES_CACHE_SIZE: NonZeroUsize =
-  NonZeroUsize::new(1024 * 10).unwrap();
-pub const DEFAULT_WALKS_CACHE_SIZE: NonZeroUsize =
-  NonZeroUsize::new(1024).unwrap();
-pub const DEFAULT_FILTER_NUM_HASHES: usize = 10;
-pub const DEFAULT_FILTER_MAX_SIZE: usize = 8192;
-pub const DEFAULT_FILTER_MIN_SIZE: usize = 32;
-
-//  ================================================================
-//
-//    Basic declarations
-//
-//  ================================================================
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
-pub enum NodeKind {
-  #[default]
-  Unknown,
-  User,
-  Beacon,
-  Comment,
-  Opinion,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum NeighborDirection {
-  All,
-  Outbound,
-  Inbound,
-}
-
-#[derive(PartialEq, Clone, Default)]
-pub struct NodeInfo {
-  pub kind: NodeKind,
-  pub name: String,
-
-  // Bloom filter of nodes marked as seen by this node in the null context
-  pub seen_nodes: Vec<u64>,
-}
-
-#[derive(PartialEq, Clone)]
-pub struct ClusterGroupBounds {
-  pub updated_sec: u64,
-  pub bounds:      [Weight; NUM_SCORE_QUANTILES - 1],
-}
-
-impl Default for ClusterGroupBounds {
-  fn default() -> ClusterGroupBounds {
-    ClusterGroupBounds {
-      updated_sec: 0,
-      bounds:      [0.0; NUM_SCORE_QUANTILES - 1],
-    }
-  }
-}
-
-#[derive(PartialEq, Clone, Default)]
-pub struct ScoreClustersByKind {
-  //  FIXME: Refactor this to be more general.
-  pub users:    ClusterGroupBounds,
-  pub beacons:  ClusterGroupBounds,
-  pub comments: ClusterGroupBounds,
-  pub opinions: ClusterGroupBounds,
-}
-
-//  Augmented multi-context graph settings
-//
-#[derive(Clone)]
-pub struct AugMultiGraphSettings {
-  pub num_walks:              usize,
-  pub top_nodes_limit:        usize,
-  pub zero_opinion_factor:    f64,
-  pub score_clusters_timeout: u64,
-  pub scores_cache_size:      NonZeroUsize,
-  pub walks_cache_size:       NonZeroUsize,
-  pub filter_num_hashes:      usize,
-  pub filter_max_size:        usize,
-  pub filter_min_size:        usize,
-}
-
-//  Augmented multi-context graph
-//
-#[derive(Clone)]
-pub struct AugMultiGraph {
-  pub settings:              AugMultiGraphSettings,
-  pub node_count:            usize,
-  pub node_infos:            Vec<NodeInfo>,
-  pub node_ids:              HashMap<String, NodeId>,
-  pub contexts:              HashMap<String, MeritRank>,
-  pub score_cache:           LruCache<(String, NodeId, NodeId), Weight>,
-  pub cached_walks:          LruCache<(String, NodeId), ()>,
-  pub zero_opinion:          HashMap<String, Vec<Weight>>,
-  pub time_begin:            Instant,
-  pub cached_score_clusters: HashMap<String, Vec<ScoreClustersByKind>>,
-  pub vsids:                 VSIDSManager,
-
-  //  We need this dummy value so we can return a reference to it when the requested
-  //  node does not exist. We don't want to use static variable instead, because we don't want
-  //  any potential bugs related to it to bleed into other instances of AugMultiGraph. See node_info_from_id.
-  pub dummy_node_info: NodeInfo,
-}
-
-//  ================================================================
-//
-//    Bloom filter
-//
-//  ================================================================
-
-use std::collections::hash_map::DefaultHasher;
-use std::hash::Hasher;
-
-pub fn bloom_filter_bits(
-  size: usize,
-  num_hashes: usize,
-  id: usize,
-) -> Vec<u64> {
-  let mut v: Vec<u64> = vec![];
-  v.resize(size, 0);
-
-  for n in 1..=num_hashes {
-    let mut h = DefaultHasher::new();
-    h.write_u16(n as u16);
-    h.write_u64(id as u64);
-    let hash = h.finish();
-
-    let u64_index = ((hash / 64u64) as usize) % size;
-    let bit_index = hash % 64u64;
-
-    v[u64_index] |= 1u64 << bit_index;
-  }
-
-  v
-}
-
-pub fn bloom_filter_add(
-  mask: &mut [u64],
-  bits: &[u64],
-) {
-  if mask.len() != bits.len() {
-    log_error!("Invalid arguments");
-    return;
-  }
-
-  for i in 0..mask.len() {
-    mask[i] |= bits[i];
-  }
-}
-
-pub fn bloom_filter_contains(
-  mask: &[u64],
-  bits: &[u64],
-) -> bool {
-  if mask.len() != bits.len() {
-    log_error!("Invalid arguments");
-    return false;
-  }
-
-  for i in 0..mask.len() {
-    if (mask[i] & bits[i]) != bits[i] {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-//  ================================================================
-//
-//    Caches
-//
-//  ================================================================
-
-impl AugMultiGraph {
-  pub fn cache_score_add(
-    &mut self,
-    context: &str,
-    ego: NodeId,
-    dst: NodeId,
-    score: Weight,
-  ) {
-    log_trace!("{:?} {} {} {}", context, ego, dst, score);
-    self.score_cache.put((context.to_string(), ego, dst), score);
-  }
-
-  pub fn cache_score_get(
-    &mut self,
-    context: &str,
-    ego: NodeId,
-    dst: NodeId,
-  ) -> Option<Weight> {
-    log_trace!("{:?} {} {}", context, ego, dst);
-    self
-      .score_cache
-      .get(&(context.to_string(), ego, dst))
-      .copied()
-  }
-
-  pub fn cache_walk_add(
-    &mut self,
-    context: &str,
-    ego: NodeId,
-  ) {
-    log_trace!("{:?} {}", context, ego);
-
-    let cached_walk = (context.to_string(), ego);
-
-    if let Some(((old_context, old_ego), _)) =
-      self.cached_walks.push(cached_walk, ())
-    {
-      if !(old_context == context && old_ego == ego) {
-        log_verbose!("Drop walks {:?}, {}", old_context, old_ego);
-
-        // HACK!!!
-        // We "drop" the walks by recalculating the node with 0.
-        match self.graph_from_ctx_mut(&old_context).calculate(old_ego, 0) {
-          Ok(()) => {},
-          Err(e) => {
-            log_error!("{}", e);
-          },
-        }
-      }
-    }
-  }
-
-  pub fn cache_walk_get(
-    &mut self,
-    context: &str,
-    ego: NodeId,
-  ) -> bool {
-    log_trace!();
-
-    self.cached_walks.get(&(context.to_string(), ego)).is_some()
-  }
-}
-
-//  ================================================================
-//
-//    Quantiles
-//
-//  ================================================================
-
-fn bounds_are_empty(bounds: &[Weight; NUM_SCORE_QUANTILES - 1]) -> bool {
-  return bounds[0] == 0.0 && bounds[bounds.len() - 1] == 0.0;
-}
-
-fn calculate_quantiles_bounds(
-  mut scores: Vec<Weight>
-) -> [Weight; NUM_SCORE_QUANTILES - 1] {
-  if scores.is_empty() {
-    return [0.0; NUM_SCORE_QUANTILES - 1];
-  }
-
-  if scores.len() == 1 {
-    let bound = scores[0] - EPSILON - EPSILON;
-    return [bound; NUM_SCORE_QUANTILES - 1];
-  }
-
-  scores.sort_by(|a, b| b.total_cmp(a));
-
-  let mut bounds = [0.0; NUM_SCORE_QUANTILES - 1];
-
-  for i in 0..bounds.len() {
-    let n = std::cmp::min(
-      (((i * scores.len()) as f64) / ((bounds.len() + 1) as f64)).floor()
-        as usize,
-      scores.len() - 2,
-    );
-
-    bounds[bounds.len() - i - 1] = (scores[n] + scores[n + 1]) / 2.0;
-  }
-
-  bounds
-}
-
-//  ================================================================
-//
-//    Utils
-//
-//  ================================================================
-
-pub fn kind_from_name(name: &str) -> NodeKind {
-  log_trace!("{:?}", name);
-
-  match name.chars().nth(0) {
-    Some('U') => NodeKind::User,
-    Some('B') => NodeKind::Beacon,
-    Some('C') => NodeKind::Comment,
-    Some('O') => NodeKind::Comment,
-    _ => NodeKind::Unknown,
-  }
-}
-
-pub fn kind_from_prefix(prefix: &str) -> Result<NodeKind, ()> {
-  match prefix {
-    "" => Ok(NodeKind::Unknown),
-    "U" => Ok(NodeKind::User),
-    "B" => Ok(NodeKind::Beacon),
-    "C" => Ok(NodeKind::Comment),
-    "O" => Ok(NodeKind::Opinion),
-    _ => Err(()),
-  }
-}
-
-pub fn neighbor_dir_from(dir: i64) -> Result<NeighborDirection, ()> {
-  match dir {
-    NEIGHBORS_ALL => Ok(NeighborDirection::All),
-    NEIGHBORS_OUTBOUND => Ok(NeighborDirection::Outbound),
-    NEIGHBORS_INBOUND => Ok(NeighborDirection::Inbound),
-    _ => Err(()),
-  }
-}
-
-impl Default for AugMultiGraphSettings {
-  fn default() -> AugMultiGraphSettings {
-    AugMultiGraphSettings {
-      scores_cache_size:      DEFAULT_SCORES_CACHE_SIZE,
-      walks_cache_size:       DEFAULT_WALKS_CACHE_SIZE,
-      zero_opinion_factor:    DEFAULT_ZERO_OPINION_FACTOR,
-      num_walks:              DEFAULT_NUM_WALKS,
-      score_clusters_timeout: DEFAULT_SCORE_CLUSTERS_TIMEOUT,
-      filter_num_hashes:      DEFAULT_FILTER_NUM_HASHES,
-      filter_max_size:        DEFAULT_FILTER_MAX_SIZE,
-      filter_min_size:        DEFAULT_FILTER_MIN_SIZE,
-      top_nodes_limit:        DEFAULT_TOP_NODES_LIMIT,
-    }
-  }
-}
-
-impl Default for AugMultiGraph {
-  fn default() -> AugMultiGraph {
-    AugMultiGraph::new(AugMultiGraphSettings::default())
-  }
-}
-
-fn create_score_cache(
-  cache_size: NonZeroUsize
-) -> LruCache<(String, NodeId, NodeId), Weight> {
-  LruCache::new(cache_size)
-}
-
-fn create_cached_walks(
-  cache_size: NonZeroUsize
-) -> LruCache<(String, NodeId), ()> {
-  LruCache::new(cache_size)
-}
-
-impl AugMultiGraph {
-  pub fn new(settings: AugMultiGraphSettings) -> AugMultiGraph {
-    log_trace!();
-
-    AugMultiGraph {
-      settings:              settings.clone(),
-      node_count:            0,
-      node_infos:            Vec::new(),
-      node_ids:              HashMap::new(),
-      contexts:              HashMap::new(),
-      score_cache:           create_score_cache(settings.scores_cache_size),
-      cached_walks:          create_cached_walks(settings.walks_cache_size),
-      zero_opinion:          HashMap::new(),
-      time_begin:            Instant::now(),
-      cached_score_clusters: HashMap::new(),
-      vsids:                 VSIDSManager::new(),
-      dummy_node_info:       NodeInfo::default(),
-    }
-  }
-
-  pub fn copy_from(
-    &mut self,
-    other: &AugMultiGraph,
-  ) {
-    log_trace!();
-
-    self.node_count = other.node_count;
-    self.node_infos = other.node_infos.clone();
-    self.node_ids = other.node_ids.clone();
-    self.contexts = other.contexts.clone();
-    self.score_cache = other.score_cache.clone();
-    self.cached_walks = other.cached_walks.clone();
-    self.zero_opinion = other.zero_opinion.clone();
-    self.time_begin = other.time_begin.clone();
-    self.cached_score_clusters = other.cached_score_clusters.clone();
-    self.vsids = other.vsids.clone();
-  }
-
-  pub fn reset(&mut self) {
-    log_trace!();
-
-    self.node_count = 0;
-    self.node_infos = vec![];
-    self.node_ids = HashMap::new();
-    self.contexts = HashMap::new();
-    self.score_cache = create_score_cache(self.settings.scores_cache_size);
-    self.cached_walks = create_cached_walks(self.settings.walks_cache_size);
-    self.zero_opinion = HashMap::new();
-    self.time_begin = Instant::now();
-    self.cached_score_clusters = HashMap::new();
-    self.vsids = VSIDSManager::new();
-  }
-
-  pub fn node_exists(
-    &self,
-    node_name: &str,
-  ) -> bool {
-    log_trace!("{:?}", node_name);
-
-    self.node_ids.get(node_name).is_some()
-  }
-
-  pub fn node_info_from_id(
-    &self,
-    node_id: NodeId,
-  ) -> &NodeInfo {
-    log_trace!("{}", node_id);
-
-    self.node_infos.get(node_id).unwrap_or_else(|| {
-      log_error!("Node does not exist: {:?}", node_id);
-      &self.dummy_node_info
-    })
-  }
-
-  pub fn is_user_edge(
-    &self,
-    src: NodeId,
-    dst: NodeId,
-  ) -> bool {
-    log_trace!("{} {}", src, dst);
-
-    self.node_info_from_id(src).kind == NodeKind::User
-      && self.node_info_from_id(dst).kind == NodeKind::User
-  }
-
-  pub fn create_context_if_does_not_exist(
-    &mut self,
-    context: &str,
-  ) {
-    log_trace!("{:?}", context);
-
-    if self.contexts.contains_key(context) {
-      log_verbose!("Context already exists: {:?}", context);
-      return;
-    }
-
-    log_verbose!("Add context: {:?}", context);
-
-    let mut graph = MeritRank::new(Graph::new());
-
-    for _ in 0..self.node_count {
-      graph.get_new_nodeid();
-    }
-
-    if !context.is_empty() {
-      match self.contexts.get_mut("") {
-        Some(zero) => {
-          log_verbose!("Copy user edges from \"\" into {:?}", context);
-
-          let zero_cloned = zero.clone();
-          let all_nodes = zero_cloned.graph.nodes.iter().enumerate();
-
-          for (src_id, src) in all_nodes {
-            let all_edges = src.pos_edges.iter().chain(src.neg_edges.iter());
-
-            for (dst_id, weight) in all_edges {
-              if self.is_user_edge(src_id, *dst_id) {
-                graph.set_edge(src_id, *dst_id, *weight);
-              }
-            }
-          }
-        },
-
-        _ => {},
-      }
-    }
-
-    self.contexts.insert(context.to_string(), graph);
-  }
-
-  pub fn graph_from_ctx_mut(
-    &mut self,
-    context: &str,
-  ) -> &mut MeritRank {
-    log_trace!("{:?}", context);
-
-    self.create_context_if_does_not_exist(context);
-
-    self.contexts.get_mut(context).unwrap_or_else(|| {
-          panic!("Failed to get context '{}' after creation attempt. This is likely a bug in the create_context_if_does_not_exist function.", context)
-      })
-  }
-
-  pub fn graph_from_ctx(
-    &mut self,
-    context: &str,
-  ) -> &MeritRank {
-    log_trace!("{:?}", context);
-
-    self.create_context_if_does_not_exist(context);
-
-    self.contexts.get(context).unwrap_or_else(|| {
-      panic!("Failed to get context '{}' after creation attempt. This is likely a bug in the create_context_if_does_not_exist function.", context)
-    })
-  }
-
-  pub fn edge_weight(
-    &mut self,
-    context: &str,
-    src: NodeId,
-    dst: NodeId,
-  ) -> Weight {
-    log_trace!("{:?} {} {}", context, src, dst);
-
-    self
-      .graph_from_ctx(context)
-      .graph
-      .edge_weight(src, dst)
-      .unwrap_or(None)
-      .unwrap_or(0.0)
-  }
-
-  pub fn edge_weight_normalized(
-    &mut self,
-    context: &str,
-    src: NodeId,
-    dst: NodeId,
-  ) -> Weight {
-    log_trace!("{:?} {} {}", context, src, dst);
-
-    let graph = self.graph_from_ctx(context);
-
-    let pos_sum = match graph.graph.get_node_data(src) {
-      Some(x) => {
-        if x.pos_sum < EPSILON {
-          log_warning!(
-            "Unable to normalize node weight, positive sum is zero."
-          );
-          1.0
-        } else {
-          x.pos_sum
-        }
-      },
-
-      None => 1.0,
-    };
-
-    graph
-      .graph
-      .edge_weight(src, dst)
-      .unwrap_or(None)
-      .unwrap_or(0.0)
-      / pos_sum
-  }
-
-  pub fn all_outbound_neighbors_normalized(
-    &mut self,
-    context: &str,
-    node: NodeId,
-  ) -> Vec<(NodeId, Weight)> {
-    log_trace!("{:?} {}", context, node);
-
-    let mut v = vec![];
-
-    match self.graph_from_ctx(context).graph.get_node_data(node) {
-      None => {},
-      Some(data) => {
-        v.reserve_exact(data.pos_edges.len() + data.neg_edges.len());
-
-        let pos_sum = if data.pos_sum < EPSILON {
-          log_warning!(
-            "Unable to normalize node weight, positive sum is zero."
-          );
-          1.0
-        } else {
-          data.pos_sum
-        };
-
-        for x in &data.pos_edges {
-          v.push((*x.0, *x.1 / pos_sum));
-        }
-
-        for x in &data.neg_edges {
-          v.push((*x.0, *x.1 / pos_sum));
-        }
-      },
-    }
-
-    v
-  }
-
-  fn with_zero_opinion(
-    &mut self,
-    context: &str,
-    dst_id: NodeId,
-    score: Weight,
-  ) -> Weight {
-    log_trace!("{:?} {} {}", context, dst_id, score);
-
-    match self.zero_opinion.get(context) {
-      Some(zero_opinion) => {
-        let zero_score = match zero_opinion.get(dst_id) {
-          Some(x) => *x,
-          _ => 0.0,
-        };
-        let k = self.settings.zero_opinion_factor;
-        score * (1.0 - k) + k * zero_score
-      },
-      _ => score,
-    }
-  }
-
-  fn with_zero_opinions(
-    &mut self,
-    context: &str,
-    scores: Vec<(NodeId, Weight)>,
-  ) -> Vec<(NodeId, Weight)> {
-    log_trace!("{:?}", context);
-
-    match self.zero_opinion.get(context) {
-      Some(zero_opinion) => {
-        if context.is_empty() {
-          let k = self.settings.zero_opinion_factor;
-
-          let mut res: Vec<(NodeId, Weight)> = vec![];
-          res.resize(zero_opinion.len(), (0, 0.0));
-
-          for (id, zero_score) in zero_opinion.iter().enumerate() {
-            res[id] = (id, zero_score * k);
-          }
-
-          for (id, score) in scores.iter() {
-            if *id >= res.len() {
-              let n = res.len();
-              res.resize(id + 1, (0, 0.0));
-              for id in n..res.len() {
-                res[id].0 = id;
-              }
-            }
-            res[*id].1 += (1.0 - k) * score;
-          }
-
-          return res
-            .into_iter()
-            .filter(|(_id, score)| *score != 0.0)
-            .collect::<Vec<_>>();
-        }
-      },
-      _ => {},
-    };
-
-    return scores;
-  }
-
-  fn fetch_all_raw_scores(
-    &mut self,
-    context: &str,
-    ego_id: NodeId,
-  ) -> Vec<(NodeId, Weight)> {
-    log_trace!("{:?} {}", context, ego_id);
-
-    if self.cache_walk_get(context, ego_id) {
-      let graph = self.graph_from_ctx(context);
-      match graph.get_ranks(ego_id, None) {
-        Ok(scores) => {
-          for (dst_id, score) in &scores {
-            self.cache_score_add(context, ego_id, *dst_id, *score);
-          }
-          self.with_zero_opinions(context, scores)
-        },
-        Err(e) => {
-          log_error!("{}", e);
-          vec![]
-        },
-      }
-    } else {
-      let num_walks = self.settings.num_walks;
-
-      match self
-        .graph_from_ctx_mut(context)
-        .calculate(ego_id, num_walks)
-      {
-        Ok(()) => {
-          self.cache_walk_add(context, ego_id);
-        },
-        Err(e) => {
-          log_error!("{}", e);
-          return vec![];
-        },
-      }
-      match self.graph_from_ctx(context).get_ranks(ego_id, None) {
-        Ok(scores) => {
-          for (dst_id, score) in &scores {
-            self.cache_score_add(context, ego_id, *dst_id, *score);
-          }
-          self.with_zero_opinions(context, scores)
-        },
-        Err(e) => {
-          log_error!("{}", e);
-          vec![]
-        },
-      }
-    }
-  }
-
-  fn fetch_raw_score(
-    &mut self,
-    context: &str,
-    ego_id: NodeId,
-    dst_id: NodeId,
-  ) -> Weight {
-    log_trace!("{:?} {} {}", context, ego_id, dst_id);
-
-    let num_walks = self.settings.num_walks;
-
-    if !self.cache_walk_get(context, ego_id) {
-      if let Err(e) = self
-        .graph_from_ctx_mut(context)
-        .calculate(ego_id, num_walks)
-      {
-        log_error!("Failed to calculate: {}", e);
-        return 0.0;
-      }
-      self.cache_walk_add(context, ego_id);
-    }
-
-    match self.graph_from_ctx(context).get_node_score(ego_id, dst_id) {
-      Ok(score) => {
-        self.cache_score_add(context, ego_id, dst_id, score);
-        self.with_zero_opinion(context, dst_id, score)
-      },
-      Err(e) => {
-        log_error!("Failed to get node score: {}", e);
-        0.0
-      },
-    }
-  }
-
-  fn calculate_score_clusters_bounds(
-    &mut self,
-    context: &str,
-    ego: NodeId,
-    kind: NodeKind,
-  ) -> [Weight; NUM_SCORE_QUANTILES - 1] {
-    log_trace!("{:?} {} {:?}", ego, context, kind);
-
-    let scores: Vec<Weight> = (0..self.node_count)
-      .filter(|dst| self.node_info_from_id(*dst).kind == kind)
-      .collect::<Vec<_>>()
-      .into_iter()
-      .map(|dst| self.fetch_raw_score(context, ego, dst))
-      .filter(|score| *score >= EPSILON)
-      .collect();
-
-    if scores.is_empty() {
-      return [0.0; NUM_SCORE_QUANTILES - 1];
-    }
-
-    calculate_quantiles_bounds(scores)
-  }
-
-  fn clusters_from(
-    &mut self,
-    context: &str,
-  ) -> &mut Vec<ScoreClustersByKind> {
-    log_trace!("{:?}", context);
-
-    if !self.cached_score_clusters.contains_key(context) {
-      self
-        .cached_score_clusters
-        .insert(context.to_string(), vec![]);
-    }
-
-    // We can safely unwrap here because we've just ensured the key exists
-    self.cached_score_clusters.get_mut(context).unwrap()
-  }
-
-  fn update_node_score_clustering(
-    &mut self,
-    context: &str,
-    ego: NodeId,
-    kind: NodeKind,
-  ) {
-    log_trace!("{:?} {} {:?}", context, ego, kind);
-
-    let time = self.time_begin.elapsed().as_secs() as u64;
-    let bounds = self.calculate_score_clusters_bounds(context, ego, kind);
-
-    if ego >= self.node_count {
-      log_error!("Node does not exist: {}", ego);
-      return;
-    }
-
-    let node_count = self.node_count;
-
-    let clusters = self.clusters_from(context);
-
-    clusters.resize(node_count, Default::default());
-
-    match kind {
-      NodeKind::User => {
-        clusters[ego].users.updated_sec = time;
-        clusters[ego].users.bounds = bounds;
-      },
-
-      NodeKind::Beacon => {
-        clusters[ego].beacons.updated_sec = time;
-        clusters[ego].beacons.bounds = bounds;
-      },
-
-      NodeKind::Comment => {
-        clusters[ego].comments.updated_sec = time;
-        clusters[ego].comments.bounds = bounds;
-      },
-
-      NodeKind::Opinion => {
-        clusters[ego].opinions.updated_sec = time;
-        clusters[ego].opinions.bounds = bounds;
-      },
-
-      _ => {
-        log_error!("Unknown node kind");
-      },
-    };
-  }
-
-  fn update_all_nodes_score_clustering(&mut self) {
-    log_trace!();
-
-    for (context, _) in self.contexts.clone() {
-      for node_id in 0..self.node_count {
-        self.update_node_score_clustering(
-          context.as_str(),
-          node_id,
-          NodeKind::User,
-        );
-        self.update_node_score_clustering(
-          context.as_str(),
-          node_id,
-          NodeKind::Beacon,
-        );
-        self.update_node_score_clustering(
-          context.as_str(),
-          node_id,
-          NodeKind::Comment,
-        );
-        self.update_node_score_clustering(
-          context.as_str(),
-          node_id,
-          NodeKind::Opinion,
-        );
-      }
-    }
-  }
-
-  fn init_node_score_clustering(
-    &mut self,
-    context: &str,
-    ego: NodeId,
-  ) {
-    log_trace!("{:?} {}", context, ego);
-
-    let node_count = self.node_count;
-
-    let clusters = self.clusters_from(context);
-
-    clusters.resize(node_count, Default::default());
-
-    let users_empty = bounds_are_empty(&clusters[ego].users.bounds);
-    let beacons_empty = bounds_are_empty(&clusters[ego].beacons.bounds);
-    let comments_empty = bounds_are_empty(&clusters[ego].comments.bounds);
-    let opinions_empty = bounds_are_empty(&clusters[ego].opinions.bounds);
-
-    if users_empty {
-      self.update_node_score_clustering(context, ego, NodeKind::User);
-    }
-
-    if beacons_empty {
-      self.update_node_score_clustering(context, ego, NodeKind::Beacon);
-    }
-
-    if comments_empty {
-      self.update_node_score_clustering(context, ego, NodeKind::Comment);
-    }
-
-    if opinions_empty {
-      self.update_node_score_clustering(context, ego, NodeKind::Opinion);
-    }
-  }
-
-  fn apply_score_clustering(
-    &mut self,
-    context: &str,
-    ego: NodeId,
-    score: Weight,
-    kind: NodeKind,
-  ) -> (Weight, Cluster) {
-    log_trace!("{:?} {} {}", context, ego, score);
-
-    if score < EPSILON {
-      //  Clusterize only positive scores.
-      return (score, 0);
-    }
-
-    if ego >= self.node_count {
-      log_error!("Node does not exist: {}", ego);
-      return (score, 0);
-    }
-
-    if self.node_info_from_id(ego).kind != NodeKind::User {
-      //  We apply score clustering only for user nodes.
-      return (score, 0);
-    }
-
-    self.init_node_score_clustering(context, ego);
-
-    let elapsed_secs = self.time_begin.elapsed().as_secs();
-
-    let clusters = self.clusters_from(context);
-
-    let updated_sec = match kind {
-      NodeKind::User => clusters[ego].users.updated_sec,
-      NodeKind::Beacon => clusters[ego].beacons.updated_sec,
-      NodeKind::Comment => clusters[ego].comments.updated_sec,
-      NodeKind::Opinion => clusters[ego].opinions.updated_sec,
-      _ => {
-        log_error!("Unknown node kind.");
-        return (score, 0);
-      },
-    };
-
-    if elapsed_secs >= updated_sec + self.settings.score_clusters_timeout {
-      log_verbose!("Recalculate clustering for node {} in {:?}", ego, context);
-      self.update_node_score_clustering(context, ego, kind);
-    }
-
-    let clusters = self.clusters_from(context);
-
-    let bounds = match kind {
-      NodeKind::User => &clusters[ego].users.bounds,
-      NodeKind::Beacon => &clusters[ego].beacons.bounds,
-      NodeKind::Comment => &clusters[ego].comments.bounds,
-      NodeKind::Opinion => &clusters[ego].opinions.bounds,
-      _ => {
-        log_error!("Unknown node kind.");
-        return (score, 0);
-      },
-    };
-
-    if bounds_are_empty(&bounds) {
-      return (score, 0);
-    }
-
-    let step = 1;
-    let mut cluster = 1;
-
-    for bound in bounds {
-      if score < *bound - EPSILON {
-        break;
-      }
-
-      cluster += step;
-    }
-
-    return (score, cluster);
-  }
-
-  fn fetch_all_scores(
-    &mut self,
-    context: &str,
-    ego_id: NodeId,
-  ) -> Vec<(NodeId, Weight, Cluster)> {
-    log_trace!("{:?} {}", context, ego_id);
-
-    self
-      .fetch_all_raw_scores(context, ego_id)
-      .iter()
-      .map(|(dst_id, score)| {
-        let kind = self.node_info_from_id(*dst_id).kind;
-        (
-          *dst_id,
-          *score,
-          self.apply_score_clustering(context, ego_id, *score, kind).1,
-        )
-      })
-      .collect()
-  }
-
-  fn fetch_neighbors(
-    &mut self,
-    context: &str,
-    ego: NodeId,
-    dir: NeighborDirection,
-  ) -> Vec<(NodeId, Weight, Cluster)> {
-    log_trace!("{:?} {} {:?}", context, ego, dir);
-
-    let mut v = vec![];
-
-    match dir {
-      NeighborDirection::Outbound => {
-        match self.graph_from_ctx(context).graph.get_node_data(ego) {
-          Some(data) => {
-            v.reserve_exact(data.pos_edges.len() + data.neg_edges.len());
-
-            for x in &data.pos_edges {
-              v.push((*x.0, 0.0, 0));
-            }
-
-            for x in &data.neg_edges {
-              v.push((*x.0, 0.0, 0));
-            }
-          },
-          _ => {},
-        };
-      },
-      _ => {
-        for src in 0..self.node_infos.len() {
-          match self.graph_from_ctx(context).graph.get_node_data(src) {
-            Some(data) => {
-              for (dst, _) in data.get_outgoing_edges() {
-                if dir == NeighborDirection::All && src == ego {
-                  //  Outbound: ego -> dst
-                  v.push((dst, 0.0, 0));
-                } else if dst == ego {
-                  //  Inbound:  src -> ego
-                  v.push((src, 0.0, 0));
-                }
-              }
-            },
-            _ => {},
-          };
-        }
-      },
-    };
-
-    for i in 0..v.len() {
-      let dst = v[i].0;
-      let score = self.fetch_raw_score(context, ego, dst);
-      let kind = self.node_info_from_id(dst).kind;
-      let cluster = self.apply_score_clustering(context, ego, score, kind).1;
-
-      v[i].1 = score;
-      v[i].2 = cluster;
-    }
-
-    v
-  }
-
-  fn fetch_score(
-    &mut self,
-    context: &str,
-    ego_id: NodeId,
-    dst_id: NodeId,
-  ) -> (Weight, Cluster) {
-    log_trace!("{:?} {} {}", context, ego_id, dst_id);
-
-    let score = self.fetch_raw_score(context, ego_id, dst_id);
-    let kind = self.node_info_from_id(dst_id).kind;
-    self.apply_score_clustering(context, ego_id, score, kind)
-  }
-
-  fn fetch_score_reversed(
-    &mut self,
-    context: &str,
-    dst_id: NodeId,
-    ego_id: NodeId,
-  ) -> (Weight, Cluster) {
-    log_trace!("{:?} {} {}", context, dst_id, ego_id);
-
-    let score = match self.cache_score_get(context, ego_id, dst_id) {
-      Some(score) => self.with_zero_opinion(context, dst_id, score),
-      None => self.fetch_raw_score(context, ego_id, dst_id),
-    };
-    let kind = self.node_info_from_id(dst_id).kind;
-
-    self.apply_score_clustering(context, ego_id, score, kind)
-  }
-
-  fn fetch_user_score_reversed(
-    &mut self,
-    context: &str,
-    dst_id: NodeId,
-    ego_id: NodeId,
-  ) -> (Weight, Cluster) {
-    log_trace!("{:?} {} {}", context, dst_id, ego_id);
-
-    if self.node_info_from_id(ego_id).kind == NodeKind::User {
-      return self.fetch_score_reversed(context, dst_id, ego_id);
-    }
-
-    match self.graph_from_ctx(context).graph.get_node_data(ego_id) {
-      Some(x) => {
-        if x.pos_edges.len() + x.neg_edges.len() == 0 {
-          log_error!("Non-user node has no owner");
-          (0.0, 0)
-        } else {
-          if x.pos_edges.len() + x.neg_edges.len() != 1 {
-            log_error!("Non-user node has too many edges");
-          }
-
-          let parent_id = if x.pos_edges.len() > 0 {
-            x.pos_edges.keys()[0]
-          } else {
-            x.neg_edges.keys()[0]
-          };
-
-          self.fetch_score_reversed(context, dst_id, parent_id)
-        }
-      },
-
-      None => {
-        log_error!("Node does not exist");
-        (0.0, 0)
-      },
-    }
-  }
-
-  pub fn find_or_add_node_by_name(
-    &mut self,
-    node_name: &str,
-  ) -> NodeId {
-    log_trace!("{:?}", node_name);
-
-    let node_id;
-
-    if let Some(&id) = self.node_ids.get(node_name) {
-      node_id = id;
-    } else {
-      node_id = self.node_count;
-
-      self.node_count += 1;
-      self.node_infos.resize(self.node_count, NodeInfo::default());
-      self.node_infos[node_id] = NodeInfo {
-        kind:       kind_from_name(&node_name),
-        name:       node_name.to_string(),
-        seen_nodes: Default::default(),
-      };
-      self.node_ids.insert(node_name.to_string(), node_id);
-    }
-
-    for (context, graph) in &mut self.contexts {
-      if graph.graph.contains_node(node_id) {
-        continue;
-      }
-
-      log_verbose!("Add node in {:?}: {}", context, node_name);
-
-      //  HACK!!!
-      while graph.get_new_nodeid() < node_id {}
-    }
-
-    node_id
-  }
-
-  pub fn set_edge(
-    &mut self,
-    context: &str,
-    src: NodeId,
-    dst: NodeId,
-    amount: f64,
-  ) {
-    log_trace!("{:?} {:?} {:?} {}", context, src, dst, amount);
-
-    if src == dst {
-      log_error!("Self-reference is not allowed.");
-      return;
-    }
-
-    if self.is_user_edge(src, dst) {
-      // TODO: move this to the initializer
-      self.graph_from_ctx("");
-      if !context.is_empty() {
-        self.graph_from_ctx(context);
-      }
-
-      for (enum_context, graph) in &mut self.contexts {
-        log_verbose!(
-          "Set user edge in {:?}: {} -> {} for {}",
-          enum_context,
-          src,
-          dst,
-          amount
-        );
-        graph.set_edge(src, dst, amount);
-      }
-    } else if context.is_empty() {
-      log_verbose!("Set edge in \"\": {} -> {} for {}", src, dst, amount);
-      self.graph_from_ctx_mut(context).set_edge(src, dst, amount);
-    } else {
-      let null_weight = self.edge_weight("", src, dst);
-      let old_weight = self.edge_weight(context, src, dst);
-      let delta = null_weight + amount - old_weight;
-
-      log_verbose!("Set edge in \"\": {} -> {} for {}", src, dst, delta);
-      self.graph_from_ctx_mut("").set_edge(src, dst, delta);
-
-      log_verbose!(
-        "Set edge in {:?}: {} -> {} for {}",
-        context,
-        src,
-        dst,
-        amount
-      );
-      self.graph_from_ctx_mut(context).set_edge(src, dst, amount);
-    }
-  }
-
-  pub fn recalculate_all(
-    &mut self,
-    context: &str,
-    num_walk: usize,
-  ) {
-    log_trace!("{}", num_walk);
-
-    let infos = self.node_infos.clone();
-
-    let graph = self.graph_from_ctx_mut(context);
-
-    for id in 0..infos.len() {
-      if (id % 100) == 90 {
-        log_verbose!("{}%", (id * 100) / infos.len());
-      }
-      if infos[id].kind == NodeKind::User {
-        match graph.calculate(id, num_walk) {
-          Ok(_) => {},
-          Err(e) => log_error!("{}", e),
-        };
-      }
-    }
-  }
-}
-
 //  ================================================
 //
 //    Commands
 //
 //  ================================================
+
+use meritrank_core::{constants::EPSILON, NodeId};
+use petgraph::{
+  graph::{DiGraph, NodeIndex},
+  visit::EdgeRef,
+};
+use std::collections::hash_map::*;
+
+use crate::astar::*;
+use crate::aug_multi_graph::*;
+use crate::bloom_filter::*;
+use crate::constants::*;
+use crate::log::*;
+use crate::nodes::*;
 
 pub fn read_version() -> &'static str {
   log_command!();
@@ -1297,7 +42,7 @@ impl AugMultiGraph {
   ) -> Vec<(String, String, Weight, Weight, Cluster, Cluster)> {
     log_command!("{:?} {:?} {:?}", context, ego, dst);
 
-    if !self.contexts.contains_key(context) {
+    if !self.subgraphs.contains_key(context) {
       log_error!("Context does not exist: {:?}", context);
       return [(ego.to_string(), dst.to_string(), 0.0, 0.0, 0, 0)].to_vec();
     }
@@ -1348,7 +93,9 @@ impl AugMultiGraph {
   ) -> Vec<(String, String, Weight, Weight, Cluster, Cluster)> {
     let mut im: Vec<(NodeId, Weight, Cluster)> = scores
       .into_iter()
-      .map(|(n, w, cluster)| (n, self.node_info_from_id(n).kind, w, cluster))
+      .map(|(n, w, cluster)| {
+        (n, node_kind_from_id(&self.node_infos, n), w, cluster)
+      })
       .filter(|(_, target_kind, _, _)| {
         kind == NodeKind::Unknown || kind == *target_kind
       })
@@ -1369,7 +116,8 @@ impl AugMultiGraph {
           return true;
         }
         match self
-          .graph_from_ctx(context)
+          .subgraph_from_context(context)
+          .meritrank_data
           .graph
           .edge_weight(*target_id, ego_id)
         {
@@ -1402,7 +150,7 @@ impl AugMultiGraph {
 
       page.push((
         ego.to_string(),
-        self.node_info_from_id(im[i].0).name.clone(),
+        node_name_from_id(&self.node_infos, im[i].0),
         score_value_of_dst,
         score_value_of_ego,
         score_cluster_of_dst,
@@ -1448,7 +196,7 @@ impl AugMultiGraph {
       },
     };
 
-    if !self.contexts.contains_key(context) {
+    if !self.subgraphs.contains_key(context) {
       log_error!("Context does not exist: {:?}", context);
       return vec![];
     }
@@ -1546,7 +294,7 @@ impl AugMultiGraph {
     context: &str,
   ) {
     log_command!("{:?}", context);
-    self.create_context_if_does_not_exist(context);
+    self.subgraph_from_context(context);
   }
 
   pub fn write_put_edge(
@@ -1598,7 +346,8 @@ impl AugMultiGraph {
       // In principle, we could have optimized this by storing the edges in a sorted heap structure.
       //new_min_weight = new_max_weight;
       let (edges_to_modify, new_min_weight_from_scan) = self
-        .graph_from_ctx(context)
+        .subgraph_from_context(context)
+        .meritrank_data
         .graph
         .get_node_data(src_id)
         .unwrap()
@@ -1629,8 +378,8 @@ impl AugMultiGraph {
         log_verbose!(
           "Rescale or delete node: context={:?}, src={}, dst={}, new_weight={}",
           context,
-          self.node_info_from_id(src_id).name,
-          self.node_info_from_id(dst_id).name,
+          node_name_from_id(&self.node_infos, src_id),
+          node_name_from_id(&self.node_infos, dst_id),
           weight
         );
         self.set_edge(context, src_id, dst_id, weight);
@@ -1687,7 +436,8 @@ impl AugMultiGraph {
 
     // Collect the outgoing edges first
     let outgoing_edges: Vec<NodeId> = self
-      .graph_from_ctx(context)
+      .subgraph_from_context(context)
+      .meritrank_data
       .graph
       .get_node_data(id)
       .map(|data| {
@@ -1724,7 +474,7 @@ impl AugMultiGraph {
       count
     );
 
-    if !self.contexts.contains_key(context) {
+    if !self.subgraphs.contains_key(context) {
       log_error!("Context does not exist: {:?}", context);
       return vec![];
     }
@@ -1752,16 +502,28 @@ impl AugMultiGraph {
       ids.insert(index, focus_id);
     }
 
+    let num_walks = self.settings.num_walks;
+    let zero_opinion_factor = self.settings.zero_opinion_factor;
+
+    let node_infos = self.node_infos.clone();
+
+    let subgraph = self.subgraph_from_context(context);
+
     log_verbose!("Enumerate focus neighbors");
 
-    let focus_neighbors =
-      self.all_outbound_neighbors_normalized(context, focus_id);
+    let focus_neighbors = subgraph.all_outbound_neighbors_normalized(focus_id);
 
     for (dst_id, focus_dst_weight) in focus_neighbors {
-      let dst_kind = self.node_info_from_id(dst_id).kind;
+      let dst_kind = node_kind_from_id(&node_infos, dst_id);
 
       if dst_kind == NodeKind::User {
-        if positive_only && self.fetch_raw_score(context, ego_id, dst_id) <= 0.0
+        if positive_only
+          && subgraph.fetch_raw_score(
+            ego_id,
+            dst_id,
+            num_walks,
+            zero_opinion_factor,
+          ) <= 0.0
         {
           continue;
         }
@@ -1783,13 +545,12 @@ impl AugMultiGraph {
         || dst_kind == NodeKind::Beacon
         || dst_kind == NodeKind::Opinion
       {
-        let dst_neighbors =
-          self.all_outbound_neighbors_normalized(context, dst_id);
+        let dst_neighbors = subgraph.all_outbound_neighbors_normalized(dst_id);
 
         for (ngh_id, dst_ngh_weight) in dst_neighbors {
           if (positive_only && dst_ngh_weight <= 0.0)
             || ngh_id == focus_id
-            || self.node_info_from_id(ngh_id).kind != NodeKind::User
+            || node_kind_from_id(&node_infos, ngh_id) != NodeKind::User
           {
             continue;
           }
@@ -1827,7 +588,7 @@ impl AugMultiGraph {
     } else {
       log_verbose!("Search shortest path");
 
-      let graph_cloned = self.graph_from_ctx(context).graph.clone();
+      let graph_cloned = subgraph.meritrank_data.graph.clone();
 
       //  ================================
       //
@@ -1913,7 +674,7 @@ impl AugMultiGraph {
       ego_to_focus.resize(n, 0);
 
       for node in ego_to_focus.iter() {
-        log_verbose!("Path: {}", self.node_info_from_id(*node).name);
+        log_verbose!("Path: {}", node_name_from_id(&node_infos, *node));
       }
 
       //  ================================
@@ -1927,21 +688,21 @@ impl AugMultiGraph {
         let a = ego_to_focus[k];
         let b = ego_to_focus[k + 1];
 
-        let a_kind = self.node_info_from_id(a).kind;
-        let b_kind = self.node_info_from_id(b).kind;
+        let a_kind = node_kind_from_id(&node_infos, a);
+        let b_kind = node_kind_from_id(&node_infos, b);
 
-        let a_b_weight = self.edge_weight_normalized(context, a, b);
+        let a_b_weight = subgraph.edge_weight_normalized(a, b);
 
         if k + 2 == ego_to_focus.len() {
           if a_kind == NodeKind::User {
             edges.push((a, b, a_b_weight));
           } else {
-            log_verbose!("Ignore node {}", self.node_info_from_id(a).name);
+            log_verbose!("Ignore node {}", node_name_from_id(&node_infos, a));
           }
         } else if b_kind != NodeKind::User {
-          log_verbose!("Ignore node {}", self.node_info_from_id(b).name);
+          log_verbose!("Ignore node {}", node_name_from_id(&node_infos, b));
           let c = ego_to_focus[k + 2];
-          let b_c_weight = self.edge_weight_normalized(context, b, c);
+          let b_c_weight = subgraph.edge_weight_normalized(b, c);
           let a_c_weight = a_b_weight
             * b_c_weight
             * if a_b_weight < 0.0 && b_c_weight < 0.0 {
@@ -1953,7 +714,7 @@ impl AugMultiGraph {
         } else if a_kind == NodeKind::User {
           edges.push((a, b, a_b_weight));
         } else {
-          log_verbose!("Ignore node {}", self.node_info_from_id(a).name);
+          log_verbose!("Ignore node {}", node_name_from_id(&node_infos, a));
         }
       }
 
@@ -2011,8 +772,8 @@ impl AugMultiGraph {
           if w > -EPSILON && w < EPSILON {
             log_error!(
               "Got zero edge weight: {} -> {}",
-              self.node_info_from_id(*src_id).name.clone(),
-              self.node_info_from_id(*dst_id).name.clone()
+              node_name_from_id(&self.node_infos, *src_id),
+              node_name_from_id(&self.node_infos, *dst_id)
             );
           } else {
             let mut found = false;
@@ -2045,8 +806,8 @@ impl AugMultiGraph {
           self.fetch_user_score_reversed(context, ego_id, dst_id);
 
         (
-          self.node_info_from_id(src_id).name.clone(),
-          self.node_info_from_id(dst_id).name.clone(),
+          node_name_from_id(&self.node_infos, src_id),
+          node_name_from_id(&self.node_infos, dst_id),
           weight_of_dst,
           score_value_of_dst,
           score_value_of_ego,
@@ -2064,7 +825,7 @@ impl AugMultiGraph {
   ) -> Vec<(String, String)> {
     log_command!("{:?} {:?}", context, ego);
 
-    if !self.contexts.contains_key(context) {
+    if !self.subgraphs.contains_key(context) {
       log_error!("Context does not exist: {:?}", context);
       return vec![];
     }
@@ -2077,7 +838,8 @@ impl AugMultiGraph {
     let src_id = self.find_or_add_node_by_name(ego);
 
     let outgoing_edges: Vec<_> = self
-      .graph_from_ctx(context)
+      .subgraph_from_context(context)
+      .meritrank_data
       .graph
       .get_node_data(src_id)
       .unwrap()
@@ -2087,7 +849,7 @@ impl AugMultiGraph {
     outgoing_edges
       .into_iter()
       .map(|(dst_id, _)| {
-        (ego.to_string(), self.node_info_from_id(dst_id).name.clone())
+        (ego.to_string(), node_name_from_id(&self.node_infos, dst_id))
       })
       .collect()
   }
@@ -2108,7 +870,7 @@ impl AugMultiGraph {
   ) -> Vec<(String, String, Weight)> {
     log_command!("{:?}", context);
 
-    if !self.contexts.contains_key(context) {
+    if !self.subgraphs.contains_key(context) {
       log_error!("Context does not exist: {:?}", context);
       return vec![];
     }
@@ -2121,7 +883,12 @@ impl AugMultiGraph {
     for src_id in 0..infos.len() {
       let src_name = infos[src_id].name.as_str();
 
-      match self.graph_from_ctx(context).graph.get_node_data(src_id) {
+      match self
+        .subgraph_from_context(context)
+        .meritrank_data
+        .graph
+        .get_node_data(src_id)
+      {
         Some(data) => {
           for (dst_id, weight) in data.get_outgoing_edges() {
             match infos.get(dst_id) {
@@ -2144,7 +911,7 @@ impl AugMultiGraph {
   ) -> Vec<(String, String, Weight, Weight, Cluster, Cluster)> {
     log_command!("{:?} {:?}", context, ego);
 
-    if !self.contexts.contains_key(context) {
+    if !self.subgraphs.contains_key(context) {
       log_error!("Context does not exist: {:?}", context);
       return vec![];
     }
@@ -2157,7 +924,14 @@ impl AugMultiGraph {
     v.reserve_exact(ranks.len());
 
     for (node, score_value_of_dst, score_cluster_of_dst) in ranks {
-      let info = self.node_info_from_id(node).clone();
+      let info = match self.node_infos.get(node) {
+        Some(x) => x.clone(),
+        None => NodeInfo {
+          kind:       NodeKind::Unknown,
+          name:       "".to_string(),
+          seen_nodes: Vec::new(),
+        },
+      };
       if score_value_of_dst > 0.0 && info.kind == NodeKind::User {
         let (score_value_of_ego, score_cluster_of_ego) =
           self.fetch_user_score_reversed(context, ego_id, node);
@@ -2326,7 +1100,12 @@ impl AugMultiGraph {
 
         //  FIXME Probably we should use NodeKind here.
         if self.node_infos[dst_id].name.starts_with(prefix) {
-          let score = self.fetch_raw_score("", src_id, dst_id);
+          let num_walks = self.settings.num_walks;
+          let k = self.settings.zero_opinion_factor;
+
+          let score = self
+            .subgraph_from_context("")
+            .fetch_raw_score(src_id, dst_id, num_walks, k);
 
           if !(score < EPSILON) {
             bloom_filter_add(&mut seen_nodes, &bits);
@@ -2372,198 +1151,12 @@ impl AugMultiGraph {
 
     let id = self.find_or_add_node_by_name(node);
 
-    match self.zero_opinion.get_mut(context) {
-      Some(zero_opinion) => {
-        if id >= zero_opinion.len() {
-          zero_opinion.resize(id + 1, 0.0);
-        }
+    let zero_opinion = &mut self.subgraph_from_context(context).zero_opinion;
 
-        zero_opinion[id] = score;
-      },
-      None => {
-        let mut v = vec![];
-        v.resize(id + 1, 0.0);
-        v[id] = score;
-        self.zero_opinion.insert(context.to_string(), v);
-      },
-    };
-  }
-}
-
-//  ================================================
-//
-//    Zero opinion recalculation
-//
-//  ================================================
-
-impl AugMultiGraph {
-  pub fn reduced_graph(
-    &mut self,
-    context: &str,
-  ) -> Vec<(NodeId, NodeId, Weight)> {
-    log_trace!();
-
-    let mut all_edges = vec![];
-
-    for src in 0..self.node_infos.len() {
-      match self.graph_from_ctx(context).graph.get_node_data(src) {
-        Some(data) => {
-          for (dst, _) in &data.pos_edges {
-            all_edges.push((src, *dst));
-          }
-
-          for (dst, _) in &data.neg_edges {
-            all_edges.push((src, *dst));
-          }
-        },
-        _ => {},
-      }
+    if id >= zero_opinion.len() {
+      zero_opinion.resize(id + 1, 0.0);
     }
 
-    let users: Vec<NodeId> = self
-      .node_infos
-      .iter()
-      .enumerate()
-      .filter(|(_id, info)| info.kind == NodeKind::User)
-      .filter(|(id, _info)| {
-        for (src, dst) in &all_edges {
-          if *id == *src || *id == *dst {
-            return true;
-          }
-        }
-        return false;
-      })
-      .map(|(id, _info)| id)
-      .collect();
-
-    if users.is_empty() {
-      return vec![];
-    }
-
-    let num_walks = self.settings.num_walks;
-
-    for id in users.iter() {
-      match self.graph_from_ctx_mut(context).calculate(*id, num_walks) {
-        Ok(_) => {},
-        Err(e) => log_error!("{}", e),
-      };
-    }
-
-    let edges: Vec<(NodeId, NodeId, Weight)> = users
-      .into_iter()
-      .map(|id| -> Vec<(NodeId, NodeId, Weight)> {
-        self
-          .fetch_all_raw_scores(context, id)
-          .into_iter()
-          .map(|(node_id, score)| (id, node_id, score))
-          .filter(|(ego_id, node_id, score)| {
-            let kind = self.node_info_from_id(*node_id).kind;
-
-            (kind == NodeKind::User || kind == NodeKind::Beacon)
-              && *score > EPSILON
-              && ego_id != node_id
-          })
-          .collect()
-      })
-      .flatten()
-      .collect();
-
-    let result: Vec<(NodeId, NodeId, Weight)> = edges
-      .into_iter()
-      .map(|(ego_id, dst_id, weight)| {
-        let ego_kind = self.node_info_from_id(ego_id).kind;
-        let dst_kind = self.node_info_from_id(dst_id).kind;
-        (ego_id, ego_kind, dst_id, dst_kind, weight)
-      })
-      .filter(|(ego_id, ego_kind, dst_id, dst_kind, _)| {
-        ego_id != dst_id
-          && *ego_kind == NodeKind::User
-          && (*dst_kind == NodeKind::User || *dst_kind == NodeKind::Beacon)
-      })
-      .map(|(ego_id, _, dst_id, _, weight)| (ego_id, dst_id, weight))
-      .collect();
-
-    result
-  }
-
-  pub fn top_nodes(
-    &mut self,
-    context: &str,
-  ) -> Vec<(NodeId, f64)> {
-    log_trace!();
-
-    let reduced = self.reduced_graph(context);
-
-    if reduced.is_empty() {
-      log_error!("Reduced graph is empty");
-      return vec![];
-    }
-
-    let mut pr = Pagerank::<NodeId>::new();
-
-    reduced
-      .iter()
-      .filter(|(_src, _dst, weight)| !(*weight > -EPSILON && *weight < EPSILON))
-      .for_each(|(src, dst, _weight)| {
-        pr.add_edge(*src, *dst);
-      });
-
-    log_verbose!("Calculate page rank");
-    pr.calculate();
-
-    let (nodes, scores): (Vec<NodeId>, Vec<f64>) = pr
-        .nodes()  // already sorted by score
-        .into_iter()
-        .take(self.settings.top_nodes_limit)
-        .into_iter()
-        .unzip();
-
-    let res = nodes.into_iter().zip(scores).collect::<Vec<_>>();
-
-    if res.is_empty() {
-      log_error!("No top nodes");
-    }
-
-    return res;
-  }
-
-  pub fn write_recalculate_zero(&mut self) {
-    log_command!();
-
-    for (context, graph) in &self.contexts.clone() {
-      //  Save the current state of the graph
-      let graph_bak = graph.clone();
-
-      self.recalculate_all(context, 0);
-      let nodes = self.top_nodes(context);
-
-      //  Drop all walks and make sure to empty caches.
-      self.recalculate_all(context, 0);
-      self.score_cache = create_score_cache(self.settings.scores_cache_size);
-      self.cached_walks = create_cached_walks(self.settings.walks_cache_size);
-
-      let mut zero_opinion = vec![];
-
-      zero_opinion.resize(0, 0.0);
-      zero_opinion.reserve(nodes.len());
-
-      for (node_id, amount) in nodes.iter() {
-        if *node_id >= zero_opinion.len() {
-          zero_opinion.resize(*node_id + 1, 0.0);
-        }
-        zero_opinion[*node_id] = *amount;
-      }
-
-      self.zero_opinion.insert(context.to_string(), zero_opinion);
-
-      //  Reset the graph
-      self.contexts.insert(context.clone(), graph_bak);
-    }
-  }
-
-  pub fn write_recalculate_clustering(&mut self) {
-    log_command!();
-
-    self.update_all_nodes_score_clustering();
+    zero_opinion[id] = score;
   }
 }

@@ -1,11 +1,5 @@
-use crate::log_error;
-use std::sync::atomic::Ordering;
-// use crate::log_warning;
-// use crate::log_info;
-// use crate::log_verbose;
-// use crate::log_trace;
-// use crate::error;
 use crate::log::*;
+use std::sync::atomic::Ordering;
 
 //  No context
 pub const CMD_VERSION: &str = "version";

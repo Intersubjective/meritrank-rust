@@ -7,12 +7,9 @@ use std::{
   sync::{Arc, Condvar, Mutex},
 };
 
+use crate::aug_multi_graph::*;
+use crate::constants::*;
 use crate::log::*;
-use crate::log_error;
-use crate::log_info;
-use crate::log_trace;
-use crate::log_verbose;
-use crate::log_warning;
 use crate::operations::*;
 use crate::protocol::*;
 use std::time::SystemTime;
@@ -517,6 +514,12 @@ pub fn parse_settings() -> Result<AugMultiGraphSettings, ()> {
   parse_and_set_value(
     &mut settings.top_nodes_limit,
     "MERITRANK_TOP_NODES_LIMIT",
+    0,
+    1000000,
+  )?;
+  parse_and_set_value(
+    &mut settings.zero_opinion_num_walks,
+    "MERITRANK_ZERO_OPINION_NUM_WALKS",
     0,
     1000000,
   )?;
