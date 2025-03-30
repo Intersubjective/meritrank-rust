@@ -1,4 +1,5 @@
-use crate::operations::*;
+use crate::aug_multi_graph::*;
+use crate::nodes::*;
 use crate::protocol::*;
 use crate::test_data::*;
 use std::time::SystemTime;
@@ -1740,9 +1741,9 @@ fn vsids_edges_churn() {
     let dst = format!("U{}", n + 2);
     let src_id = *graph.node_ids.get("U1").unwrap();
     let dst_id = *graph.node_ids.get(&dst).unwrap();
-    let edge = graph.subgraph_from_context("").edge_weight_normalized(
-      src_id, dst_id
-    );
+    let edge = graph
+      .subgraph_from_context("")
+      .edge_weight_normalized(src_id, dst_id);
     if n >= 990 {
       // Assuming the last 10 edges remain
       assert!(edge > 0.0, "Edge U1->{} should exist", dst);
