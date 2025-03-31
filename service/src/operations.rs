@@ -455,6 +455,7 @@ impl AugMultiGraph {
     }
   }
 
+
   pub fn read_graph(
     &mut self,
     context: &str,
@@ -583,6 +584,7 @@ impl AugMultiGraph {
       }
     }
 
+    // In the read_graph method, replace the A* search section with:
     if ego_id == focus_id {
       log_verbose!("Ego is same as focus");
     } else {
@@ -590,92 +592,14 @@ impl AugMultiGraph {
 
       let graph_cloned = subgraph.meritrank_data.graph.clone();
 
-      //  ================================
-      //
-      //    A* search
-      //
-
-      let mut open: Vec<Node<NodeId, Weight>> = vec![];
-      let mut closed: Vec<Node<NodeId, Weight>> = vec![];
-
-      open.resize(1024, Node::default());
-      closed.resize(1024, Node::default());
-
-      let mut astar_state = init(&mut open, ego_id, focus_id, 0.0);
-
-      let mut steps = 0;
-      let mut neighbor = None;
-      let mut status = Status::PROGRESS;
-
-      //  Do 10000 iterations max
-
-      for _ in 0..10000 {
-        steps += 1;
-
-        status =
-          iteration(&mut open, &mut closed, &mut astar_state, neighbor.clone());
-
-        match status.clone() {
-          Status::NEIGHBOR(request) => {
-            match graph_cloned.get_node_data(request.node) {
-              None => neighbor = None,
-              Some(data) => {
-                let kv: Vec<_> =
-                  data.pos_edges.iter().skip(request.index).take(1).collect();
-
-                if kv.is_empty() {
-                  neighbor = None;
-                } else {
-                  let n = kv[0].0;
-                  let mut w = *kv[0].1;
-
-                  if data.pos_sum > EPSILON {
-                    w /= data.pos_sum;
-                  }
-
-                  neighbor = Some(Link::<NodeId, Weight> {
-                    neighbor:       *n,
-                    exact_distance: if w.abs() < EPSILON {
-                      1_000_000.0
-                    } else {
-                      1.0 / w
-                    },
-                    estimate:       0.0,
-                  });
-                }
-              },
-            }
-          },
-          Status::OUT_OF_MEMORY => {
-            open.resize(open.len() * 2, Node::default());
-            closed.resize(closed.len() * 2, Node::default());
-          },
-          Status::SUCCESS => break,
-          Status::FAIL => break,
-          Status::PROGRESS => {},
-        };
-      }
-
-      log_verbose!("Did {} A* iterations", steps);
-
-      if status == Status::SUCCESS {
-        log_verbose!("Path found");
-      } else if status == Status::FAIL {
-        log_error!("Path does not exist from {} to {}", ego_id, focus_id);
-        return vec![];
-      } else {
-        log_error!("Unable to find a path from {} to {}", ego_id, focus_id);
-        return vec![];
-      }
-
-      let mut ego_to_focus: Vec<NodeId> = vec![];
-      ego_to_focus.resize(astar_state.num_closed, 0);
-      let n = path(&closed, &astar_state, &mut ego_to_focus);
-      ego_to_focus.resize(n, 0);
-
-      for node in ego_to_focus.iter() {
-        log_verbose!("Path: {}", node_name_from_id(&node_infos, *node));
-      }
+      // Perform A* search to find the path from ego to focus
+      let ego_to_focus = match perform_astar_search(&graph_cloned, ego_id, focus_id) {
+        Ok(path) => path,
+        Err(error) => {
+          log_error!("{}", error);
+          return vec![];
+        }
+      };
 
       //  ================================
 
@@ -1158,5 +1082,97 @@ impl AugMultiGraph {
     }
 
     zero_opinion[id] = score;
+  }
+}
+fn perform_astar_search(
+  graph_cloned: &meritrank_core::graph::Graph,
+  ego_id: NodeId,
+  focus_id: NodeId,
+) -> Result<Vec<NodeId>, String> {
+  //  ================================
+  //
+  //    A* search
+  //
+
+  let mut open: Vec<Node<NodeId, Weight>> = vec![];
+  let mut closed: Vec<Node<NodeId, Weight>> = vec![];
+
+  open.resize(1024, Node::default());
+  closed.resize(1024, Node::default());
+
+  let mut astar_state = init(&mut open, ego_id, focus_id, 0.0);
+
+  let mut steps = 0;
+  let mut neighbor = None;
+  let mut status = Status::PROGRESS;
+
+  //  Do 10000 iterations max
+
+  for _ in 0..10000 {
+    steps += 1;
+
+    status =
+      iteration(&mut open, &mut closed, &mut astar_state, neighbor.clone());
+
+    match status.clone() {
+      Status::NEIGHBOR(request) => {
+        match graph_cloned.get_node_data(request.node) {
+          None => neighbor = None,
+          Some(data) => {
+            let kv: Vec<_> =
+              data.pos_edges.iter().skip(request.index).take(1).collect();
+
+            if kv.is_empty() {
+              neighbor = None;
+            } else {
+              let n = kv[0].0;
+              let mut w = *kv[0].1;
+
+              if data.pos_sum > EPSILON {
+                w /= data.pos_sum;
+              }
+
+              neighbor = Some(Link::<NodeId, Weight> {
+                neighbor:       *n,
+                exact_distance: if w.abs() < EPSILON {
+                  1_000_000.0
+                } else {
+                  1.0 / w
+                },
+                estimate:       0.0,
+              });
+            }
+          },
+        }
+      },
+      Status::OUT_OF_MEMORY => {
+        open.resize(open.len() * 2, Node::default());
+        closed.resize(closed.len() * 2, Node::default());
+      },
+      Status::SUCCESS => break,
+      Status::FAIL => break,
+      Status::PROGRESS => {},
+    };
+  }
+
+  log_verbose!("Did {} A* iterations", steps);
+
+  if status == Status::SUCCESS {
+    log_verbose!("Path found");
+
+    let mut ego_to_focus: Vec<NodeId> = vec![];
+    ego_to_focus.resize(astar_state.num_closed, 0);
+    let n = path(&closed, &astar_state, &mut ego_to_focus);
+    ego_to_focus.resize(n, 0);
+
+    //for node in ego_to_focus.iter() {
+    //  log_verbose!("Path: {}", node_name_from_id(&self.node_infos, *node));
+    //}
+
+    Ok(ego_to_focus)
+  } else if status == Status::FAIL {
+    Err(format!("Path does not exist from {} to {}", ego_id, focus_id))
+  } else {
+    Err(format!("Unable to find a path from {} to {}", ego_id, focus_id))
   }
 }
