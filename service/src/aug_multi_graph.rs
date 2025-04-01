@@ -12,8 +12,6 @@ use std::{
   collections::hash_map::*, collections::HashMap, string::ToString,
   sync::atomic::Ordering, time::Instant,
 };
-use std::os::unix::process::parent_id;
-use crate::astar::Node;
 use crate::constants::*;
 use crate::nodes::*;
 use crate::quantiles::*;
@@ -147,9 +145,12 @@ impl AugMultiGraph {
     let zero_cloned = if context.is_empty() {
       None
     } else {
-      match self.subgraphs.get_mut("") {
-        Some(zero) => Some(zero.meritrank_data.clone()),
-        None => None,
+      match self.subgraphs.get(context) {
+        None => match self.subgraphs.get_mut("") {
+          Some(zero) => Some(zero.meritrank_data.clone()),
+          None => None,
+        },
+        _ => None,
       }
     };
 
