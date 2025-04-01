@@ -131,7 +131,7 @@ impl AugMultiGraph {
   pub fn get_subgraph_from_context(
     &mut self,
     context: &str,
-  )-> &Subgraph {
+  ) -> &Subgraph {
     &*self.subgraph_from_context(context)
   }
 
