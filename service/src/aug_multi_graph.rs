@@ -12,7 +12,8 @@ use std::{
   collections::hash_map::*, collections::HashMap, string::ToString,
   sync::atomic::Ordering, time::Instant,
 };
-
+use std::os::unix::process::parent_id;
+use crate::astar::Node;
 use crate::constants::*;
 use crate::nodes::*;
 use crate::quantiles::*;
@@ -449,11 +450,11 @@ impl AugMultiGraph {
     self.apply_score_clustering(context, ego, score, kind)
   }
 
-  pub fn fetch_score_reversed(
+  pub fn fetch_score_cached(
     &mut self,
     context: &str,
-    dst_id: NodeId,
     ego_id: NodeId,
+    dst_id: NodeId,
   ) -> (Weight, Cluster) {
     log_trace!("{:?} {} {}", context, dst_id, ego_id);
 
@@ -472,46 +473,48 @@ impl AugMultiGraph {
     self.apply_score_clustering(context, ego_id, score, kind)
   }
 
-  pub fn fetch_user_score_reversed(
+  pub fn get_object_owner(
     &mut self,
     context: &str,
     dst_id: NodeId,
-    ego_id: NodeId,
-  ) -> (Weight, Cluster) {
-    log_trace!("{:?} {} {}", context, dst_id, ego_id);
+  ) -> Option<NodeId> {
+    log_trace!("{:?} {}", context, dst_id);
 
-    if node_kind_from_id(&self.node_infos, ego_id) == NodeKind::User {
-      return self.fetch_score_reversed(context, dst_id, ego_id);
+
+    let node_kind = node_kind_from_id(&self.node_infos, dst_id);
+    if node_kind == NodeKind::User {
+      return Some(dst_id);
     }
 
     match self
       .subgraph_from_context(context)
       .meritrank_data
       .graph
-      .get_node_data(ego_id)
+      .get_node_data(dst_id)
     {
       Some(x) => {
-        if x.pos_edges.len() + x.neg_edges.len() == 0 {
-          log_error!("Non-user node has no owner");
-          (0.0, 0)
-        } else {
-          if x.pos_edges.len() + x.neg_edges.len() != 1 {
+        if x.pos_edges.len() == 1 {
+          Some(x.pos_edges.keys()[0])
+        }
+        else {
+          if x.pos_edges.len() == 0 {
+            log_error!("Non-user node has no owner");
+          }
+          if x.pos_edges.len() > 1 && node_kind != NodeKind::Opinion {
             log_error!("Non-user node has too many edges");
           }
-
-          let parent_id = if x.pos_edges.len() > 0 {
-            x.pos_edges.keys()[0]
-          } else {
-            x.neg_edges.keys()[0]
-          };
-
-          self.fetch_score_reversed(context, dst_id, parent_id)
+          if x.pos_edges.len() == 2 && node_kind == NodeKind::Opinion  {
+            // FIXME! This might produce incorrect results in case the first edge is the edge to the opinion's target
+            return Some(x.pos_edges.keys()[0])
+          }
+          log_error!("Something went wrong with finding the node's owner");
+          None
         }
       },
 
       None => {
         log_error!("Node does not exist");
-        (0.0, 0)
+        None
       },
     }
   }

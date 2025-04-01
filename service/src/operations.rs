@@ -63,8 +63,13 @@ impl AugMultiGraph {
 
     let (score_of_dst_from_ego, score_cluster_of_dst) =
       self.fetch_score(context, ego_id, dst_id);
+
+    // Handle the case when get_object_owner returns None
     let (score_of_ego_from_dst, score_cluster_of_ego) =
-      self.fetch_user_score_reversed(context, ego_id, dst_id);
+      match self.get_object_owner(context, dst_id) {
+        Some(dst_owner_id) => self.fetch_score_cached(context, dst_owner_id, ego_id),
+        None => (0.0, 0) // Default values when no owner is found
+    };
 
     [(
       ego.to_string(),
@@ -147,7 +152,10 @@ impl AugMultiGraph {
       let score_cluster_of_dst = im[i].2;
 
       let (score_value_of_ego, score_cluster_of_ego) =
-        self.fetch_user_score_reversed(context, ego_id, im[i].0);
+        match self.get_object_owner(context, im[i].0) {
+          Some(dst_owner_id) => self.fetch_score_cached(context, dst_owner_id, ego_id),
+          None => (0.0, 0) // Default values when no owner is found
+        };
 
       page.push((
         ego.to_string(),
@@ -681,7 +689,10 @@ impl AugMultiGraph {
         let (score_value_of_dst, score_cluster_of_dst) =
           self.fetch_score(context, ego_id, dst_id);
         let (score_value_of_ego, score_cluster_of_ego) =
-          self.fetch_user_score_reversed(context, ego_id, dst_id);
+          match self.get_object_owner(context, dst_id) {
+            Some(dst_owner_id) => self.fetch_score_cached(context, dst_owner_id, ego_id),
+            None => (0.0, 0) // Default values when no owner is found
+          };
 
         (
           node_name_from_id(&self.node_infos, src_id),
@@ -812,7 +823,10 @@ impl AugMultiGraph {
       };
       if score_value_of_dst > 0.0 && info.kind == NodeKind::User {
         let (score_value_of_ego, score_cluster_of_ego) =
-          self.fetch_user_score_reversed(context, ego_id, node);
+          match self.get_object_owner(context, node) {
+            Some(dst_owner_id) => self.fetch_score_cached(context, dst_owner_id, ego_id),
+            None => (0.0, 0) // Default values when no owner is found
+          };
 
         v.push((
           ego.to_string(),
@@ -916,7 +930,7 @@ impl AugMultiGraph {
       let (score_value_of_dst, score_cluster_of_dst) =
         self.fetch_score("", src_id, dst_id);
       let (score_value_of_src, score_cluster_of_src) =
-        self.fetch_score_reversed("", src_id, dst_id);
+        self.fetch_score_cached("", src_id, dst_id);
 
       if score_value_of_dst < EPSILON {
         continue;
@@ -1038,11 +1052,33 @@ impl AugMultiGraph {
     zero_opinion[id] = score;
   }
 }
+// Define a custom error enum for A* search
+#[derive(Debug, Clone, PartialEq)]
+pub enum AStarError {
+    PathDoesNotExist(NodeId, NodeId),
+    SearchExhausted(NodeId, NodeId),
+    Other(String),
+}
+
+impl std::fmt::Display for AStarError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AStarError::PathDoesNotExist(from, to) =>
+                write!(f, "Path does not exist from {} to {}", from, to),
+            AStarError::SearchExhausted(from, to) =>
+                write!(f, "Unable to find a path from {} to {}", from, to),
+            AStarError::Other(msg) => write!(f, "{}", msg),
+        }
+    }
+}
+
+impl std::error::Error for AStarError {}
+
 fn perform_astar_search(
   graph: &Graph,
   ego_id: NodeId,
   focus_id: NodeId,
-) -> Result<Vec<NodeId>, String> {
+) -> Result<Vec<NodeId>, AStarError> {
   //  ================================
   //
   //    A* search
@@ -1123,17 +1159,12 @@ fn perform_astar_search(
 
     Ok(ego_to_focus)
   } else if status == Status::FAIL {
-    Err(format!(
-      "Path does not exist from {} to {}",
-      ego_id, focus_id
-    ))
+    Err(AStarError::PathDoesNotExist(ego_id, focus_id))
   } else {
-    Err(format!(
-      "Unable to find a path from {} to {}",
-      ego_id, focus_id
-    ))
+    Err(AStarError::SearchExhausted(ego_id, focus_id))
   }
 }
+
 // Helper method to find the shortest path from ego to focus and add it to the graph
 fn add_shortest_path_to_graph(
   subgraph: &Subgraph,
@@ -1146,12 +1177,15 @@ fn add_shortest_path_to_graph(
 ) {
   // Find the shortest path from ego to focus using A* search
   log_verbose!("Search shortest path");
-  let graph = &subgraph.meritrank_data.graph;
 
   // Perform A* search to find the path from ego to focus
   // This helps establish a connection between the ego and focus nodes
-  let ego_to_focus = match perform_astar_search(&graph, ego_id, focus_id) {
+  let ego_to_focus = match perform_astar_search(&subgraph.meritrank_data.graph, ego_id, focus_id) {
     Ok(path) => path,
+    Err(AStarError::PathDoesNotExist(from, to)) => {
+      log_verbose!("Path does not exist from {} to {}", from, to);
+      return;
+    },
     Err(error) => {
       log_error!("{}", error);
       return;
