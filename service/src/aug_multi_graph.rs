@@ -4,7 +4,11 @@
 //
 //  ================================================================
 
+use crate::constants::*;
 use crate::log::*;
+use crate::nodes::*;
+use crate::quantiles::*;
+use crate::subgraph::*;
 use crate::vsids::VSIDSManager;
 use lru::LruCache;
 use meritrank_core::{constants::EPSILON, Graph, MeritRank, NodeId};
@@ -12,10 +16,6 @@ use std::{
   collections::hash_map::*, collections::HashMap, string::ToString,
   sync::atomic::Ordering, time::Instant,
 };
-use crate::constants::*;
-use crate::nodes::*;
-use crate::quantiles::*;
-use crate::subgraph::*;
 
 pub type Cluster = i32;
 
@@ -130,7 +130,7 @@ impl AugMultiGraph {
   pub fn get_subgraph_from_context(
     &mut self,
     context: &str,
-  )-> &Subgraph {
+  ) -> &Subgraph {
     &*self.subgraph_from_context(context)
   }
 
@@ -481,7 +481,6 @@ impl AugMultiGraph {
   ) -> Option<NodeId> {
     log_trace!("{:?} {}", context, dst_id);
 
-
     let node_kind = node_kind_from_id(&self.node_infos, dst_id);
     if node_kind == NodeKind::User {
       return Some(dst_id);
@@ -496,17 +495,16 @@ impl AugMultiGraph {
       Some(x) => {
         if x.pos_edges.len() == 1 {
           Some(x.pos_edges.keys()[0])
-        }
-        else {
+        } else {
           if x.pos_edges.len() == 0 {
             log_error!("Non-user node has no owner");
           }
           if x.pos_edges.len() > 1 && node_kind != NodeKind::Opinion {
             log_error!("Non-user node has too many edges");
           }
-          if x.pos_edges.len() == 2 && node_kind == NodeKind::Opinion  {
+          if x.pos_edges.len() == 2 && node_kind == NodeKind::Opinion {
             // FIXME! This might produce incorrect results in case the first edge is the edge to the opinion's target
-            return Some(x.pos_edges.keys()[0])
+            return Some(x.pos_edges.keys()[0]);
           }
           log_error!("Something went wrong with finding the node's owner");
           None
