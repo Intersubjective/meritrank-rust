@@ -82,7 +82,7 @@ impl Subgraph {
   }
 
   pub fn edge_weight_normalized(
-    &mut self,
+    &self,
     src: NodeId,
     dst: NodeId,
   ) -> Weight {
@@ -113,7 +113,7 @@ impl Subgraph {
   }
 
   pub fn all_outbound_neighbors_normalized(
-    &mut self,
+    &self,
     node: NodeId,
   ) -> Vec<(NodeId, Weight)> {
     log_trace!("{}", node);

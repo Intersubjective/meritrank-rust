@@ -128,6 +128,13 @@ impl AugMultiGraph {
     self.node_ids.get(node_name).is_some()
   }
 
+  pub fn get_subgraph_from_context(
+    &mut self,
+    context: &str,
+  )-> &Subgraph {
+    &*self.subgraph_from_context(context)
+  }
+
   pub fn subgraph_from_context(
     &mut self,
     context: &str,
