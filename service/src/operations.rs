@@ -4,7 +4,7 @@
 //
 //  ================================================
 
-use meritrank_core::{constants::EPSILON, NodeId};
+use meritrank_core::{constants::EPSILON, Graph, NodeId};
 use petgraph::{
   graph::{DiGraph, NodeIndex},
   visit::EdgeRef,
@@ -17,6 +17,7 @@ use crate::bloom_filter::*;
 use crate::constants::*;
 use crate::log::*;
 use crate::nodes::*;
+use crate::subgraph::Subgraph;
 
 pub fn read_version() -> &'static str {
   log_command!();
@@ -474,80 +475,103 @@ impl AugMultiGraph {
       count
     );
 
+    // Validate input parameters
+    // Check if the context exists in the subgraphs
     if !self.subgraphs.contains_key(context) {
       log_error!("Context does not exist: {:?}", context);
       return vec![];
     }
 
+    // Check if the ego node exists
     if !self.node_exists(ego) {
       log_error!("Node does not exist: {:?}", ego);
       return vec![];
     }
 
+    // Check if the focus node exists
     if !self.node_exists(focus) {
       log_error!("Node does not exist: {:?}", focus);
       return vec![];
     }
 
+    // Get node IDs for ego and focus
     let ego_id = self.find_or_add_node_by_name(ego);
     let focus_id = self.find_or_add_node_by_name(focus);
 
+    // Initialize data structures for building the graph
+    // HashMap to map between NodeId and NodeIndex in the petgraph
     let mut indices = HashMap::<NodeId, NodeIndex>::new();
     let mut ids = HashMap::<NodeIndex, NodeId>::new();
+    // Create a directed graph to represent the relationships
     let mut im_graph = DiGraph::<NodeId, Weight>::new();
 
+    // Add the focus node to the graph as the starting point
     {
       let index = im_graph.add_node(focus_id);
       indices.insert(focus_id, index);
       ids.insert(index, focus_id);
     }
 
-    let num_walks = self.settings.num_walks;
-    let zero_opinion_factor = self.settings.zero_opinion_factor;
-
+    // Clone node information for use in the function
     let node_infos = self.node_infos.clone();
 
-    let subgraph = self.subgraph_from_context(context);
+    // Get the subgraph for the specified context
+    let subgraph = self.get_subgraph_from_context(context);
 
     log_verbose!("Enumerate focus neighbors");
 
+    // Get all normalized outbound neighbors of the focus node
+    // This gives us all nodes directly connected to the focus node
     let focus_neighbors = subgraph.all_outbound_neighbors_normalized(focus_id);
 
+    // Handle the case where ego and focus are the same node
+    if ego_id == focus_id {
+      log_verbose!("Ego is same as focus");
+    } else {
+      // Find the shortest path from ego to focus and add it to the graph
+      add_shortest_path_to_graph(
+        &subgraph,
+        &node_infos,
+        ego_id,
+        focus_id,
+        &mut indices,
+        &mut ids,
+        &mut im_graph,
+      );
+    }
+
+    // Process each neighbor of the focus node
     for (dst_id, focus_dst_weight) in focus_neighbors {
       let dst_kind = node_kind_from_id(&node_infos, dst_id);
+      // Skip if positive_only is true and the is not positive
+      if positive_only && focus_dst_weight <= 0.0 {
+        continue;
+      }
 
+      // If the neighbor is a User node, add it directly to the graph
       if dst_kind == NodeKind::User {
-        if positive_only
-          && subgraph.fetch_raw_score(
-            ego_id,
-            dst_id,
-            num_walks,
-            zero_opinion_factor,
-          ) <= 0.0
-        {
-          continue;
-        }
-
-        if !indices.contains_key(&dst_id) {
-          let index = im_graph.add_node(focus_id);
-          indices.insert(dst_id, index);
-          ids.insert(index, dst_id);
-        }
-
-        if let (Some(focus_idx), Some(dst_idx)) =
-          (indices.get(&focus_id), indices.get(&dst_id))
-        {
-          im_graph.add_edge(*focus_idx, *dst_idx, focus_dst_weight);
-        } else {
-          log_error!("Got invalid node id");
-        }
-      } else if dst_kind == NodeKind::Comment
+        // Inside the loop where the edge is being added
+        add_edge_if_valid(
+          &mut im_graph,
+          &mut indices,
+          &mut ids,
+          focus_id,
+          dst_id,
+          focus_dst_weight,
+        );
+      }
+      // If the neighbor is a Comment, Beacon, or Opinion node, process its neighbors
+      // This handles indirect connections through non-user nodes
+      else if dst_kind == NodeKind::Comment
         || dst_kind == NodeKind::Beacon
         || dst_kind == NodeKind::Opinion
       {
+        // Get all neighbors of this non-user node
         let dst_neighbors = subgraph.all_outbound_neighbors_normalized(dst_id);
 
+        // Process each neighbor of the non-user node
         for (ngh_id, dst_ngh_weight) in dst_neighbors {
+          // Skip if conditions are not met
           if (positive_only && dst_ngh_weight <= 0.0)
             || ngh_id == focus_id
             || node_kind_from_id(&node_infos, ngh_id) != NodeKind::User
@@ -556,6 +580,7 @@ impl AugMultiGraph {
           }
 
           // Calculate the weight of the edge from focus to this neighbor
+          // This represents the indirect connection through the non-user node
           let focus_ngh_weight = focus_dst_weight
             * dst_ngh_weight
             * if focus_dst_weight < 0.0 && dst_ngh_weight < 0.0 {
@@ -564,187 +589,22 @@ impl AugMultiGraph {
               1.0
             };
 
-          // Calculate the weight of the edge from focus to this neighbor
-          if !indices.contains_key(&ngh_id) {
-            let index = im_graph.add_node(ngh_id);
-            indices.insert(ngh_id, index);
-            ids.insert(index, ngh_id);
-          }
-
-          // Calculate the weight of the edge from focus to this neighbor
-          if let (Some(focus_idx), Some(ngh_idx)) =
-            (indices.get(&focus_id), indices.get(&ngh_id))
-          {
-            im_graph.add_edge(*focus_idx, *ngh_idx, focus_ngh_weight);
-          } else {
-            log_error!("Got invalid node id");
-          }
-        }
-      }
-    }
-
-    if ego_id == focus_id {
-      log_verbose!("Ego is same as focus");
-    } else {
-      log_verbose!("Search shortest path");
-
-      let graph_cloned = subgraph.meritrank_data.graph.clone();
-
-      //  ================================
-      //
-      //    A* search
-      //
-
-      let mut open: Vec<Node<NodeId, Weight>> = vec![];
-      let mut closed: Vec<Node<NodeId, Weight>> = vec![];
-
-      open.resize(1024, Node::default());
-      closed.resize(1024, Node::default());
-
-      let mut astar_state = init(&mut open, ego_id, focus_id, 0.0);
-
-      let mut steps = 0;
-      let mut neighbor = None;
-      let mut status = Status::PROGRESS;
-
-      //  Do 10000 iterations max
-
-      for _ in 0..10000 {
-        steps += 1;
-
-        status =
-          iteration(&mut open, &mut closed, &mut astar_state, neighbor.clone());
-
-        match status.clone() {
-          Status::NEIGHBOR(request) => {
-            match graph_cloned.get_node_data(request.node) {
-              None => neighbor = None,
-              Some(data) => {
-                let kv: Vec<_> =
-                  data.pos_edges.iter().skip(request.index).take(1).collect();
-
-                if kv.is_empty() {
-                  neighbor = None;
-                } else {
-                  let n = kv[0].0;
-                  let mut w = *kv[0].1;
-
-                  if data.pos_sum > EPSILON {
-                    w /= data.pos_sum;
-                  }
-
-                  neighbor = Some(Link::<NodeId, Weight> {
-                    neighbor:       *n,
-                    exact_distance: if w.abs() < EPSILON {
-                      1_000_000.0
-                    } else {
-                      1.0 / w
-                    },
-                    estimate:       0.0,
-                  });
-                }
-              },
-            }
-          },
-          Status::OUT_OF_MEMORY => {
-            open.resize(open.len() * 2, Node::default());
-            closed.resize(closed.len() * 2, Node::default());
-          },
-          Status::SUCCESS => break,
-          Status::FAIL => break,
-          Status::PROGRESS => {},
-        };
-      }
-
-      log_verbose!("Did {} A* iterations", steps);
-
-      if status == Status::SUCCESS {
-        log_verbose!("Path found");
-      } else if status == Status::FAIL {
-        log_error!("Path does not exist from {} to {}", ego_id, focus_id);
-        return vec![];
-      } else {
-        log_error!("Unable to find a path from {} to {}", ego_id, focus_id);
-        return vec![];
-      }
-
-      let mut ego_to_focus: Vec<NodeId> = vec![];
-      ego_to_focus.resize(astar_state.num_closed, 0);
-      let n = path(&closed, &astar_state, &mut ego_to_focus);
-      ego_to_focus.resize(n, 0);
-
-      for node in ego_to_focus.iter() {
-        log_verbose!("Path: {}", node_name_from_id(&node_infos, *node));
-      }
-
-      //  ================================
-
-      let mut edges = Vec::<(NodeId, NodeId, Weight)>::new();
-      edges.reserve_exact(ego_to_focus.len() - 1);
-
-      log_verbose!("Process shortest path");
-
-      for k in 0..ego_to_focus.len() - 1 {
-        let a = ego_to_focus[k];
-        let b = ego_to_focus[k + 1];
-
-        let a_kind = node_kind_from_id(&node_infos, a);
-        let b_kind = node_kind_from_id(&node_infos, b);
-
-        let a_b_weight = subgraph.edge_weight_normalized(a, b);
-
-        if k + 2 == ego_to_focus.len() {
-          if a_kind == NodeKind::User {
-            edges.push((a, b, a_b_weight));
-          } else {
-            log_verbose!("Ignore node {}", node_name_from_id(&node_infos, a));
-          }
-        } else if b_kind != NodeKind::User {
-          log_verbose!("Ignore node {}", node_name_from_id(&node_infos, b));
-          let c = ego_to_focus[k + 2];
-          let b_c_weight = subgraph.edge_weight_normalized(b, c);
-          let a_c_weight = a_b_weight
-            * b_c_weight
-            * if a_b_weight < 0.0 && b_c_weight < 0.0 {
-              -1.0
-            } else {
-              1.0
-            };
-          edges.push((a, c, a_c_weight));
-        } else if a_kind == NodeKind::User {
-          edges.push((a, b, a_b_weight));
-        } else {
-          log_verbose!("Ignore node {}", node_name_from_id(&node_infos, a));
-        }
-      }
-
-      log_verbose!("Add path to the graph");
-
-      for (src, dst, weight) in edges {
-        if !indices.contains_key(&src) {
-          let index = im_graph.add_node(src);
-          indices.insert(src, index);
-          ids.insert(index, src);
-        }
-
-        if !indices.contains_key(&dst) {
-          let index = im_graph.add_node(dst);
-          indices.insert(dst, index);
-          ids.insert(index, dst);
-        }
-
-        if let (Some(src_idx), Some(dst_idx)) =
-          (indices.get(&src), indices.get(&dst))
-        {
-          im_graph.add_edge(*src_idx, *dst_idx, weight);
-        } else {
-          log_error!("Got invalid node id");
+          // Add an edge from focus to this neighbor
+          add_edge_if_valid(
+            &mut im_graph,
+            &mut indices,
+            &mut ids,
+            focus_id,
+            ngh_id,
+            focus_ngh_weight,
+          );
         }
       }
     }
 
     log_verbose!("Remove self references");
 
+    // Remove self-loops (edges from a node to itself)
     for (_, src_index) in indices.iter() {
       let neighbors: Vec<_> = im_graph
         .edges(*src_index)
@@ -757,18 +617,35 @@ impl AugMultiGraph {
         }
       }
     }
+    self.collect_all_edges(
+      &indices, &ids, &im_graph, context, ego_id, index, count,
+    )
+  }
 
+  pub fn collect_all_edges(
+    &mut self,
+    indices: &HashMap<NodeId, NodeIndex>,
+    ids: &HashMap<NodeIndex, NodeId>,
+    im_graph: &DiGraph<NodeId, Weight>,
+    context: &str,
+    ego_id: NodeId,
+    index: u32,
+    count: u32,
+  ) -> Vec<(String, String, Weight, Weight, Weight, Cluster, Cluster)> {
+    // Collect all edges from the graph
     let mut edge_ids = Vec::<(NodeId, NodeId, Weight)>::new();
     edge_ids.reserve_exact(indices.len() * 2); // ad hok
 
     log_verbose!("Build final array");
 
+    // Extract all edges from the graph
     for (_, src_index) in indices {
-      for edge in im_graph.edges(src_index) {
+      for edge in im_graph.edges(*src_index) {
         if let (Some(src_id), Some(dst_id)) =
-          (ids.get(&src_index), ids.get(&edge.target()))
+          (ids.get(src_index), ids.get(&edge.target()))
         {
           let w = *edge.weight();
+          // Skip edges with zero weight
           if w > -EPSILON && w < EPSILON {
             log_error!(
               "Got zero edge weight: {} -> {}",
@@ -776,6 +653,7 @@ impl AugMultiGraph {
               node_name_from_id(&self.node_infos, *dst_id)
             );
           } else {
+            // Check for duplicate edges
             let mut found = false;
             for (x, y, _) in edge_ids.iter() {
               if *src_id == *x && *dst_id == *y {
@@ -1158,5 +1036,210 @@ impl AugMultiGraph {
     }
 
     zero_opinion[id] = score;
+  }
+}
+fn perform_astar_search(
+  graph: &Graph,
+  ego_id: NodeId,
+  focus_id: NodeId,
+) -> Result<Vec<NodeId>, String> {
+  //  ================================
+  //
+  //    A* search
+  //
+
+  let mut open: Vec<Node<NodeId, Weight>> = vec![];
+  let mut closed: Vec<Node<NodeId, Weight>> = vec![];
+
+  open.resize(1024, Node::default());
+  closed.resize(1024, Node::default());
+
+  let mut astar_state = init(&mut open, ego_id, focus_id, 0.0);
+
+  let mut steps = 0;
+  let mut neighbor = None;
+  let mut status = Status::PROGRESS;
+
+  //  Do 10000 iterations max
+
+  for _ in 0..10000 {
+    steps += 1;
+
+    status =
+      iteration(&mut open, &mut closed, &mut astar_state, neighbor.clone());
+
+    match status.clone() {
+      Status::NEIGHBOR(request) => match graph.get_node_data(request.node) {
+        None => neighbor = None,
+        Some(data) => {
+          let kv: Vec<_> =
+            data.pos_edges.iter().skip(request.index).take(1).collect();
+
+          if kv.is_empty() {
+            neighbor = None;
+          } else {
+            let n = kv[0].0;
+            let mut w = *kv[0].1;
+
+            if data.pos_sum > EPSILON {
+              w /= data.pos_sum;
+            }
+
+            neighbor = Some(Link::<NodeId, Weight> {
+              neighbor:       *n,
+              exact_distance: if w.abs() < EPSILON {
+                1_000_000.0
+              } else {
+                1.0 / w
+              },
+              estimate:       0.0,
+            });
+          }
+        },
+      },
+      Status::OUT_OF_MEMORY => {
+        open.resize(open.len() * 2, Node::default());
+        closed.resize(closed.len() * 2, Node::default());
+      },
+      Status::SUCCESS => break,
+      Status::FAIL => break,
+      Status::PROGRESS => {},
+    };
+  }
+
+  log_verbose!("Did {} A* iterations", steps);
+
+  if status == Status::SUCCESS {
+    log_verbose!("Path found");
+
+    let mut ego_to_focus: Vec<NodeId> = vec![];
+    ego_to_focus.resize(astar_state.num_closed, 0);
+    let n = path(&closed, &astar_state, &mut ego_to_focus);
+    ego_to_focus.resize(n, 0);
+
+    //for node in ego_to_focus.iter() {
+    //  log_verbose!("Path: {}", node_name_from_id(&self.node_infos, *node));
+    //}
+
+    Ok(ego_to_focus)
+  } else if status == Status::FAIL {
+    Err(format!(
+      "Path does not exist from {} to {}",
+      ego_id, focus_id
+    ))
+  } else {
+    Err(format!(
+      "Unable to find a path from {} to {}",
+      ego_id, focus_id
+    ))
+  }
+}
+// Helper method to find the shortest path from ego to focus and add it to the graph
+fn add_shortest_path_to_graph(
+  subgraph: &Subgraph,
+  node_infos: &Vec<NodeInfo>,
+  ego_id: NodeId,
+  focus_id: NodeId,
+  indices: &mut HashMap<NodeId, NodeIndex>,
+  ids: &mut HashMap<NodeIndex, NodeId>,
+  im_graph: &mut DiGraph<NodeId, Weight>,
+) {
+  // Find the shortest path from ego to focus using A* search
+  log_verbose!("Search shortest path");
+  let graph = &subgraph.meritrank_data.graph;
+
+  // Perform A* search to find the path from ego to focus
+  // This helps establish a connection between the ego and focus nodes
+  let ego_to_focus = match perform_astar_search(&graph, ego_id, focus_id) {
+    Ok(path) => path,
+    Err(error) => {
+      log_error!("{}", error);
+      return;
+    },
+  };
+
+  // Process the path found by A* search
+  let mut edges = Vec::<(NodeId, NodeId, Weight)>::new();
+  edges.reserve_exact(ego_to_focus.len() - 1);
+
+  log_verbose!("Process shortest path");
+
+  // Process each edge in the path
+  for k in 0..ego_to_focus.len() - 1 {
+    let a = ego_to_focus[k];
+    let b = ego_to_focus[k + 1];
+
+    let a_kind = node_kind_from_id(node_infos, a);
+    let b_kind = node_kind_from_id(node_infos, b);
+
+    let a_b_weight = subgraph.edge_weight_normalized(a, b);
+
+    // Handle different cases based on node types and position in the path
+    // This logic determines which edges to include in the final graph
+    if k + 2 == ego_to_focus.len() {
+      // Last edge in the path
+      if a_kind == NodeKind::User {
+        edges.push((a, b, a_b_weight));
+      } else {
+        log_verbose!("Ignore node {}", node_name_from_id(node_infos, a));
+      }
+    } else if b_kind != NodeKind::User {
+      // Skip non-user nodes in the middle of the path
+      // Create a direct edge from a to c (skipping b)
+      log_verbose!("Ignore node {}", node_name_from_id(node_infos, b));
+      let c = ego_to_focus[k + 2];
+      let b_c_weight = subgraph.edge_weight_normalized(b, c);
+      let a_c_weight = a_b_weight
+        * b_c_weight
+        * if a_b_weight < 0.0 && b_c_weight < 0.0 {
+          -1.0
+        } else {
+          1.0
+        };
+      edges.push((a, c, a_c_weight));
+    } else if a_kind == NodeKind::User {
+      // Include edges between user nodes
+      edges.push((a, b, a_b_weight));
+    } else {
+      log_verbose!("Ignore node {}", node_name_from_id(node_infos, a));
+    }
+  }
+
+  log_verbose!("Add path to the graph");
+
+  // Add all edges from the path to the graph
+  for (src, dst, weight) in edges {
+    // Add nodes if they don't exist yet
+    if !indices.contains_key(&src) {
+      let index = im_graph.add_node(src);
+      indices.insert(src, index);
+      ids.insert(index, src);
+    }
+
+    // Add the edge to the graph
+    add_edge_if_valid(im_graph, indices, ids, src, dst, weight);
+  }
+}
+
+fn add_edge_if_valid(
+  im_graph: &mut DiGraph<NodeId, Weight>,
+  indices: &mut HashMap<NodeId, NodeIndex>,
+  ids: &mut HashMap<NodeIndex, NodeId>,
+  focus_id: NodeId,
+  dst_id: NodeId,
+  focus_dst_weight: Weight,
+) {
+  // Add the node to the graph if it doesn't exist yet
+  if !indices.contains_key(&dst_id) {
+    let index = im_graph.add_node(focus_id);
+    indices.insert(dst_id, index);
+    ids.insert(index, dst_id);
+  }
+  if let (Some(focus_idx), Some(dst_idx)) =
+    (indices.get(&focus_id), indices.get(&dst_id))
+  {
+    im_graph.add_edge(*focus_idx, *dst_idx, focus_dst_weight);
+  } else {
+    log_error!("Got invalid node id");
   }
 }

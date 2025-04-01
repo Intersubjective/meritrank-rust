@@ -1214,24 +1214,26 @@ fn graph_empty() {
 }
 
 #[test]
-fn graph_removed_edge() {
+#[test]
+fn graph_no_direct_connectivity() {
+  // Test that graph will show the focus and its neighborhood
+  // even if there is no true path from ego to focus.
+  // (E.g. when focusing directly by id or through zero opinion)
   let mut graph = default_graph();
 
-  graph.write_put_edge("", "U1", "B2", 1.0, -1);
-  graph.write_put_edge("", "B2", "U1", 2.0, -1);
-  graph.write_put_edge("", "B2", "C2", 1.0, -1);
-  graph.write_put_edge("", "B2", "C3", 1.5, -1);
-  graph.write_put_edge("", "B2", "C4", 3.0, -1);
+  graph.write_put_edge("", "U1", "B1", 1.0, -1);
+  graph.write_put_edge("", "U2", "U3", 1.0, -1);
+  graph.write_put_edge("", "U2", "B2", 1.0, -1);
 
-  graph.write_delete_edge("", "U1", "B2", -1);
-
-  let res: Vec<_> = graph.read_graph("", "U1", "B2", false, 0, 10000);
+  let res: Vec<_> = graph.read_graph("", "U1", "U2", false, 0, 10000);
 
   for x in res.iter() {
     println!("{} -> {}: {}", x.0, x.1, x.2);
   }
 
-  assert_eq!(res.len(), 0);
+  assert_eq!(res.len(), 1);
+  assert_eq!(res[0].0, "U2");
+  assert_eq!(res[0].1, "U3");
 }
 
 #[test]
