@@ -1214,7 +1214,6 @@ fn graph_empty() {
 }
 
 #[test]
-#[test]
 fn graph_no_direct_connectivity() {
   // Test that graph will show the focus and its neighborhood
   // even if there is no true path from ego to focus.
@@ -1688,6 +1687,30 @@ fn neighbors_outbound() {
 
   assert_eq!(neighbors.len(), 1);
   assert_eq!(neighbors[0].1, "U3");
+}
+
+#[test]
+fn read_scores_duration() {
+  let mut graph = AugMultiGraph::new(AugMultiGraphSettings {
+    num_walks: 1000,
+    zero_opinion_num_walks: 100,
+    ..AugMultiGraphSettings::default()
+  });
+
+  put_testing_edges_4(&mut graph);
+
+  graph.write_new_edges_filter("Ub01f4ad1b03f", &[105, 105, 105, 105, 105, 105, 105, 105, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 101, 101, 101, 101, 101, 101, 101, 101, 2, 2, 2, 2, 2, 2, 2, 2, 52, 52, 52, 52, 52, 52, 52, 52, 137, 137, 137, 137, 137, 137, 137, 137, 41, 41, 41, 41, 41, 41, 41, 41, 8, 8, 8, 8, 8, 8, 8, 8, 33, 33, 33, 33, 33, 33, 33, 33, 176, 176, 176, 176, 176, 176, 176, 176, 17, 17, 17, 17, 17, 17, 17, 17, 114, 114, 114, 114, 114, 114, 114, 114, 83, 83, 83, 83, 83, 83, 83, 83, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2]);
+
+  graph.write_recalculate_zero();
+
+  let begin    = SystemTime::now();
+  let get_time = || SystemTime::now().duration_since(begin).unwrap().as_millis();
+
+  let _ = graph.read_scores("", "U4aafe73f277b", "B", true, 2147483647.0, false, 0.0, false, 0, 100);
+
+  let _ = graph.read_scores("QuestForGlory", "U4aafe73f277b", "B", true, 2147483647.0, false, 0.0, false, 0, 100);
+
+  assert!(get_time() < 1000);
 }
 
 #[test]
