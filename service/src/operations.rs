@@ -456,7 +456,6 @@ impl AugMultiGraph {
     }
   }
 
-
   pub fn read_graph(
     &mut self,
     context: &str,
@@ -533,22 +532,33 @@ impl AugMultiGraph {
       add_shortest_path_to_graph(
         &subgraph,
         &node_infos,
-        ego_id, focus_id, &mut indices, &mut ids, &mut im_graph);
+        ego_id,
+        focus_id,
+        &mut indices,
+        &mut ids,
+        &mut im_graph,
+      );
     }
 
     // Process each neighbor of the focus node
     for (dst_id, focus_dst_weight) in focus_neighbors {
       let dst_kind = node_kind_from_id(&node_infos, dst_id);
       // Skip if positive_only is true and the is not positive
-      if positive_only && focus_dst_weight <= 0.0
-      {
+      if positive_only && focus_dst_weight <= 0.0 {
         continue;
       }
 
       // If the neighbor is a User node, add it directly to the graph
       if dst_kind == NodeKind::User {
         // Inside the loop where the edge is being added
-        add_edge_if_valid(&mut im_graph, &mut indices, &mut ids, focus_id, dst_id, focus_dst_weight);
+        add_edge_if_valid(
+          &mut im_graph,
+          &mut indices,
+          &mut ids,
+          focus_id,
+          dst_id,
+          focus_dst_weight,
+        );
       }
       // If the neighbor is a Comment, Beacon, or Opinion node, process its neighbors
       // This handles indirect connections through non-user nodes
@@ -574,13 +584,20 @@ impl AugMultiGraph {
           let focus_ngh_weight = focus_dst_weight
             * dst_ngh_weight
             * if focus_dst_weight < 0.0 && dst_ngh_weight < 0.0 {
-            -1.0
-          } else {
-            1.0
-          };
+              -1.0
+            } else {
+              1.0
+            };
 
           // Add an edge from focus to this neighbor
-          add_edge_if_valid(&mut im_graph, &mut indices, &mut ids, focus_id, ngh_id, focus_ngh_weight);
+          add_edge_if_valid(
+            &mut im_graph,
+            &mut indices,
+            &mut ids,
+            focus_id,
+            ngh_id,
+            focus_ngh_weight,
+          );
         }
       }
     }
@@ -600,7 +617,9 @@ impl AugMultiGraph {
         }
       }
     }
-    self.collect_all_edges(&indices, &ids, &im_graph, context, ego_id, index, count)
+    self.collect_all_edges(
+      &indices, &ids, &im_graph, context, ego_id, index, count,
+    )
   }
 
   pub fn collect_all_edges(
@@ -1050,35 +1069,33 @@ fn perform_astar_search(
       iteration(&mut open, &mut closed, &mut astar_state, neighbor.clone());
 
     match status.clone() {
-      Status::NEIGHBOR(request) => {
-        match graph.get_node_data(request.node) {
-          None => neighbor = None,
-          Some(data) => {
-            let kv: Vec<_> =
-              data.pos_edges.iter().skip(request.index).take(1).collect();
+      Status::NEIGHBOR(request) => match graph.get_node_data(request.node) {
+        None => neighbor = None,
+        Some(data) => {
+          let kv: Vec<_> =
+            data.pos_edges.iter().skip(request.index).take(1).collect();
 
-            if kv.is_empty() {
-              neighbor = None;
-            } else {
-              let n = kv[0].0;
-              let mut w = *kv[0].1;
+          if kv.is_empty() {
+            neighbor = None;
+          } else {
+            let n = kv[0].0;
+            let mut w = *kv[0].1;
 
-              if data.pos_sum > EPSILON {
-                w /= data.pos_sum;
-              }
-
-              neighbor = Some(Link::<NodeId, Weight> {
-                neighbor:       *n,
-                exact_distance: if w.abs() < EPSILON {
-                  1_000_000.0
-                } else {
-                  1.0 / w
-                },
-                estimate:       0.0,
-              });
+            if data.pos_sum > EPSILON {
+              w /= data.pos_sum;
             }
-          },
-        }
+
+            neighbor = Some(Link::<NodeId, Weight> {
+              neighbor:       *n,
+              exact_distance: if w.abs() < EPSILON {
+                1_000_000.0
+              } else {
+                1.0 / w
+              },
+              estimate:       0.0,
+            });
+          }
+        },
       },
       Status::OUT_OF_MEMORY => {
         open.resize(open.len() * 2, Node::default());
@@ -1106,15 +1123,21 @@ fn perform_astar_search(
 
     Ok(ego_to_focus)
   } else if status == Status::FAIL {
-    Err(format!("Path does not exist from {} to {}", ego_id, focus_id))
+    Err(format!(
+      "Path does not exist from {} to {}",
+      ego_id, focus_id
+    ))
   } else {
-    Err(format!("Unable to find a path from {} to {}", ego_id, focus_id))
+    Err(format!(
+      "Unable to find a path from {} to {}",
+      ego_id, focus_id
+    ))
   }
 }
 // Helper method to find the shortest path from ego to focus and add it to the graph
 fn add_shortest_path_to_graph(
   subgraph: &Subgraph,
-  node_infos:  &Vec<NodeInfo>,
+  node_infos: &Vec<NodeInfo>,
   ego_id: NodeId,
   focus_id: NodeId,
   indices: &mut HashMap<NodeId, NodeIndex>,
@@ -1132,7 +1155,7 @@ fn add_shortest_path_to_graph(
     Err(error) => {
       log_error!("{}", error);
       return;
-    }
+    },
   };
 
   // Process the path found by A* search
@@ -1169,10 +1192,10 @@ fn add_shortest_path_to_graph(
       let a_c_weight = a_b_weight
         * b_c_weight
         * if a_b_weight < 0.0 && b_c_weight < 0.0 {
-        -1.0
-      } else {
-        1.0
-      };
+          -1.0
+        } else {
+          1.0
+        };
       edges.push((a, c, a_c_weight));
     } else if a_kind == NodeKind::User {
       // Include edges between user nodes
@@ -1197,7 +1220,6 @@ fn add_shortest_path_to_graph(
     add_edge_if_valid(im_graph, indices, ids, src, dst, weight);
   }
 }
-
 
 fn add_edge_if_valid(
   im_graph: &mut DiGraph<NodeId, Weight>,
