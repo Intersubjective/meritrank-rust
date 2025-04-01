@@ -1690,10 +1690,10 @@ fn neighbors_outbound() {
 }
 
 #[test]
-fn read_scores_duration() {
+fn regression_subgraph_from_context_perf() {
   let mut graph = AugMultiGraph::new(AugMultiGraphSettings {
-    num_walks: 1000,
-    zero_opinion_num_walks: 100,
+    num_walks: 100,
+    zero_opinion_num_walks: 50,
     ..AugMultiGraphSettings::default()
   });
 
@@ -1745,7 +1745,11 @@ fn read_scores_duration() {
     100,
   );
 
-  assert!(get_time() < 1000);
+  let duration = get_time();
+
+  println!("Duration: {} msec", duration);
+
+  assert!(duration < 200);
 }
 
 #[test]

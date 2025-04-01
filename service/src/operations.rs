@@ -58,13 +58,15 @@ impl AugMultiGraph {
       return [(ego.to_string(), dst.to_string(), 0.0, 0.0, 0, 0)].to_vec();
     }
 
+    let time_secs = self.time_begin.elapsed().as_secs() as u64;
+
     let ego_id = self.find_or_add_node_by_name(ego);
     let dst_id = self.find_or_add_node_by_name(dst);
 
     let (score_of_dst_from_ego, score_cluster_of_dst) =
-      self.fetch_score(context, ego_id, dst_id);
+      self.fetch_score(context, ego_id, dst_id, time_secs);
     let (score_of_ego_from_dst, score_cluster_of_ego) =
-      self.fetch_user_score_reversed(context, ego_id, dst_id);
+      self.fetch_user_score_reversed(context, ego_id, dst_id, time_secs);
 
     [(
       ego.to_string(),
@@ -91,7 +93,10 @@ impl AugMultiGraph {
     score_gte: bool,
     index: u32,
     count: u32,
+    time_secs: u64,
   ) -> Vec<(String, String, Weight, Weight, Cluster, Cluster)> {
+    log_trace!();
+
     let mut im: Vec<(NodeId, Weight, Cluster)> = scores
       .into_iter()
       .map(|(n, w, cluster)| {
@@ -147,7 +152,7 @@ impl AugMultiGraph {
       let score_cluster_of_dst = im[i].2;
 
       let (score_value_of_ego, score_cluster_of_ego) =
-        self.fetch_user_score_reversed(context, ego_id, im[i].0);
+        self.fetch_user_score_reversed(context, ego_id, im[i].0, time_secs);
 
       page.push((
         ego.to_string(),
@@ -202,11 +207,13 @@ impl AugMultiGraph {
       return vec![];
     }
 
+    let time_secs = self.time_begin.elapsed().as_secs() as u64;
+
     let ego_id = self.find_or_add_node_by_name(ego);
 
-    let scores = self.fetch_all_scores(context, ego_id);
+    let scores = self.fetch_all_scores(context, ego_id, time_secs);
 
-    return self.apply_filters_and_pagination(
+    self.apply_filters_and_pagination(
       scores,
       context,
       ego,
@@ -219,7 +226,8 @@ impl AugMultiGraph {
       score_gte,
       index,
       count,
-    );
+      time_secs,
+    )
   }
 
   pub fn read_neighbors(
@@ -269,10 +277,12 @@ impl AugMultiGraph {
       },
     };
 
+    let time_secs = self.time_begin.elapsed().as_secs() as u64;
+
     let ego_id = self.find_or_add_node_by_name(ego);
     let focus_id = self.find_or_add_node_by_name(focus);
 
-    let scores = self.fetch_neighbors(context, focus_id, dir);
+    let scores = self.fetch_neighbors(context, focus_id, dir, time_secs);
 
     return self.apply_filters_and_pagination(
       scores,
@@ -287,6 +297,7 @@ impl AugMultiGraph {
       score_gte,
       index,
       count,
+      time_secs,
     );
   }
 
@@ -494,6 +505,8 @@ impl AugMultiGraph {
       return vec![];
     }
 
+    let time_secs = self.time_begin.elapsed().as_secs() as u64;
+
     // Get node IDs for ego and focus
     let ego_id = self.find_or_add_node_by_name(ego);
     let focus_id = self.find_or_add_node_by_name(focus);
@@ -618,7 +631,7 @@ impl AugMultiGraph {
       }
     }
     self.collect_all_edges(
-      &indices, &ids, &im_graph, context, ego_id, index, count,
+      &indices, &ids, &im_graph, context, ego_id, index, count, time_secs,
     )
   }
 
@@ -631,6 +644,7 @@ impl AugMultiGraph {
     ego_id: NodeId,
     index: u32,
     count: u32,
+    time_secs: u64,
   ) -> Vec<(String, String, Weight, Weight, Weight, Cluster, Cluster)> {
     // Collect all edges from the graph
     let mut edge_ids = Vec::<(NodeId, NodeId, Weight)>::new();
@@ -679,9 +693,9 @@ impl AugMultiGraph {
       .take(count as usize)
       .map(|(src_id, dst_id, weight_of_dst)| {
         let (score_value_of_dst, score_cluster_of_dst) =
-          self.fetch_score(context, ego_id, dst_id);
+          self.fetch_score(context, ego_id, dst_id, time_secs);
         let (score_value_of_ego, score_cluster_of_ego) =
-          self.fetch_user_score_reversed(context, ego_id, dst_id);
+          self.fetch_user_score_reversed(context, ego_id, dst_id, time_secs);
 
         (
           node_name_from_id(&self.node_infos, src_id),
@@ -794,8 +808,10 @@ impl AugMultiGraph {
       return vec![];
     }
 
+    let time_secs = self.time_begin.elapsed().as_secs() as u64;
+
     let ego_id = self.find_or_add_node_by_name(ego);
-    let ranks = self.fetch_all_scores(context, ego_id);
+    let ranks = self.fetch_all_scores(context, ego_id, time_secs);
     let mut v =
       Vec::<(String, String, Weight, Weight, Cluster, Cluster)>::new();
 
@@ -812,7 +828,7 @@ impl AugMultiGraph {
       };
       if score_value_of_dst > 0.0 && info.kind == NodeKind::User {
         let (score_value_of_ego, score_cluster_of_ego) =
-          self.fetch_user_score_reversed(context, ego_id, node);
+          self.fetch_user_score_reversed(context, ego_id, node, time_secs);
 
         v.push((
           ego.to_string(),
@@ -885,6 +901,8 @@ impl AugMultiGraph {
   ) -> Vec<(String, Weight, Weight, Cluster, Cluster)> {
     log_command!("{:?} {:?}", src, prefix);
 
+    let time_secs = self.time_begin.elapsed().as_secs() as u64;
+
     let num_hashes = self.settings.filter_num_hashes;
     let max_size = self.settings.filter_max_size / 8;
 
@@ -914,9 +932,9 @@ impl AugMultiGraph {
       }
 
       let (score_value_of_dst, score_cluster_of_dst) =
-        self.fetch_score("", src_id, dst_id);
+        self.fetch_score("", src_id, dst_id, time_secs);
       let (score_value_of_src, score_cluster_of_src) =
-        self.fetch_score_reversed("", src_id, dst_id);
+        self.fetch_score_reversed("", src_id, dst_id, time_secs);
 
       if score_value_of_dst < EPSILON {
         continue;

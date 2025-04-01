@@ -321,6 +321,11 @@ impl Subgraph {
       zero_opinion_factor
     );
 
+    if ego >= node_count {
+      log_error!("Node does not exist: {}", ego);
+      return;
+    }
+
     let bounds = self.calculate_score_clusters_bounds(
       ego,
       kind,
@@ -329,16 +334,9 @@ impl Subgraph {
       node_ids,
     );
 
-    if ego >= node_count {
-      log_error!("Node does not exist: {}", ego);
-      return;
-    }
+    self.cached_score_clusters.resize(node_count, Default::default());
 
-    let clusters = &mut self.cached_score_clusters;
-
-    clusters.resize(node_count, Default::default());
-
-    clusters[ego][kind].updated_sec = time_secs;
-    clusters[ego][kind].bounds = bounds;
+    self.cached_score_clusters[ego][kind].updated_sec = time_secs;
+    self.cached_score_clusters[ego][kind].bounds = bounds;
   }
 }

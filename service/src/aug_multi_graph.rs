@@ -146,9 +146,12 @@ impl AugMultiGraph {
     let zero_cloned = if context.is_empty() {
       None
     } else {
-      match self.subgraphs.get_mut("") {
-        Some(zero) => Some(zero.meritrank_data.clone()),
-        None => None,
+      match self.subgraphs.get(context) {
+        None => match self.subgraphs.get_mut("") {
+          Some(zero) => Some(zero.meritrank_data.clone()),
+          None => None,
+        },
+        _ => None,
       }
     };
 
@@ -207,6 +210,7 @@ impl AugMultiGraph {
     context: &str,
     ego: NodeId,
     kind: NodeKind,
+    time_secs: u64,
   ) {
     log_trace!("{:?} {} {:?}", context, ego, kind);
 
@@ -215,25 +219,25 @@ impl AugMultiGraph {
 
     let node_count = self.node_count;
 
-    let time_secs = self.time_begin.elapsed().as_secs() as u64;
-
     let node_ids = nodes_by_kind(kind, &self.node_infos);
 
     self
       .subgraph_from_context(context)
       .update_node_score_clustering(
         ego, kind, time_secs, node_count, num_walks, k, &node_ids,
-      )
+      );
   }
 
   pub fn update_all_nodes_score_clustering(&mut self) {
     log_trace!();
 
+    let time_secs = self.time_begin.elapsed().as_secs() as u64;
+
     for context in self.subgraphs.keys().map(|s| s.clone()).collect::<Vec<_>>()
     {
       for node_id in 0..self.node_count {
         for kind in ALL_NODE_KINDS {
-          self.update_node_score_clustering(context.as_str(), node_id, kind);
+          self.update_node_score_clustering(context.as_str(), node_id, kind, time_secs);
         }
       }
     }
@@ -278,6 +282,7 @@ impl AugMultiGraph {
     ego: NodeId,
     score: Weight,
     kind: NodeKind,
+    time_secs: u64,
   ) -> (Weight, Cluster) {
     log_trace!("{:?} {} {}", context, ego, score);
 
@@ -306,7 +311,7 @@ impl AugMultiGraph {
 
     if elapsed_secs >= updated_sec + self.settings.score_clusters_timeout {
       log_verbose!("Recalculate clustering for node {} in {:?}", ego, context);
-      self.update_node_score_clustering(context, ego, kind);
+      self.update_node_score_clustering(context, ego, kind, time_secs);
     }
 
     let clusters = &self.subgraph_from_context(context).cached_score_clusters;
@@ -335,6 +340,7 @@ impl AugMultiGraph {
     &mut self,
     context: &str,
     ego_id: NodeId,
+    time_secs: u64,
   ) -> Vec<(NodeId, Weight, Cluster)> {
     log_trace!("{:?} {}", context, ego_id);
 
@@ -350,7 +356,7 @@ impl AugMultiGraph {
         (
           *dst_id,
           *score,
-          self.apply_score_clustering(context, ego_id, *score, kind).1,
+          self.apply_score_clustering(context, ego_id, *score, kind, time_secs).1,
         )
       })
       .collect()
@@ -361,6 +367,7 @@ impl AugMultiGraph {
     context: &str,
     ego: NodeId,
     dir: NeighborDirection,
+    time_secs: u64,
   ) -> Vec<(NodeId, Weight, Cluster)> {
     log_trace!("{:?} {} {:?}", context, ego, dir);
 
@@ -422,7 +429,7 @@ impl AugMultiGraph {
         .subgraph_from_context(context)
         .fetch_raw_score(ego, dst, num_walks, k);
       let kind = node_kind_from_id(&self.node_infos, dst);
-      let cluster = self.apply_score_clustering(context, ego, score, kind).1;
+      let cluster = self.apply_score_clustering(context, ego, score, kind, time_secs).1;
 
       v[i].1 = score;
       v[i].2 = cluster;
@@ -436,6 +443,7 @@ impl AugMultiGraph {
     context: &str,
     ego: NodeId,
     dst: NodeId,
+    time_secs: u64,
   ) -> (Weight, Cluster) {
     log_trace!("{:?} {} {}", context, ego, dst);
 
@@ -446,7 +454,7 @@ impl AugMultiGraph {
       .subgraph_from_context(context)
       .fetch_raw_score(ego, dst, num_walks, k);
     let kind = node_kind_from_id(&self.node_infos, dst);
-    self.apply_score_clustering(context, ego, score, kind)
+    self.apply_score_clustering(context, ego, score, kind, time_secs)
   }
 
   pub fn fetch_score_reversed(
@@ -454,6 +462,7 @@ impl AugMultiGraph {
     context: &str,
     dst_id: NodeId,
     ego_id: NodeId,
+    time_secs: u64,
   ) -> (Weight, Cluster) {
     log_trace!("{:?} {} {}", context, dst_id, ego_id);
 
@@ -469,7 +478,7 @@ impl AugMultiGraph {
 
     let kind = node_kind_from_id(&self.node_infos, dst_id);
 
-    self.apply_score_clustering(context, ego_id, score, kind)
+    self.apply_score_clustering(context, ego_id, score, kind, time_secs)
   }
 
   pub fn fetch_user_score_reversed(
@@ -477,11 +486,12 @@ impl AugMultiGraph {
     context: &str,
     dst_id: NodeId,
     ego_id: NodeId,
+    time_secs: u64,
   ) -> (Weight, Cluster) {
     log_trace!("{:?} {} {}", context, dst_id, ego_id);
 
     if node_kind_from_id(&self.node_infos, ego_id) == NodeKind::User {
-      return self.fetch_score_reversed(context, dst_id, ego_id);
+      return self.fetch_score_reversed(context, dst_id, ego_id, time_secs);
     }
 
     match self
@@ -505,7 +515,7 @@ impl AugMultiGraph {
             x.neg_edges.keys()[0]
           };
 
-          self.fetch_score_reversed(context, dst_id, parent_id)
+          self.fetch_score_reversed(context, dst_id, parent_id, time_secs)
         }
       },
 
