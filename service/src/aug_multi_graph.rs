@@ -134,74 +134,86 @@ impl AugMultiGraph {
     &*self.subgraph_from_context(context)
   }
 
+  fn create_zero_context(&mut self) {
+    let zero_context = "".to_string();
+    let must_add_nodes = !self.subgraphs.contains_key(&zero_context);
+
+    // Insert the zero context subgraph if it doesn't exist
+    self.subgraphs.entry(zero_context.clone()).or_insert_with(|| {
+      Subgraph {
+        meritrank_data: MeritRank::new(Graph::new()),
+        zero_opinion: Vec::new(),
+        cached_scores: LruCache::new(self.settings.scores_cache_size),
+        cached_walks: LruCache::new(self.settings.walks_cache_size),
+        cached_score_clusters: Vec::new(),
+      }
+    });
+
+    // Add nodes to the zero context if needed
+    if must_add_nodes {
+      // Unwrap is safe here because we've just inserted the zero context subgraph
+      let zero_subgraph = self.subgraphs.get_mut(&zero_context).unwrap();
+      for _ in 0..self.node_count {
+        zero_subgraph.meritrank_data.get_new_nodeid();
+      }
+    }
+
+  }
+
+  fn mr_graph_with_users_from_zero_context(&mut self) -> MeritRank {
+    let mut new_graph_instance = MeritRank::new(Graph::new());
+    // Copy user-to-user edges from zero context if needed
+    for _ in 0..self.node_count {
+      new_graph_instance.get_new_nodeid();
+    }
+    let zero_graph = &self.subgraphs.get(&"".to_string()).unwrap().meritrank_data.graph;
+
+    for (src_id, src) in zero_graph.nodes.iter().enumerate() {
+      let all_edges = src.pos_edges.iter().chain(src.neg_edges.iter());
+      for (dst_id, weight) in all_edges {
+        if node_kind_from_id(&self.node_infos, src_id) == NodeKind::User
+          && node_kind_from_id(&self.node_infos, *dst_id) == NodeKind::User
+        {
+          new_graph_instance.set_edge(src_id, *dst_id, *weight);
+        }
+      }
+    };
+    new_graph_instance
+  }
+
   pub fn subgraph_from_context(
     &mut self,
     context: &str,
   ) -> &mut Subgraph {
     log_trace!("{:?}", context);
 
-    let infos = self.node_infos.clone();
 
-    let zero_cloned = if context.is_empty() {
-      None
-    } else {
-      match self.subgraphs.get(context) {
-        None => match self.subgraphs.get_mut("") {
-          Some(zero) => Some(zero.meritrank_data.clone()),
-          None => None,
-        },
-        _ => None,
-      }
-    };
-
-    match self.subgraphs.entry(context.to_string()) {
-      Entry::Occupied(e) => {
-        log_verbose!("Subgraph already exists: {:?}", context);
-        return e.into_mut();
-      },
-      Entry::Vacant(e) => {
-        log_verbose!("Add subgraph: {:?}", context);
-
-        let mut graph = MeritRank::new(Graph::new());
-
-        for _ in 0..self.node_count {
-          graph.get_new_nodeid();
-        }
-
-        if !context.is_empty() {
-          match zero_cloned {
-            Some(zero_data) => {
-              log_verbose!("Copy user edges from \"\" into {:?}", context);
-
-              let all_nodes = zero_data.graph.nodes.iter().enumerate();
-
-              for (src_id, src) in all_nodes {
-                let all_edges =
-                  src.pos_edges.iter().chain(src.neg_edges.iter());
-
-                for (dst_id, weight) in all_edges {
-                  if node_kind_from_id(&infos, src_id) == NodeKind::User
-                    && node_kind_from_id(&infos, *dst_id) == NodeKind::User
-                  {
-                    graph.set_edge(src_id, *dst_id, *weight);
-                  }
-                }
-              }
-            },
-
-            _ => {},
-          }
-        }
-
-        e.insert(Subgraph {
-          meritrank_data:        graph,
-          zero_opinion:          Vec::new(),
-          cached_scores:         LruCache::new(self.settings.scores_cache_size),
-          cached_walks:          LruCache::new(self.settings.walks_cache_size),
-          cached_score_clusters: Vec::new(),
-        })
-      },
+    // ACHTUNG: we have to search the map twice here to avoid triggering borrow checker error.
+    if self.subgraphs.contains_key(context) {
+      log_verbose!("Subgraph already exists: {:?}", context);
+      return self.subgraphs.get_mut(context).unwrap()
     }
+    // Create the zero context if it doesn't exist
+    if !self.subgraphs.contains_key(&"".to_string()) {
+      self.create_zero_context();
+    }
+
+    // We must first create the new graph entry, and then move it to the subgraph
+    // object to avoid triggering borrow checker error.
+    log_verbose!("Add subgraph: {:?}", context);
+    let new_graph_instance = self.mr_graph_with_users_from_zero_context();
+    self.subgraphs.insert(
+      context.to_string(),
+      Subgraph {
+        meritrank_data: new_graph_instance,
+        zero_opinion: Vec::new(),
+        cached_scores: LruCache::new(self.settings.scores_cache_size),
+        cached_walks: LruCache::new(self.settings.walks_cache_size),
+        cached_score_clusters: Vec::new(),
+      });
+
+    // Return the requested subgraph
+    self.subgraphs.get_mut(&context.to_string()).unwrap()
   }
 
   pub fn update_node_score_clustering(
@@ -572,11 +584,7 @@ impl AugMultiGraph {
     if node_kind_from_id(&self.node_infos, src) == NodeKind::User
       && node_kind_from_id(&self.node_infos, dst) == NodeKind::User
     {
-      // TODO: move this to the initializer
-      self.subgraph_from_context("");
-      if !context.is_empty() {
-        self.subgraph_from_context(context);
-      }
+      self.subgraph_from_context(context);
 
       for (enum_context, subgraph) in &mut self.subgraphs {
         log_verbose!(
