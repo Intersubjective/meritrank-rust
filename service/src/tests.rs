@@ -1886,3 +1886,79 @@ fn regression_oom() {
 
   graph.write_recalculate_zero();
 }
+#[test]
+fn omit_neg_edges_scores_setting() {
+  // Create a graph with omit_neg_edges_scores enabled
+  let mut graph_omit = AugMultiGraph::new(AugMultiGraphSettings {
+    num_walks: 50,
+    zero_opinion_num_walks: 100,
+    omit_neg_edges_scores: true,
+    ..AugMultiGraphSettings::default()
+  });
+
+  // Create a graph with omit_neg_edges_scores disabled (default)
+  let mut graph_include = AugMultiGraph::new(AugMultiGraphSettings {
+    num_walks: 50,
+    zero_opinion_num_walks: 100,
+    omit_neg_edges_scores: false,
+    ..AugMultiGraphSettings::default()
+  });
+
+  // Add the same edges to both graphs
+    // Add the same edges to both graphs
+    let edges = vec![
+      ("U1".to_string(), "U2".to_string(), -1.0),  // Negative edge from U1 to U2
+      ("U1".to_string(), "U3".to_string(), 10.0),   // Positive edge from U1 to U3
+      ("U3".to_string(), "U2".to_string(), 1.0),   // Positive edge from U3 to U2
+    ];
+
+    for (src, dst, weight) in edges {
+      graph_omit.write_put_edge("", &src, &dst, weight, -1);
+      graph_include.write_put_edge("", &src, &dst, weight, -1);
+    }
+
+    // Get scores for U1 in both graphs
+    let scores_omit = graph_omit.read_scores(
+      "",
+      "U1",
+      "U",
+      false,
+      100.0,
+      false,
+      -100.0,
+      false,
+      0,
+      u32::MAX,
+    );
+
+    let scores_include = graph_include.read_scores(
+      "",
+      "U1",
+      "U",
+      false,
+      100.0,
+      false,
+      -100.0,
+      false,
+      0,
+      u32::MAX,
+    );
+
+    // Check if U2 is present in both result sets
+    let find_node_score = |scores: &Vec<(String, String, Weight, Weight, Cluster, Cluster)>, node: &str| -> Option<Weight> {
+      for (_, n, score, _, _, _) in scores {
+        if n == node {
+          return Some(*score);
+        }
+      }
+      None
+    };
+
+  let u2_score_include = find_node_score(&scores_include, "U2");
+  let u2_score_omit = find_node_score(&scores_omit, "U2");
+
+  // U2 should have a score in the graph that includes negative edges
+  assert!(u2_score_include.is_some(), "U2 should have a score when negative edges are included");
+  assert!(u2_score_omit.is_none(), "U2 should not have a score when negative edges are omitted");
+
+  }

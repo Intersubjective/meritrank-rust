@@ -131,7 +131,7 @@ mod tests {
       // meritrank.calculate(2, 1000)?;
       // meritrank.calculate(3, 1000);
 
-      let rating: HashMap<NodeId, f64> = meritrank.get_ranks(0, None).unwrap_or({
+      let rating: HashMap<NodeId, f64> = meritrank.get_all_scores(0, false, None).unwrap_or({
         vec![
           (0, 0.0),
           (1, 0.0),
@@ -235,7 +235,7 @@ mod tests {
       meritrank.calculate(0, 10000)?;
 
       let rating: Vec<(NodeId, f64)> =
-        meritrank.get_ranks(0, None).unwrap_or_default();
+        meritrank.get_all_scores(0, false, None).unwrap_or_default();
 
       // check rating
       eprintln!(
@@ -330,7 +330,7 @@ mod tests {
       let rating: HashMap<NodeId, f64> = meritrank_opt
         .as_ref()
         .ok_or("MeritRank not initialized")?
-        .get_ranks(0, None)
+        .get_all_scores(0, false, None)
         .unwrap_or_default()
         .into_iter()
         .collect();
@@ -425,7 +425,7 @@ mod tests {
       let rating: Vec<(NodeId, f64)> = meritrank_opt
         .as_ref()
         .ok_or("MeritRank not initialized")?
-        .get_ranks(0, None)
+        .get_all_scores(0, false, None)
         .unwrap_or_default();
 
       let expected_ranks: [f64; 4] = [

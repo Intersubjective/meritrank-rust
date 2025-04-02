@@ -19,3 +19,4 @@ pub const DEFAULT_WALKS_CACHE_SIZE: NonZeroUsize =
 pub const DEFAULT_FILTER_NUM_HASHES: usize = 10;
 pub const DEFAULT_FILTER_MAX_SIZE: usize = 8192;
 pub const DEFAULT_FILTER_MIN_SIZE: usize = 32;
+pub const DEFAULT_OMIT_NEG_EDGES_SCORES: bool = false;
