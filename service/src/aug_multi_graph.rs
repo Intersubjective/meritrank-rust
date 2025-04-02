@@ -139,15 +139,16 @@ impl AugMultiGraph {
     let must_add_nodes = !self.subgraphs.contains_key(&zero_context);
 
     // Insert the zero context subgraph if it doesn't exist
-    self.subgraphs.entry(zero_context.clone()).or_insert_with(|| {
-      Subgraph {
-        meritrank_data: MeritRank::new(Graph::new()),
-        zero_opinion: Vec::new(),
-        cached_scores: LruCache::new(self.settings.scores_cache_size),
-        cached_walks: LruCache::new(self.settings.walks_cache_size),
+    self
+      .subgraphs
+      .entry(zero_context.clone())
+      .or_insert_with(|| Subgraph {
+        meritrank_data:        MeritRank::new(Graph::new()),
+        zero_opinion:          Vec::new(),
+        cached_scores:         LruCache::new(self.settings.scores_cache_size),
+        cached_walks:          LruCache::new(self.settings.walks_cache_size),
         cached_score_clusters: Vec::new(),
-      }
-    });
+      });
 
     // Add nodes to the zero context if needed
     if must_add_nodes {
@@ -157,7 +158,6 @@ impl AugMultiGraph {
         zero_subgraph.meritrank_data.get_new_nodeid();
       }
     }
-
   }
 
   fn mr_graph_with_users_from_zero_context(&mut self) -> MeritRank {
@@ -166,7 +166,12 @@ impl AugMultiGraph {
     for _ in 0..self.node_count {
       new_graph_instance.get_new_nodeid();
     }
-    let zero_graph = &self.subgraphs.get(&"".to_string()).unwrap().meritrank_data.graph;
+    let zero_graph = &self
+      .subgraphs
+      .get(&"".to_string())
+      .unwrap()
+      .meritrank_data
+      .graph;
 
     for (src_id, src) in zero_graph.nodes.iter().enumerate() {
       let all_edges = src.pos_edges.iter().chain(src.neg_edges.iter());
@@ -177,7 +182,7 @@ impl AugMultiGraph {
           new_graph_instance.set_edge(src_id, *dst_id, *weight);
         }
       }
-    };
+    }
     new_graph_instance
   }
 
@@ -187,11 +192,10 @@ impl AugMultiGraph {
   ) -> &mut Subgraph {
     log_trace!("{:?}", context);
 
-
     // ACHTUNG: we have to search the map twice here to avoid triggering borrow checker error.
     if self.subgraphs.contains_key(context) {
       log_verbose!("Subgraph already exists: {:?}", context);
-      return self.subgraphs.get_mut(context).unwrap()
+      return self.subgraphs.get_mut(context).unwrap();
     }
     // Create the zero context if it doesn't exist
     if !self.subgraphs.contains_key(&"".to_string()) {
@@ -205,12 +209,13 @@ impl AugMultiGraph {
     self.subgraphs.insert(
       context.to_string(),
       Subgraph {
-        meritrank_data: new_graph_instance,
-        zero_opinion: Vec::new(),
-        cached_scores: LruCache::new(self.settings.scores_cache_size),
-        cached_walks: LruCache::new(self.settings.walks_cache_size),
+        meritrank_data:        new_graph_instance,
+        zero_opinion:          Vec::new(),
+        cached_scores:         LruCache::new(self.settings.scores_cache_size),
+        cached_walks:          LruCache::new(self.settings.walks_cache_size),
         cached_score_clusters: Vec::new(),
-      });
+      },
+    );
 
     // Return the requested subgraph
     self.subgraphs.get_mut(&context.to_string()).unwrap()
