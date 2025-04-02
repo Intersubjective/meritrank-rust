@@ -200,6 +200,10 @@ impl AugMultiGraph {
     // Create the zero context if it doesn't exist
     if !self.subgraphs.contains_key(&"".to_string()) {
       self.create_zero_context();
+      if context == "" {
+        // Handle the case where the first call to `subgraph_from_context` is for the zero context
+        return self.subgraphs.get_mut(context).unwrap();
+      }
     }
 
     // We must first create the new graph entry, and then move it to the subgraph
