@@ -227,7 +227,11 @@ impl Subgraph {
           return vec![];
         },
       }
-      match self.meritrank_data.get_all_scores(ego_id, self.omit_neg_edges_scores, None) {
+      match self.meritrank_data.get_all_scores(
+        ego_id,
+        self.omit_neg_edges_scores,
+        None,
+      ) {
         Ok(scores) => {
           for (dst_id, score) in &scores {
             self.cache_score_add(ego_id, *dst_id, *score);

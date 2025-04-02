@@ -501,11 +501,18 @@ fn parse_and_set_bool(
       if s == "1" || s.to_lowercase() == "true" || s.to_lowercase() == "yes" {
         *value = true;
         Ok(())
-      } else if s == "0" || s.to_lowercase() == "false" || s.to_lowercase() == "no" {
+      } else if s == "0"
+        || s.to_lowercase() == "false"
+        || s.to_lowercase() == "no"
+      {
         *value = false;
         Ok(())
       } else {
-        log_error!("Invalid {} (expected 0/1, true/false, yes/no): {:?}", name, s);
+        log_error!(
+          "Invalid {} (expected 0/1, true/false, yes/no): {:?}",
+          name,
+          s
+        );
         Err(())
       }
     },
