@@ -42,8 +42,8 @@ mod tests {
     rank_ref.set_edge(8,1, 1.0);
     rank.set_edge(8,1, 1.0);
     rank_ref.calculate(0, walk_count).unwrap();
-    println! ("{:?}", rank_ref.get_ranks(0, None));
-    println! ("{:?}", rank.get_ranks(0, None));
+    println! ("{:?}", rank_ref.get_all_scores(0, false, None));
+    println! ("{:?}", rank.get_all_scores(0, false, None));
     for n in 1..8
     {
       let ref_score = rank_ref.get_node_score(0, n).unwrap() as f64;
@@ -73,7 +73,7 @@ mod tests {
     rank.set_edge(8,1, 1.0);
     let cloned = rank.clone();
     rank_ref.calculate(0, walk_count).unwrap();
-    println! ("{:?}", cloned.get_ranks(0, None));
+    println! ("{:?}", cloned.get_all_scores(0, false, None));
     for n in 1..8
     {
       let ref_score = rank_ref.get_node_score(0, n).unwrap() as f64;
@@ -95,6 +95,28 @@ mod tests {
     rank.set_edge(0, 2, 0.0001);
     rank.set_edge(1, 0, 1.0);
     rank.calculate(0, walk_count).unwrap();
+  }
+
+  #[test]
+  fn test_filter_negative_edges() {
+    // Test the filtering out scores for nodes that have direct negative edges from the ego
+    let walk_count = 1000;
+    let mut rank = MeritRank::new(Graph::new());
+    rank.get_new_nodeid();
+    rank.get_new_nodeid();
+    rank.get_new_nodeid();
+
+    rank.set_edge(0, 1, 1.0);
+    rank.set_edge(1, 2, 1.0);
+    rank.set_edge(0, 2, -1.0);
+    rank.calculate(0, walk_count).unwrap();
+    let result = rank.get_all_scores(0, true, None).unwrap();
+    assert_eq!(result.len(), 2, "Result should contain exactly 2 nodes (0 and 1)");
+    assert_eq!(result[0].0, 0, "First node in result should be 0");
+    assert_eq!(result[1].0, 1, "Second node in result should be 1");
+
+    let result = rank.get_all_scores(0, false, None).unwrap();
+    assert_eq!(result.len(), 3, "Result should contain exactly 3 nodes");
   }
 
   #[ignore]
@@ -132,8 +154,8 @@ mod tests {
     let score = rank.get_node_score(0, 2).unwrap() as f64;
     assert_approx_eq!(ref_score, score , 0.2);
 
-    println! ("{:?}", rank.get_ranks(0, None));
-    println! ("{:?}", ref_rank.get_ranks(0, None));
+    println! ("{:?}", rank.get_all_scores(0, false, None));
+    println! ("{:?}", ref_rank.get_all_scores(0, false, None));
     //rank.print_walks();
   }
 
@@ -171,8 +193,8 @@ mod tests {
     let score = rank.get_node_score(0, 2).unwrap() as f64;
     assert_approx_eq!(ref_score, score , 0.1);
 
-    println! ("{:?}", rank.get_ranks(0, None));
-    println! ("{:?}", ref_rank.get_ranks(0, None));
+    println! ("{:?}", rank.get_all_scores(0, false, None));
+    println! ("{:?}", ref_rank.get_all_scores(0, false, None));
     //rank.print_walks();
   }
 
@@ -186,7 +208,7 @@ mod tests {
     rank.set_edge(0, 1, 1.0);
     rank.set_edge(0, 2, -1.0);
     rank.calculate(0, walk_count).unwrap();
-    let result = rank.get_ranks(0, None).unwrap();
+    let result = rank.get_all_scores(0, false, None).unwrap();
 
     assert_eq!(result.len(), 3);
     assert!(result[2].1<0.0);

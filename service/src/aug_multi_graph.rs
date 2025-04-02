@@ -31,6 +31,7 @@ pub struct AugMultiGraphSettings {
   pub filter_num_hashes:      usize,
   pub filter_max_size:        usize,
   pub filter_min_size:        usize,
+  pub omit_neg_edges_scores:  bool,
 }
 
 #[derive(Clone)]
@@ -57,6 +58,7 @@ impl Default for AugMultiGraphSettings {
       filter_max_size:        DEFAULT_FILTER_MAX_SIZE,
       filter_min_size:        DEFAULT_FILTER_MIN_SIZE,
       top_nodes_limit:        DEFAULT_TOP_NODES_LIMIT,
+      omit_neg_edges_scores:  DEFAULT_OMIT_NEG_EDGES_SCORES,
     }
   }
 }
@@ -148,6 +150,7 @@ impl AugMultiGraph {
         cached_scores:         LruCache::new(self.settings.scores_cache_size),
         cached_walks:          LruCache::new(self.settings.walks_cache_size),
         cached_score_clusters: Vec::new(),
+        omit_neg_edges_scores: self.settings.omit_neg_edges_scores,
       });
 
     // Add nodes to the zero context if needed
@@ -218,6 +221,7 @@ impl AugMultiGraph {
         cached_scores:         LruCache::new(self.settings.scores_cache_size),
         cached_walks:          LruCache::new(self.settings.walks_cache_size),
         cached_score_clusters: Vec::new(),
+        omit_neg_edges_scores: self.settings.omit_neg_edges_scores,
       },
     );
 

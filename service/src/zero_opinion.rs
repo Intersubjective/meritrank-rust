@@ -108,6 +108,7 @@ impl Subgraph {
     top_nodes_limit: usize,
     num_walks: usize,
     zero_opinion_factor: f64,
+    omit_negative_edges: bool,
   ) -> Vec<(NodeId, f64)> {
     log_trace!();
 
@@ -183,6 +184,7 @@ impl AugMultiGraph {
         self.settings.top_nodes_limit,
         self.settings.zero_opinion_num_walks,
         self.settings.zero_opinion_factor,
+        false,
       );
 
       //  Drop all walks and make sure to empty caches.

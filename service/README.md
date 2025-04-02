@@ -14,3 +14,4 @@ NNG server for [PSQL Connector](/psql-connector/README.md) with embedded Rust [M
 - `MERITRANK_FILTER_NUM_HASHES` - default `10`
 - `MERITRANK_FILTER_MIN_SIZE` - default `32`
 - `MERITRANK_FILTER_MAX_SIZE` - default `8192`
+- `MERITRANK_OMIT_NEG_EDGES_SCORES` - default `false`

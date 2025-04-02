@@ -13,6 +13,7 @@ pub struct Subgraph {
   pub cached_scores:         LruCache<(NodeId, NodeId), Weight>,
   pub cached_walks:          LruCache<NodeId, ()>,
   pub cached_score_clusters: Vec<ScoreClustersByKind>,
+  pub omit_neg_edges_scores: bool,
 }
 
 impl Subgraph {
@@ -204,7 +205,7 @@ impl Subgraph {
 
     if self.cache_walk_get(ego_id) {
       let data = &self.meritrank_data;
-      match data.get_ranks(ego_id, None) {
+      match data.get_all_scores(ego_id, self.omit_neg_edges_scores, None) {
         Ok(scores) => {
           for (dst_id, score) in &scores {
             self.cache_score_add(ego_id, *dst_id, *score);
@@ -226,7 +227,11 @@ impl Subgraph {
           return vec![];
         },
       }
-      match self.meritrank_data.get_ranks(ego_id, None) {
+      match self.meritrank_data.get_all_scores(
+        ego_id,
+        self.omit_neg_edges_scores,
+        None,
+      ) {
         Ok(scores) => {
           for (dst_id, score) in &scores {
             self.cache_score_add(ego_id, *dst_id, *score);

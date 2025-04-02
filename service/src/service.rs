@@ -491,6 +491,35 @@ where
   Ok(())
 }
 
+// Add a new function to parse boolean environment variables
+fn parse_and_set_bool(
+  value: &mut bool,
+  name: &str,
+) -> Result<(), ()> {
+  match var(name) {
+    Ok(s) => {
+      if s == "1" || s.to_lowercase() == "true" || s.to_lowercase() == "yes" {
+        *value = true;
+        Ok(())
+      } else if s == "0"
+        || s.to_lowercase() == "false"
+        || s.to_lowercase() == "no"
+      {
+        *value = false;
+        Ok(())
+      } else {
+        log_error!(
+          "Invalid {} (expected 0/1, true/false, yes/no): {:?}",
+          name,
+          s
+        );
+        Err(())
+      }
+    },
+    _ => Ok(()),
+  }
+}
+
 pub fn parse_settings() -> Result<AugMultiGraphSettings, ()> {
   let mut settings = AugMultiGraphSettings::default();
 
@@ -568,6 +597,10 @@ pub fn parse_settings() -> Result<AugMultiGraphSettings, ()> {
     "MERITRANK_FILTER_MIN_SIZE",
     1,
     1024 * 1024 * 10,
+  )?;
+  parse_and_set_bool(
+    &mut settings.omit_neg_edges_scores,
+    "MERITRANK_OMIT_NEG_EDGES_SCORES",
   )?;
 
   Ok(settings)
