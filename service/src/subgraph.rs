@@ -203,21 +203,7 @@ impl Subgraph {
   ) -> Vec<(NodeId, Weight)> {
     log_trace!("{} {} {}", ego_id, num_walks, zero_opinion_factor);
 
-    if self.cache_walk_get(ego_id) {
-      let data = &self.meritrank_data;
-      match data.get_all_scores(ego_id, self.omit_neg_edges_scores, None) {
-        Ok(scores) => {
-          for (dst_id, score) in &scores {
-            self.cache_score_add(ego_id, *dst_id, *score);
-          }
-          self.with_zero_opinions(scores, zero_opinion_factor)
-        },
-        Err(e) => {
-          log_error!("{}", e);
-          vec![]
-        },
-      }
-    } else {
+    if !self.cache_walk_get(ego_id) {
       match self.meritrank_data.calculate(ego_id, num_walks) {
         Ok(()) => {
           self.cache_walk_add(ego_id);
@@ -227,22 +213,35 @@ impl Subgraph {
           return vec![];
         },
       }
-      match self.meritrank_data.get_all_scores(
-        ego_id,
-        self.omit_neg_edges_scores,
-        None,
-      ) {
-        Ok(scores) => {
-          for (dst_id, score) in &scores {
-            self.cache_score_add(ego_id, *dst_id, *score);
-          }
-          self.with_zero_opinions(scores, zero_opinion_factor)
-        },
-        Err(e) => {
-          log_error!("{}", e);
-          vec![]
-        },
-      }
+    }
+
+    match self.meritrank_data.get_all_scores(ego_id, None) {
+      Ok(scores) => {
+        for (dst_id, score) in &scores {
+          self.cache_score_add(ego_id, *dst_id, *score);
+        }
+        let scores = self.with_zero_opinions(scores, zero_opinion_factor);
+
+        // Filter out nodes that have a direct negative edge from ego
+        if self.omit_neg_edges_scores {
+          scores
+            .into_iter()
+            .filter(|(dst_id, _)| {
+              // Check if there's a direct edge and if it's negative
+              match self.meritrank_data.graph.edge_weight(ego_id, *dst_id) {
+                Ok(Some(weight)) => weight > 0.0, // Keep only positive edges
+                _ => true, // Keep if no direct edge exists
+              }
+            })
+            .collect()
+        } else {
+          scores
+        }
+      },
+      Err(e) => {
+        log_error!("{}", e);
+        vec![]
+      },
     }
   }
 
