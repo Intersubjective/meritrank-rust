@@ -1912,6 +1912,10 @@ fn omit_neg_edges_scores_setting() {
     ("U3".to_string(), "U2".to_string(), 1.0),  // Positive edge from U3 to U2
   ];
 
+  // Make sure that U2 will be removed even in case there is zero opinion for it
+  graph_include.write_set_zero_opinion("", "U2", 10.0);
+  graph_omit.write_set_zero_opinion("", "U2", 10.0);
+
   for (src, dst, weight) in edges {
     graph_omit.write_put_edge("", &src, &dst, weight, -1);
     graph_include.write_put_edge("", &src, &dst, weight, -1);

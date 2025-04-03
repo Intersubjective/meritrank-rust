@@ -90,7 +90,6 @@ impl MeritRank {
   pub fn get_all_scores(
     &self,
     ego: NodeId,
-    omit_negative_edges: bool,
     limit: Option<usize>,
   ) -> Result<Vec<(NodeId, Weight)>, MeritRankError> {
     let pos_counter = self
@@ -107,16 +106,6 @@ impl MeritRank {
 
     let mut peer_scores: Vec<_> = combined_counter
       .into_iter()
-      .filter(|&peer| {
-        if omit_negative_edges {
-          match self.graph.edge_weight(ego, *peer) {
-            Ok(Some(weight)) => weight > 0.0, // Keep only positive edges
-            _ => true, // Keep if no direct edge exists
-          }
-        } else {
-          true // Keep all nodes if filtering is disabled
-        }
-      })
       .map(|&peer| self.get_node_score(ego, peer).map(|score| (peer, score)))
       .collect::<Result<_, _>>()?;
 
