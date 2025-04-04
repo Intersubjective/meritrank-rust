@@ -1236,6 +1236,34 @@ fn graph_no_direct_connectivity() {
 }
 
 #[test]
+fn graph_force_connectivity() {
+  // Test workaround option to force add edge to unconnected focus
+  let mut graph= AugMultiGraph::new(AugMultiGraphSettings {
+    num_walks: 100,
+    zero_opinion_num_walks: 100,
+    force_read_graph_conn:true,
+    ..AugMultiGraphSettings::default()
+  });
+
+  graph.write_put_edge("", "U1", "B1", 1.0, -1);
+  graph.write_put_edge("", "U2", "U3", 1.0, -1);
+  graph.write_put_edge("", "U2", "B2", 1.0, -1);
+
+  let res: Vec<_> = graph.read_graph("", "U1", "U2", false, 0, 10000);
+
+  for x in res.iter() {
+    println!("{} -> {}: {}", x.0, x.1, x.2);
+  }
+
+  assert_eq!(res.len(), 2);
+  // Make sure
+  assert_eq!(res[0].0, "U1");
+  assert_eq!(res[0].1, "U2");
+  assert_eq!(res[1].0, "U2");
+  assert_eq!(res[1].1, "U3");
+}
+
+#[test]
 fn new_edges_fetch() {
   let mut graph = default_graph();
 

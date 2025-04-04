@@ -602,6 +602,10 @@ pub fn parse_settings() -> Result<AugMultiGraphSettings, ()> {
     &mut settings.omit_neg_edges_scores,
     "MERITRANK_OMIT_NEG_EDGES_SCORES",
   )?;
+  parse_and_set_bool(
+    &mut settings.force_read_graph_conn,
+    "MERITRANK_FORCE_READ_GRAPH_CONN",
+  )?;
 
   Ok(settings)
 }

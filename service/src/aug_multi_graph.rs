@@ -32,6 +32,7 @@ pub struct AugMultiGraphSettings {
   pub filter_max_size:        usize,
   pub filter_min_size:        usize,
   pub omit_neg_edges_scores:  bool,
+  pub force_read_graph_conn:  bool,
 }
 
 #[derive(Clone)]
@@ -59,6 +60,7 @@ impl Default for AugMultiGraphSettings {
       filter_min_size:        DEFAULT_FILTER_MIN_SIZE,
       top_nodes_limit:        DEFAULT_TOP_NODES_LIMIT,
       omit_neg_edges_scores:  DEFAULT_OMIT_NEG_EDGES_SCORES,
+      force_read_graph_conn:  DEFAULT_FORCE_READ_GRAPH_CONN,
     }
   }
 }

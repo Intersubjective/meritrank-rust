@@ -510,6 +510,8 @@ impl AugMultiGraph {
     let ego_id = self.find_or_add_node_by_name(ego);
     let focus_id = self.find_or_add_node_by_name(focus);
 
+    let force_read_graph_conn = self.settings.force_read_graph_conn;
+
     // Initialize data structures for building the graph
     // HashMap to map between NodeId and NodeIndex in the petgraph
     let mut indices = HashMap::<NodeId, NodeIndex>::new();
@@ -550,6 +552,15 @@ impl AugMultiGraph {
         &mut ids,
         &mut im_graph,
       );
+    }
+    if force_read_graph_conn && !indices.contains_key(&ego_id) {
+      add_edge_if_valid(
+        &mut im_graph,
+        &mut indices,
+        &mut ids,
+        ego_id,
+        focus_id,
+        1.0);
     }
 
     // Process each neighbor of the focus node
