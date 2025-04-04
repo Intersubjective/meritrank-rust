@@ -20,3 +20,4 @@ pub const DEFAULT_FILTER_NUM_HASHES: usize = 10;
 pub const DEFAULT_FILTER_MAX_SIZE: usize = 8192;
 pub const DEFAULT_FILTER_MIN_SIZE: usize = 32;
 pub const DEFAULT_OMIT_NEG_EDGES_SCORES: bool = false;
+pub const DEFAULT_FORCE_READ_GRAPH_CONN: bool = false;

@@ -510,6 +510,8 @@ impl AugMultiGraph {
     let ego_id = self.find_or_add_node_by_name(ego);
     let focus_id = self.find_or_add_node_by_name(focus);
 
+    let force_read_graph_conn = self.settings.force_read_graph_conn;
+
     // Initialize data structures for building the graph
     // HashMap to map between NodeId and NodeIndex in the petgraph
     let mut indices = HashMap::<NodeId, NodeIndex>::new();
@@ -550,6 +552,15 @@ impl AugMultiGraph {
         &mut ids,
         &mut im_graph,
       );
+    }
+    if force_read_graph_conn && !indices.contains_key(&ego_id) {
+      add_edge_if_valid(
+        &mut im_graph,
+        &mut indices,
+        &mut ids,
+        ego_id,
+        focus_id,
+        1.0);
     }
 
     // Process each neighbor of the focus node
@@ -1271,23 +1282,27 @@ fn add_shortest_path_to_graph(
     add_edge_if_valid(im_graph, indices, ids, src, dst, weight);
   }
 }
-
 fn add_edge_if_valid(
   im_graph: &mut DiGraph<NodeId, Weight>,
   indices: &mut HashMap<NodeId, NodeIndex>,
   ids: &mut HashMap<NodeIndex, NodeId>,
-  focus_id: NodeId,
+  src_id: NodeId,
   dst_id: NodeId,
   focus_dst_weight: Weight,
 ) {
   // Add the node to the graph if it doesn't exist yet
+  if !indices.contains_key(&src_id) {
+    let index = im_graph.add_node(src_id);
+    indices.insert(src_id, index);
+    ids.insert(index, src_id);
+  }
   if !indices.contains_key(&dst_id) {
-    let index = im_graph.add_node(focus_id);
+    let index = im_graph.add_node(dst_id);
     indices.insert(dst_id, index);
     ids.insert(index, dst_id);
   }
   if let (Some(focus_idx), Some(dst_idx)) =
-    (indices.get(&focus_id), indices.get(&dst_id))
+    (indices.get(&src_id), indices.get(&dst_id))
   {
     im_graph.add_edge(*focus_idx, *dst_idx, focus_dst_weight);
   } else {

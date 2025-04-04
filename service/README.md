@@ -1,7 +1,10 @@
 # MeritRank service (NNG server)
-NNG server for [PSQL Connector](/psql-connector/README.md) with embedded Rust [MeritRank engine](/core/README.md).
+
+NNG server for [PSQL Connector](/psql-connector/README.md) with embedded
+Rust [MeritRank engine](/core/README.md).
 
 ## Env variables
+
 - `MERITRANK_SERVICE_URL` - default `"tcp://127.0.0.1:10234"`
 - `MERITRANK_SERVICE_THREADS` - default `1`
 - `MERITRANK_NUM_WALKS` - default `10000`
@@ -15,3 +18,6 @@ NNG server for [PSQL Connector](/psql-connector/README.md) with embedded Rust [M
 - `MERITRANK_FILTER_MIN_SIZE` - default `32`
 - `MERITRANK_FILTER_MAX_SIZE` - default `8192`
 - `MERITRANK_OMIT_NEG_EDGES_SCORES` - default `false`
+- `MERITRANK_FORCE_READ_GRAPH_CONN` - default `false` - forces showing a virtual
+  edge on `read_graph` command if there is no real path from ego to focus.
+  Useful for demo purposes.
