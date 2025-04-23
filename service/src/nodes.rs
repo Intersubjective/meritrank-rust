@@ -101,7 +101,7 @@ pub fn kind_from_name(name: &str) -> NodeKind {
     Some('U') => NodeKind::User,
     Some('B') => NodeKind::Beacon,
     Some('C') => NodeKind::Comment,
-    Some('O') => NodeKind::Comment,
+    Some('O') => NodeKind::Opinion,
     _ => NodeKind::Unknown,
   }
 }
