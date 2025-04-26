@@ -418,6 +418,8 @@ impl AugMultiGraph {
         };
       },
       _ => {
+        // FIXME: Optimize inbound neighbors by tracking inbound edges
+        // ATM this is extremely inefficient
         for src in 0..self.node_infos.len() {
           match self
             .subgraph_from_context(context)
@@ -441,22 +443,9 @@ impl AugMultiGraph {
         }
       },
     };
-
-    let num_walks = self.settings.num_walks;
-    let k = self.settings.zero_opinion_factor;
-
-    for i in 0..v.len() {
-      let dst = v[i].0;
-      let score = self
-        .subgraph_from_context(context)
-        .fetch_raw_score(ego, dst, num_walks, k);
-      let kind = node_kind_from_id(&self.node_infos, dst);
-      let cluster = self.apply_score_clustering(context, ego, score, kind).1;
-
-      v[i].1 = score;
-      v[i].2 = cluster;
-    }
-
+    v.iter_mut().for_each(|(dst, score, cluster)| {
+      (*score, *cluster) = self.fetch_score(context, ego, *dst);
+    });
     v
   }
 
