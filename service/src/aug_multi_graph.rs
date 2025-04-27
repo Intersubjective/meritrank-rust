@@ -393,65 +393,24 @@ impl AugMultiGraph {
     dir: NeighborDirection,
   ) -> Vec<(NodeId, Weight, Cluster)> {
     log_trace!("{:?} {} {} {:?}", context, ego, focus, dir);
-
-    let mut v = vec![];
-
-    let subgraph = self.subgraph_from_context(context)
-            .meritrank_data
-            .graph
-            .get_node_data(focus);
-    match dir {
-      NeighborDirection::Outbound => {
-        match self
-          .subgraph_from_context(context)
-          .meritrank_data
-          .graph
-          .get_node_data(focus)
-        {
-          Some(data) => {
-            v.reserve_exact(data.pos_edges.len() + data.neg_edges.len());
-
-            for x in &data.pos_edges {
-              v.push((*x.0, 0.0, 0));
-            }
-
-            for x in &data.neg_edges {
-              v.push((*x.0, 0.0, 0));
-            }
-          },
-          _ => {},
+   self.subgraph_from_context(context)
+    .meritrank_data
+    .graph
+    .get_node_data(focus)
+    .map(|node_data| {
+        let edges: Vec<_> = match dir {
+            NeighborDirection::Outbound => node_data.get_outgoing_edges().collect(),
+            NeighborDirection::Inbound => node_data.get_inbound_edges().collect(),
+            NeighborDirection::All => node_data.get_outgoing_edges().chain(node_data.get_inbound_edges()).collect(),
         };
-      },
-      _ => {
-        // FIXME: Optimize inbound neighbors by tracking inbound edges
-        // ATM this is extremely inefficient
-        for src in 0..self.node_infos.len() {
-          match self
-            .subgraph_from_context(context)
-            .meritrank_data
-            .graph
-            .get_node_data(src)
-          {
-            Some(data) => {
-              for (dst, _) in data.get_outgoing_edges() {
-                if dir == NeighborDirection::All && src == focus{
-                  //  Outbound: focus -> dst
-                  v.push((dst, 0.0, 0));
-                } else if dst == focus{
-                  //  Inbound: src -> focus
-                  v.push((src, 0.0, 0));
-                }
-              }
-            },
-            _ => {},
-          };
-        }
-      },
-    };
-    v.iter_mut().for_each(|(dst, score, cluster)| {
-      (*score, *cluster) = self.fetch_score(context, ego, *dst);
-    });
-    v
+        edges.into_iter()
+    })
+    .unwrap_or_default()
+    .map(|(dst, _)| {
+        let (score, cluster) = self.fetch_score(context, ego, dst);
+        (dst, score, cluster)
+    })
+    .collect::<Vec<_>>() 
   }
 
   pub fn fetch_score(
