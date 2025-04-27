@@ -389,19 +389,24 @@ impl AugMultiGraph {
     &mut self,
     context: &str,
     ego: NodeId,
+    focus: NodeId,
     dir: NeighborDirection,
   ) -> Vec<(NodeId, Weight, Cluster)> {
-    log_trace!("{:?} {} {:?}", context, ego, dir);
+    log_trace!("{:?} {} {} {:?}", context, ego, focus, dir);
 
     let mut v = vec![];
 
+    let subgraph = self.subgraph_from_context(context)
+            .meritrank_data
+            .graph
+            .get_node_data(focus);
     match dir {
       NeighborDirection::Outbound => {
         match self
           .subgraph_from_context(context)
           .meritrank_data
           .graph
-          .get_node_data(ego)
+          .get_node_data(focus)
         {
           Some(data) => {
             v.reserve_exact(data.pos_edges.len() + data.neg_edges.len());
@@ -429,11 +434,11 @@ impl AugMultiGraph {
           {
             Some(data) => {
               for (dst, _) in data.get_outgoing_edges() {
-                if dir == NeighborDirection::All && src == ego {
-                  //  Outbound: ego -> dst
+                if dir == NeighborDirection::All && src == focus{
+                  //  Outbound: focus -> dst
                   v.push((dst, 0.0, 0));
-                } else if dst == ego {
-                  //  Inbound:  src -> ego
+                } else if dst == focus{
+                  //  Inbound: src -> focus
                   v.push((src, 0.0, 0));
                 }
               }

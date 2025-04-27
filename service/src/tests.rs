@@ -1718,6 +1718,54 @@ fn neighbors_outbound() {
 }
 
 #[test]
+fn neighbors_non_ego_score() {
+  let mut graph = default_graph();
+
+  graph.write_put_edge("", "U1", "U2", 1.0, -1);
+  graph.write_put_edge("", "U2", "U3", 1.0, -1);
+  graph.write_put_edge("", "U1", "U4", 1.0, -1);
+  graph.write_put_edge("", "U4", "U3", 1.0, -1);
+  graph.write_put_edge("", "U3", "U4", 1.0, -1);
+
+  
+  // U2 should have a score from ego (U1), despite the focus being U3 
+
+  let neighbors = graph.read_neighbors(
+    "",
+    "U1",
+    "U3",
+    NEIGHBORS_INBOUND,
+    "",
+    false,
+    100.0,
+    false,
+    -100.0,
+    false,
+    0,
+    100,
+  );
+
+  assert_eq!(neighbors.len(), 2);
+  assert_eq!(neighbors[0].0, "U1");
+  assert_eq!(neighbors[0].1, "U4");
+  assert!(neighbors[1].2> 0.0, "Rating of U2 is calculated from the standpoint of ego, so it must be greater than 0");
+  assert_eq!(neighbors.len(), 2);
+  assert_eq!(neighbors[1].0, "U1");
+  assert_eq!(neighbors[1].1, "U2");
+  assert!(neighbors[1].2 > 0.0);
+}
+
+  assert_eq!(neighbors.len(), 2);
+  assert_eq!(neighbors[0].0, "U1");
+  assert_eq!(neighbors[0].1, "U4");
+  assert!(neighbors[1].2> 0.0, "Rating of U2 is calculated from the standpoint of ego, so it must be greater than 0");
+  assert_eq!(neighbors.len(), 2);
+  assert_eq!(neighbors[1].0, "U1");
+  assert_eq!(neighbors[1].1, "U2");
+  assert!(neighbors[1].2 > 0.0);
+}
+
+#[test]
 fn regression_subgraph_from_context_perf() {
   let mut graph = AugMultiGraph::new(AugMultiGraphSettings {
     num_walks: 100,

@@ -284,7 +284,9 @@ impl AugMultiGraph {
     let ego_id = self.find_or_add_node_by_name(ego);
     let focus_id = self.find_or_add_node_by_name(focus);
 
-    let scores = self.fetch_neighbors(context, focus_id, dir);
+    let scores = self.fetch_neighbors(context, ego_id, focus_id, dir);
+    
+    
 
     return self.apply_filters_and_pagination(
       scores,
