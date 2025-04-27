@@ -98,6 +98,7 @@ impl AugMultiGraph {
     score_gte: bool,
     index: u32,
     count: u32,
+    prioritize_ego_owned_nodes: bool,
   ) -> Vec<(String, String, Weight, Weight, Cluster, Cluster)> {
     let mut im: Vec<(NodeId, Weight, Cluster)> = scores
       .into_iter()
@@ -137,6 +138,21 @@ impl AugMultiGraph {
       .collect();
 
     im.sort_by(|(_, a, _), (_, b, _)| b.abs().total_cmp(&a.abs()));
+    
+    if prioritize_ego_owned_nodes{
+      // Move scores with owners equal to ego to the beginning of the vector
+      let mut insert_index = 0;
+      for i in 0..im.len() {
+        if let Some(owner) = self.get_object_owner(context, im[i].0) {
+          if owner == ego_id {
+            im.swap(i, insert_index);
+            insert_index += 1;
+          }
+        }
+      }
+      
+    }
+
 
     let index = index as usize;
     let count = count as usize;
@@ -231,6 +247,7 @@ impl AugMultiGraph {
       score_gte,
       index,
       count,
+      false,
     );
   }
 
@@ -284,7 +301,7 @@ impl AugMultiGraph {
     let ego_id = self.find_or_add_node_by_name(ego);
     let focus_id = self.find_or_add_node_by_name(focus);
 
-    let scores = self.fetch_neighbors(context, focus_id, dir);
+    let scores = self.fetch_neighbors(context, ego_id, focus_id, dir);
 
     return self.apply_filters_and_pagination(
       scores,
@@ -299,6 +316,7 @@ impl AugMultiGraph {
       score_gte,
       index,
       count,
+      true
     );
   }
 

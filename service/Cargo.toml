@@ -1,6 +1,6 @@
 [package]
 name = "meritrank_service"
-version = "0.2.49"
+version = "0.2.50"
 edition = "2021"
 
 [features]

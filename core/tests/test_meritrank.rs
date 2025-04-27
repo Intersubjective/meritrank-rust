@@ -9,9 +9,10 @@ mod tests {
   use meritrank_core::graph::{NodeId, EdgeId};
   use meritrank_core::random_walk::RandomWalk;
   use meritrank_core::walk_storage::WalkStorage;
-  use meritrank_core::{MeritRank, Graph, assert_approx_eq};
+  use meritrank_core::{MeritRank, Graph, assert_approx_eq, Weight};
 
   use std::collections::HashMap;
+  use rand::Rng;
 
   // lets write test for get_personal_hits(&self) -> &HashMap<NodeId, Counter>
   #[test]
@@ -228,5 +229,82 @@ fn test_node_data_get_outgoing_edges() {
     ];
 
     assert_eq!(sorted_edges, expected_edges);
+}
+
+#[test]
+fn test_get_inbound_edges_not_affected_by_outbound_changes() {
+    let mut graph = Graph::new();
+    let mut rng = rand::thread_rng();
+
+    // Create 10 nodes
+    let nodes: Vec<NodeId> = (0..10).map(|_| graph.get_new_nodeid()).collect();
+
+    // Perform 50 random edge operations
+    for _ in 0..50 {
+        let from = nodes[rng.gen_range(0..nodes.len())];
+        let to = nodes[rng.gen_range(0..nodes.len())];
+        if from != to {
+            let weight = rng.gen_range(-5.0..5.0);
+            if weight != 0.0 {
+                graph.set_edge(from, to, weight).unwrap();
+            } else {
+                // If weight is 0, remove the edge if it exists
+                let _ = graph.remove_edge(from, to);
+            }
+        }
+    }
+
+    // Manually calculate inbound edges
+    let mut manual_inbound_edges: HashMap<NodeId, HashMap<NodeId, Weight>> = HashMap::new();
+    for &from in &nodes {
+        let node_data = graph.get_node_data(from).unwrap();
+        for (to, weight) in node_data.get_outgoing_edges() {
+            manual_inbound_edges
+                .entry(to)
+                .or_insert_with(HashMap::new)
+                .insert(from, weight);
+        }
+    }
+
+    // Compare manual calculation with get_inbound_edges results
+    for &node in &nodes {
+        let node_data = graph.get_node_data(node).unwrap();
+        let inbound_edges: HashMap<NodeId, Weight> = node_data.get_inbound_edges().collect();
+
+        let manual_edges = manual_inbound_edges.get(&node).cloned().unwrap_or_default();
+
+        assert_eq!(inbound_edges, manual_edges, "Mismatch for node {}", node);
+    }
+
+    // Perform additional random modifications
+    for _ in 0..20 {
+        let from = nodes[rng.gen_range(0..nodes.len())];
+        let to = nodes[rng.gen_range(0..nodes.len())];
+        if from != to {
+            let weight = rng.gen_range(-5.0..5.0);
+            if weight != 0.0 {
+                graph.set_edge(from, to, weight).unwrap();
+            } else {
+                let _ = graph.remove_edge(from, to);
+            }
+        }
+    }
+
+    // Re-check after modifications
+    for &node in &nodes {
+        let node_data = graph.get_node_data(node).unwrap();
+        let inbound_edges: HashMap<NodeId, Weight> = node_data.get_inbound_edges().collect();
+
+        let manual_edges: HashMap<NodeId, Weight> = nodes
+            .iter()
+            .filter_map(|&from| {
+                graph.edge_weight(from, node)
+                    .unwrap()
+                    .map(|weight| (from, weight))
+            })
+            .collect();
+
+        assert_eq!(inbound_edges, manual_edges, "Mismatch for node {} after modifications", node);
+    }
 }
 }
