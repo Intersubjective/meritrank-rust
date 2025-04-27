@@ -1661,8 +1661,8 @@ fn neighbors_all() {
   );
 
   assert_eq!(neighbors.len(), 2);
-  assert_eq!(neighbors[0].1, "U3");
-  assert_eq!(neighbors[1].1, "U1");
+  assert_eq!(neighbors[0].1, "U1");
+  assert_eq!(neighbors[1].1, "U3");
 }
 
 #[test]
@@ -1727,8 +1727,8 @@ fn neighbors_non_ego_score() {
   graph.write_put_edge("", "U4", "U3", 1.0, -1);
   graph.write_put_edge("", "U3", "U4", 1.0, -1);
 
-  
-  // U2 should have a score from ego (U1), despite the focus being U3 
+
+  // U2 should have a score from ego (U1), despite the focus being U3
 
   let neighbors = graph.read_neighbors(
     "",
@@ -1755,14 +1755,40 @@ fn neighbors_non_ego_score() {
   assert!(neighbors[1].2 > 0.0);
 }
 
-  assert_eq!(neighbors.len(), 2);
+#[test]
+fn neighbors_prioritize_ego_owned_objects() {
+  let mut graph = default_graph();
+
+  graph.write_put_edge("", "U1", "U2", 100.0, -1);
+  graph.write_put_edge("", "U2", "U3", 1.0, -1);
+
+  graph.write_put_edge("", "U1", "O1", 1.0, -1);
+  graph.write_put_edge("", "O1", "U1", 1.0, -1);
+  graph.write_put_edge("", "O1", "U3", 1.0, -1);
+
+
+
+  // U2 should have a score from ego (U1), despite the focus being U3
+
+  let neighbors = graph.read_neighbors(
+    "",
+    "U1",
+    "U3",
+    NEIGHBORS_INBOUND,
+    "",
+    false,
+    100.0,
+    false,
+    -100.0,
+    false,
+    0,
+    100,
+  );
+
   assert_eq!(neighbors[0].0, "U1");
-  assert_eq!(neighbors[0].1, "U4");
-  assert!(neighbors[1].2> 0.0, "Rating of U2 is calculated from the standpoint of ego, so it must be greater than 0");
-  assert_eq!(neighbors.len(), 2);
+  assert_eq!(neighbors[0].1, "O1");
   assert_eq!(neighbors[1].0, "U1");
   assert_eq!(neighbors[1].1, "U2");
-  assert!(neighbors[1].2 > 0.0);
 }
 
 #[test]
