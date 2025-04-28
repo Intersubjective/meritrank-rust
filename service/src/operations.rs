@@ -17,6 +17,7 @@ use crate::bloom_filter::*;
 use crate::constants::*;
 use crate::log::*;
 use crate::nodes::*;
+use crate::protocol::NEIGHBORS_INBOUND;
 use crate::subgraph::Subgraph;
 
 pub fn read_version() -> &'static str {
@@ -150,7 +151,6 @@ impl AugMultiGraph {
           }
         }
       }
-      
     }
 
 
@@ -281,6 +281,8 @@ impl AugMultiGraph {
       index,
       count
     );
+    // FIXME: this method should be renamed to "opinions",
+    // because it is very opinions-specific.
 
     let kind = match kind_from_prefix(kind_str) {
       Ok(x) => x,
@@ -301,7 +303,15 @@ impl AugMultiGraph {
     let ego_id = self.find_or_add_node_by_name(ego);
     let focus_id = self.find_or_add_node_by_name(focus);
 
-    let scores = self.fetch_neighbors(context, ego_id, focus_id, dir);
+    let mut scores = self.fetch_neighbors(context, ego_id, focus_id, dir);
+    
+    // Special case for selecting opinions about the focus
+    if kind == NodeKind::Opinion && direction == NEIGHBORS_INBOUND {
+      scores.retain(|&(node_id, _, _)| {
+        self.get_object_owner(context, node_id)
+          .map_or(true, |owner_id| owner_id != focus_id)
+      }); 
+    }
 
     return self.apply_filters_and_pagination(
       scores,

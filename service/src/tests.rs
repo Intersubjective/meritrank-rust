@@ -1792,6 +1792,53 @@ fn neighbors_prioritize_ego_owned_objects() {
 }
 
 #[test]
+fn neighbors_omit_opinions_from_self_to_focus() {
+  let mut graph = default_graph();
+
+  //         ┌─────────┐
+  //        ┌▼─┐      ┌┴─┐
+  //   ┌────►U2├──────►O2│
+  // ┌─┴┐   └──┘      └┬─┘           │
+  // │U1│              │
+  // └─▲┘   ┌──┐      ┌▼─┐
+  //   └────┤O3◄──────┤U3│
+  //        └─┬┘      └▲─┘
+  //          └────────┘
+
+  graph.write_put_edge("", "U1", "U2", 1.0, -1);
+
+  graph.write_put_edge("", "U2", "O2", 1.0, -1);
+  graph.write_put_edge("", "O2", "U2", 1.0, -1);
+  graph.write_put_edge("", "O2", "U3", 1.0, -1);
+
+  graph.write_put_edge("", "U3", "O3", 1.0, -1);
+  graph.write_put_edge("", "O3", "U3", 1.0, -1);
+  graph.write_put_edge("", "O3", "U1", 1.0, -1);
+
+  // U3 as focus should show only O2 leading to it, and not O3, because
+  // O3 is the child of U3, and not and opinion of someone else about U3
+
+  let neighbors = graph.read_neighbors(
+    "",
+    "U1",
+    "U3",
+    NEIGHBORS_INBOUND,
+    "O",
+    false,
+    100.0,
+    false,
+    -100.0,
+    false,
+    0,
+    100,
+  );
+
+  assert_eq!(neighbors[0].0, "U1");
+  assert_eq!(neighbors[0].1, "O2");
+  assert_eq!(neighbors.len(), 1);
+}
+
+#[test]
 fn regression_subgraph_from_context_perf() {
   let mut graph = AugMultiGraph::new(AugMultiGraphSettings {
     num_walks: 100,
