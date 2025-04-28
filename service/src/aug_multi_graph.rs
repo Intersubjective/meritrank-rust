@@ -393,24 +393,30 @@ impl AugMultiGraph {
     dir: NeighborDirection,
   ) -> Vec<(NodeId, Weight, Cluster)> {
     log_trace!("{:?} {} {} {:?}", context, ego, focus, dir);
-   self.subgraph_from_context(context)
-    .meritrank_data
-    .graph
-    .get_node_data(focus)
-    .map(|node_data| {
+    self
+      .subgraph_from_context(context)
+      .meritrank_data
+      .graph
+      .get_node_data(focus)
+      .map(|node_data| {
         let edges: Vec<_> = match dir {
-            NeighborDirection::Outbound => node_data.get_outgoing_edges().collect(),
-            NeighborDirection::Inbound => node_data.get_inbound_edges().collect(),
-            NeighborDirection::All => node_data.get_outgoing_edges().chain(node_data.get_inbound_edges()).collect(),
+          NeighborDirection::Outbound => {
+            node_data.get_outgoing_edges().collect()
+          },
+          NeighborDirection::Inbound => node_data.get_inbound_edges().collect(),
+          NeighborDirection::All => node_data
+            .get_outgoing_edges()
+            .chain(node_data.get_inbound_edges())
+            .collect(),
         };
         edges.into_iter()
-    })
-    .unwrap_or_default()
-    .map(|(dst, _)| {
+      })
+      .unwrap_or_default()
+      .map(|(dst, _)| {
         let (score, cluster) = self.fetch_score(context, ego, dst);
         (dst, score, cluster)
-    })
-    .collect::<Vec<_>>() 
+      })
+      .collect::<Vec<_>>()
   }
 
   pub fn fetch_score(
