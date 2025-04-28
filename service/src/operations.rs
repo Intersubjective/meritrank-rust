@@ -139,8 +139,8 @@ impl AugMultiGraph {
       .collect();
 
     im.sort_by(|(_, a, _), (_, b, _)| b.abs().total_cmp(&a.abs()));
-    
-    if prioritize_ego_owned_nodes{
+
+    if prioritize_ego_owned_nodes {
       // Move scores with owners equal to ego to the beginning of the vector
       let mut insert_index = 0;
       for i in 0..im.len() {
@@ -152,7 +152,6 @@ impl AugMultiGraph {
         }
       }
     }
-
 
     let index = index as usize;
     let count = count as usize;
@@ -304,13 +303,14 @@ impl AugMultiGraph {
     let focus_id = self.find_or_add_node_by_name(focus);
 
     let mut scores = self.fetch_neighbors(context, ego_id, focus_id, dir);
-    
+
     // Special case for selecting opinions about the focus
     if kind == NodeKind::Opinion && direction == NEIGHBORS_INBOUND {
       scores.retain(|&(node_id, _, _)| {
-        self.get_object_owner(context, node_id)
+        self
+          .get_object_owner(context, node_id)
           .map_or(true, |owner_id| owner_id != focus_id)
-      }); 
+      });
     }
 
     return self.apply_filters_and_pagination(
@@ -326,7 +326,7 @@ impl AugMultiGraph {
       score_gte,
       index,
       count,
-      true
+      true,
     );
   }
 
@@ -588,7 +588,8 @@ impl AugMultiGraph {
         &mut ids,
         ego_id,
         focus_id,
-        1.0);
+        1.0,
+      );
     }
 
     // Process each neighbor of the focus node

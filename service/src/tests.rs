@@ -1238,10 +1238,10 @@ fn graph_no_direct_connectivity() {
 #[test]
 fn graph_force_connectivity() {
   // Test workaround option to force add edge to unconnected focus
-  let mut graph= AugMultiGraph::new(AugMultiGraphSettings {
+  let mut graph = AugMultiGraph::new(AugMultiGraphSettings {
     num_walks: 100,
     zero_opinion_num_walks: 100,
-    force_read_graph_conn:true,
+    force_read_graph_conn: true,
     ..AugMultiGraphSettings::default()
   });
 
@@ -1727,7 +1727,6 @@ fn neighbors_non_ego_score() {
   graph.write_put_edge("", "U4", "U3", 1.0, -1);
   graph.write_put_edge("", "U3", "U4", 1.0, -1);
 
-
   // U2 should have a score from ego (U1), despite the focus being U3
 
   let neighbors = graph.read_neighbors(
@@ -1765,8 +1764,6 @@ fn neighbors_prioritize_ego_owned_objects() {
   graph.write_put_edge("", "U1", "O1", 1.0, -1);
   graph.write_put_edge("", "O1", "U1", 1.0, -1);
   graph.write_put_edge("", "O1", "U3", 1.0, -1);
-
-
 
   // U2 should have a score from ego (U1), despite the focus being U3
 
