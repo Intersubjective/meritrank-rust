@@ -31,7 +31,7 @@ pub const NEIGHBORS_ALL: i64 = 0;
 pub const NEIGHBORS_OUTBOUND: i64 = 1;
 pub const NEIGHBORS_INBOUND: i64 = 2;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Command {
   pub id:       String,
   pub context:  String,

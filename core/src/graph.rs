@@ -15,45 +15,53 @@ pub type EdgeId = (NodeId, NodeId);
 
 #[derive(Debug, Clone, Default)]
 pub struct NodeData {
-    // Negative weights are stored as abs values, to simplify calculations
-    pub pos_edges: IntIndexMap<NodeId, Weight>,
-    pub neg_edges: IntIndexMap<NodeId, Weight>,
-    pub inbound_edges: IntIndexMap<NodeId, Weight>,  // Cache for inbound edges
+  // Negative weights are stored as abs values, to simplify calculations
+  pub pos_edges:     IntIndexMap<NodeId, Weight>,
+  pub neg_edges:     IntIndexMap<NodeId, Weight>,
+  pub inbound_edges: IntIndexMap<NodeId, Weight>, // Cache for inbound edges
 
-    // The sum of positive edges is often used for normalization,
-    // so it is efficient to cache it.
-    pub pos_sum: Weight,
-    pub neg_sum: Weight,
-    abs_distr_cache: Option<WeightedIndex<Weight>>,
-    pos_distr_cache: Option<WeightedIndex<Weight>>,
+  // The sum of positive edges is often used for normalization,
+  // so it is efficient to cache it.
+  pub pos_sum:     Weight,
+  pub neg_sum:     Weight,
+  abs_distr_cache: Option<WeightedIndex<Weight>>,
+  pos_distr_cache: Option<WeightedIndex<Weight>>,
 }
 
 impl NodeData {
+  pub fn get_outgoing_edges(
+    &self
+  ) -> impl Iterator<Item = (NodeId, Weight)> + '_ {
+    self
+      .pos_edges
+      .iter()
+      .map(|(&node_id, &weight)| (node_id, weight))
+      .chain(
+        self
+          .neg_edges
+          .iter()
+          .map(|(&node_id, &weight)| (node_id, -weight)),
+      )
+  }
 
-pub fn get_outgoing_edges(&self) -> impl Iterator<Item = (NodeId, Weight)> + '_ {
-    self.pos_edges
-        .iter()
-        .map(|(&node_id, &weight)| (node_id, weight))
-        .chain(
-            self.neg_edges
-                .iter()
-                .map(|(&node_id, &weight)| (node_id, -weight))
-        )
-}
-  
-// This method is not used in the MeritRank algorithm, as the algorithm does not
-// consider the inbound edges. It is added for the sake of convenience of
-// higher-level users of the library that may require access to the inbound edges.
-// TODO: make the caching of the inbound edges optional
-pub fn get_inbound_edges(&self) -> impl Iterator<Item = (NodeId, Weight)> + '_ {
-  self.inbound_edges.iter().map(|(&node_id, &weight)| (node_id, weight))
-}
+  // This method is not used in the MeritRank algorithm, as the algorithm does not
+  // consider the inbound edges. It is added for the sake of convenience of
+  // higher-level users of the library that may require access to the inbound edges.
+  // TODO: make the caching of the inbound edges optional
+  pub fn get_inbound_edges(
+    &self
+  ) -> impl Iterator<Item = (NodeId, Weight)> + '_ {
+    self
+      .inbound_edges
+      .iter()
+      .map(|(&node_id, &weight)| (node_id, weight))
+  }
 
-// Return a random neighbor and whether it's from positive or negative edges
-pub fn random_neighbor(
+  // Return a random neighbor and whether it's from positive or negative edges
+  pub fn random_neighbor(
     &mut self,
     positive_only: bool,
-) -> Option<(NodeId, bool)> {
+  ) -> Option<(NodeId, bool)> {
     if positive_only {
       if self.pos_edges.is_empty() {
         return None;
@@ -163,7 +171,10 @@ impl Graph {
       return Err(MeritRankError::NaNWeightEncountered);
     }
     if weight.is_infinite() {
-      error!("Trying to set infinite weight for edge from {} to {}", from, to);
+      error!(
+        "Trying to set infinite weight for edge from {} to {}",
+        from, to
+      );
       return Err(MeritRankError::InfWeightEncountered);
     }
 
@@ -214,12 +225,12 @@ impl Graph {
     to: NodeId,
   ) -> Result<Weight, MeritRankError> {
     // Remove from inbound edge cache of the target node
-    let dst_node= self
+    let dst_node = self
       .nodes
       .get_mut(from)
       .ok_or(MeritRankError::NodeNotFound)?;
-    dst_node.inbound_edges.remove(&from);
-    
+    dst_node.inbound_edges.swap_remove(&from);
+
     let node = self
       .nodes
       .get_mut(from)
@@ -229,7 +240,6 @@ impl Graph {
     // not having both pos and neg weights for an edge simultaneously.
     let pos_weight = node.pos_edges.swap_remove(&to);
     let neg_weight = node.neg_edges.swap_remove(&to);
-
 
     // Both pos and neg weights should never be present at the same time.
     assert!(!(pos_weight.is_some() && neg_weight.is_some()));
@@ -362,9 +372,10 @@ impl Graph {
     &self,
     node_id: NodeId,
   ) -> Result<impl Iterator<Item = (NodeId, Weight)> + '_, MeritRankError> {
-    self.nodes
-        .get(node_id)
-        .map(|node| node.get_inbound_edges())
-        .ok_or(MeritRankError::NodeNotFound)
+    self
+      .nodes
+      .get(node_id)
+      .map(|node| node.get_inbound_edges())
+      .ok_or(MeritRankError::NodeNotFound)
   }
 }
