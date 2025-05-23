@@ -5,9 +5,8 @@ edition = "2021"
 description = "MeritRank algorithm library"
 license = "MIT"
 
-[[test]]
-name = "test_dumps"
-path = "tests/test_dumps.rs"
+[features]
+expensive_tests = []
 
 [lib]
 name = "meritrank_core"
@@ -23,6 +22,7 @@ indexmap = "2.2.6"
 log = "0.4.22"
 
 [dev-dependencies]
+serde = { version = "1.0.210", features = ["derive"] }
 csv = "1.1.6"
 indexmap = "2.2.6"
-flate2 = "1.0.20"
+
