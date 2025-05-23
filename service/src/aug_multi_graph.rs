@@ -13,8 +13,7 @@ use crate::vsids::VSIDSManager;
 use lru::LruCache;
 use meritrank_core::{constants::EPSILON, Graph, MeritRank, NodeId};
 use std::{
-  collections::hash_map::*, collections::HashMap, string::ToString,
-  sync::atomic::Ordering, time::Instant,
+  collections::HashMap, string::ToString, sync::atomic::Ordering, time::Instant,
 };
 
 pub type Cluster = i32;
