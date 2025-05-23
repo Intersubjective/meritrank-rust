@@ -1,22 +1,24 @@
 #[allow(unused_imports)]
 #[cfg(test)]
 mod tests {
-  use std::collections::HashMap;
   use super::*;
   use indexmap::{indexmap, IndexMap};
   use integer_hasher::IntMap;
-  use meritrank_core::graph::{NodeId, EdgeId};
+  use meritrank_core::graph::{EdgeId, NodeId};
   use meritrank_core::random_walk::RandomWalk;
-  use meritrank_core::walk_storage::{decide_skip_invalidation, decide_skip_invalidation_on_edge_addition, decide_skip_invalidation_on_edge_deletion, WalkStorage};
-
+  use meritrank_core::walk_storage::{
+    decide_skip_invalidation, decide_skip_invalidation_on_edge_addition,
+    decide_skip_invalidation_on_edge_deletion, WalkStorage,
+  };
+  use std::collections::HashMap;
 
   #[test]
   fn test_walk_storage_drop_walks_from_node() {
     let mut walk_storage = WalkStorage::new();
 
-    let walk1 = RandomWalk::from_nodes(vec![ 1, 2, 3, ]);
-    let walk2 = RandomWalk::from_nodes(vec![ 1, 4, 5, ]);
-    let walk3 = RandomWalk::from_nodes(vec![ 2, 3, 4, ]);
+    let walk1 = RandomWalk::from_nodes(vec![1, 2, 3]);
+    let walk2 = RandomWalk::from_nodes(vec![1, 4, 5]);
+    let walk3 = RandomWalk::from_nodes(vec![2, 3, 4]);
 
     let walkid1 = walk_storage.get_next_free_walkid();
     let walkid2 = walk_storage.get_next_free_walkid();
@@ -48,7 +50,7 @@ mod tests {
             walkid3 => 2,
         },
         IndexMap::default(),
-    ]
+      ]
     );
 
     assert_eq!(walk_storage_str, expected_visits_str);
@@ -61,5 +63,4 @@ mod tests {
     // Make sure that the walks are reused
     assert_eq!(walk_storage.get_next_free_walkid(), 0);
   }
-
 }
