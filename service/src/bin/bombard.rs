@@ -9,6 +9,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+use rand::Rng;
+
+
 use bincode::{config::standard, Decode, Encode, decode_from_slice, encode_to_vec};
 
 #[derive(Encode, Decode, Debug)]
@@ -54,10 +57,13 @@ fn main() {
 
     let mut handles = vec![];
     for _ in 0..THREADS {
+
         let counter = Arc::clone(&counter);
         handles.push(thread::spawn(move || {
             while Instant::now() - start < DURATION {
-                if send_request(42).is_ok() {
+                let mut rng = rand::thread_rng();
+                let random_number = rng.gen_range(0..=99);
+                if send_request(random_number).is_ok() {
                     counter.fetch_add(1, Ordering::Relaxed);
                 }
             }
