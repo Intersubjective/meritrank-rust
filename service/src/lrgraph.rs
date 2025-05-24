@@ -6,7 +6,7 @@ pub struct CounterAddOp(i32);
 
 impl CounterAddOp {
     pub fn new() -> CounterAddOp {
-        todo!()
+        CounterAddOp(0)
     }
 }
 

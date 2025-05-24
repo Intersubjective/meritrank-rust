@@ -22,6 +22,9 @@ lru = "0.12.5"
 tokio = { version = "1.45.0", features = ["full"] }
 bincode = "2.0.1"
 thiserror = "1.0"
+left-right = "0.11.5"
+rand = "0.8.5"
+parking_lot = "0.12.3"
 
 [dev-dependencies]
 flate2 = "1.1.1"

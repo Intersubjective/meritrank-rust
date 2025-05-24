@@ -21,7 +21,7 @@ struct Request {
 
 #[derive(Encode, Decode, Debug)]
 struct Response {
-    square: u64,
+    response: u64,
 }
 
 fn send_request(id: u64) -> Result<(), Box<dyn std::error::Error>> {
