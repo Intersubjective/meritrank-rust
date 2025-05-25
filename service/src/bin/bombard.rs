@@ -52,19 +52,26 @@ fn main() {
     const THREADS: usize = 16;
     const DURATION: Duration = Duration::from_secs(10);
 
-    let counter = Arc::new(AtomicUsize::new(0));
+    let counter_r = Arc::new(AtomicUsize::new(0));
+    let counter_w = Arc::new(AtomicUsize::new(0));
     let start = Instant::now();
 
     let mut handles = vec![];
     for _ in 0..THREADS {
 
-        let counter = Arc::clone(&counter);
+        let counter_r = Arc::clone(&counter_r);
+        let counter_w = Arc::clone(&counter_w);
         handles.push(thread::spawn(move || {
             while Instant::now() - start < DURATION {
+                //thread::sleep(Duration::from_millis(1));
                 let mut rng = rand::thread_rng();
                 let random_number = rng.gen_range(0..=99);
                 if send_request(random_number).is_ok() {
-                    counter.fetch_add(1, Ordering::Relaxed);
+                    if random_number <1{
+                        counter_w.fetch_add(1, Ordering::Relaxed);
+                    }else {
+                        counter_r.fetch_add(1, Ordering::Relaxed);
+                    }
                 }
             }
         }));
@@ -74,7 +81,10 @@ fn main() {
         h.join().unwrap();
     }
 
-    let total = counter.load(Ordering::Relaxed);
-    println!("Requests handled in {}s with {} threads: {}", DURATION.as_secs(), THREADS, total);
-    println!("Throughput: {:.2} req/s", total as f64 / DURATION.as_secs_f64());
+    let total_r = counter_r.load(Ordering::Relaxed);
+    let total_w = counter_w.load(Ordering::Relaxed);
+    println!("Read requests handled in {}s with {} threads: {}", DURATION.as_secs(), THREADS, total_r);
+    println!("Write requests handled in {}s with {} threads: {}", DURATION.as_secs(), THREADS, total_w);
+    println!("Throughput R: {:.2} req/s", total_r as f64 / DURATION.as_secs_f64());
+    println!("Throughput W: {:.2} req/s", total_w as f64 / DURATION.as_secs_f64());
 }
