@@ -1,3 +1,5 @@
+use std::thread;
+use std::time::Duration;
 use left_right::{Absorb, ReadHandle, WriteHandle};
 
 // First, define an operational log type.
@@ -6,7 +8,7 @@ pub struct CounterAddOp(i32);
 
 impl CounterAddOp {
     pub fn new() -> CounterAddOp {
-        CounterAddOp(0)
+        CounterAddOp(1)
     }
 }
 
@@ -19,15 +21,7 @@ impl Absorb<CounterAddOp> for i32 {
     // Essentially, this is where you define what applying
     // the oplog type to the datastructure does.
     fn absorb_first(&mut self, operation: &mut CounterAddOp, _: &Self) {
-        *self += operation.0;
-    }
-
-    // See the documentation of `Absorb::absorb_second`.
-    //
-    // This may or may not be the same as `absorb_first`,
-    // depending on whether or not you de-duplicate values
-    // across the two copies of your data structure.
-    fn absorb_second(&mut self, operation: CounterAddOp, _: &Self) {
+        thread::sleep(Duration::from_millis(100));
         *self += operation.0;
     }
 
