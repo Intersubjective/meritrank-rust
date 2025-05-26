@@ -75,7 +75,7 @@ mod astar_internal {
     Node_Id: Clone,
     Cost: Clone + Default,
   {
-    if open.len() != 0 {
+    if !open.is_empty() {
       open[0] = Node::<Node_Id, Cost> {
         id:             source.clone(),
         previous:       None,
@@ -85,9 +85,9 @@ mod astar_internal {
       };
     }
 
-    return State {
+    State {
       stage: Stage::SEARCH_NEAREST,
-      num_open: if open.len() != 0 { 1 } else { 0 },
+      num_open: if !open.is_empty() { 1 } else { 0 },
       num_closed: 0,
       source,
       destination,
@@ -95,7 +95,7 @@ mod astar_internal {
       closest_estimate: max_cost,
       node: None,
       neighbor_index: 0,
-    };
+    }
   }
 
   pub fn path<Node_Id, Cost>(
@@ -150,7 +150,7 @@ mod astar_internal {
       node_ids[num_nodes - 1 - i] = x;
     }
 
-    return num_nodes;
+    num_nodes
   }
 
   pub fn iteration<Node_Id, Cost>(
@@ -216,10 +216,10 @@ mod astar_internal {
         state.stage = Stage::ENUM_NEIGHBORS;
         state.neighbor_index = 0;
 
-        return Status::NEIGHBOR(Neighbor_Request {
+        Status::NEIGHBOR(Neighbor_Request {
           node:  nearest_node.id,
           index: state.neighbor_index,
-        });
+        })
       },
 
       Stage::ENUM_NEIGHBORS => match state.node.clone() {
@@ -336,10 +336,10 @@ mod astar_internal {
 
             state.neighbor_index += 1;
 
-            return Status::NEIGHBOR(Neighbor_Request {
+            Status::NEIGHBOR(Neighbor_Request {
               node:  nearest_node.id,
               index: state.neighbor_index,
-            });
+            })
           },
 
           None => {
@@ -357,11 +357,11 @@ mod astar_internal {
 
             state.stage = Stage::SEARCH_NEAREST;
 
-            return Status::PROGRESS;
+            Status::PROGRESS
           },
         },
       },
-    };
+    }
   }
 }
 
@@ -405,7 +405,7 @@ mod tests {
           }
         }
       }
-      return None;
+      None
     };
 
     let mut open: Vec<Node<i64, i64>> = vec![];
@@ -431,8 +431,7 @@ mod tests {
       };
     }
 
-    let mut v: Vec<i64> = vec![];
-    v.resize(state.num_closed, 0);
+    let mut v: Vec<i64> = vec![0; state.num_closed];
     let n = path(&closed, &state, &mut v);
     v.resize(n, 0);
 
@@ -474,7 +473,7 @@ mod tests {
           }
         }
       }
-      return None;
+      None
     };
 
     let mut open: Vec<Node<i64, i64>> = vec![Node::default()];
@@ -501,8 +500,7 @@ mod tests {
       };
     }
 
-    let mut v: Vec<i64> = vec![];
-    v.resize(state.num_closed, 0);
+    let mut v: Vec<i64> = vec![0; state.num_closed];
     let n = path(&closed, &state, &mut v);
     v.resize(n, 0);
 
@@ -544,7 +542,7 @@ mod tests {
           }
         }
       }
-      return None;
+      None
     };
 
     let mut open: Vec<Node<i64, i64>> = vec![];
@@ -570,8 +568,7 @@ mod tests {
       };
     }
 
-    let mut v: Vec<i64> = vec![];
-    v.resize(state.num_closed, 0);
+    let mut v: Vec<i64> = vec![0; state.num_closed];
     let n = path(&closed, &state, &mut v);
     v.resize(n, 0);
 
@@ -612,7 +609,7 @@ mod tests {
           }
         }
       }
-      return None;
+      None
     };
 
     let mut open: Vec<Node<i64, i64>> = vec![];
@@ -638,8 +635,7 @@ mod tests {
       };
     }
 
-    let mut v: Vec<i64> = vec![];
-    v.resize(state.num_closed, 0);
+    let mut v: Vec<i64> = vec![0; state.num_closed];
     let n = path(&closed, &state, &mut v);
     v.resize(n, 0);
 
@@ -679,7 +675,7 @@ mod tests {
           }
         }
       }
-      return None;
+      None
     };
 
     let mut open: Vec<Node<i64, i64>> = vec![];
@@ -705,8 +701,7 @@ mod tests {
       };
     }
 
-    let mut v: Vec<i64> = vec![];
-    v.resize(state.num_closed, 0);
+    let mut v: Vec<i64> = vec![0; state.num_closed];
     let n = path(&closed, &state, &mut v);
     v.resize(n, 0);
 

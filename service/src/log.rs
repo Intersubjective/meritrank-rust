@@ -63,7 +63,7 @@ macro_rules! log_func_name {
 macro_rules! log_error {
   ($($arg:expr),*) => {
     if ERROR.load(Ordering::Relaxed) {
-      log_with_time(format!("{}:{} ERROR in {}: {}", file!(), line!(), crate::log_func_name!(), format!($($arg),*)));
+      log_with_time(format!("{}:{} ERROR in {}: {}", file!(), line!(), $crate::log_func_name!(), format!($($arg),*)));
     }
   };
 }
@@ -99,13 +99,13 @@ macro_rules! log_verbose {
 macro_rules! log_trace {
   () => {
     if TRACE.load(Ordering::Relaxed) {
-      log_with_time(format!("{}:{} TRACE --- --- {}", file!(), line!(), crate::log_func_name!()));
+      log_with_time(format!("{}:{} TRACE --- --- {}", file!(), line!(), $crate::log_func_name!()));
     }
   };
 
   ($($arg:expr),+) => {
     if TRACE.load(Ordering::Relaxed) {
-      log_with_time(format!("{}:{} TRACE --- --- {}: {}", file!(), line!(), crate::log_func_name!(), format!($($arg),*)));
+      log_with_time(format!("{}:{} TRACE --- --- {}: {}", file!(), line!(), $crate::log_func_name!(), format!($($arg),*)));
     }
   };
 }
@@ -114,13 +114,13 @@ macro_rules! log_trace {
 macro_rules! log_command {
   () => {
     if INFO.load(Ordering::Relaxed) {
-      log_with_time(format!("CMD {}", crate::log_func_name!()));
+      log_with_time(format!("CMD {}", $crate::log_func_name!()));
     }
   };
 
   ($($arg:expr),+) => {
     if INFO.load(Ordering::Relaxed) {
-      log_with_time(format!("CMD {}: {}", crate::log_func_name!(), format!($($arg),*)));
+      log_with_time(format!("CMD {}: {}", $crate::log_func_name!(), format!($($arg),*)));
     }
   };
 }

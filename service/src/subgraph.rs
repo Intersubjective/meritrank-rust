@@ -189,10 +189,10 @@ impl Subgraph {
       res[*id].1 += (1.0 - k) * score;
     }
 
-    return res
+    res
       .into_iter()
       .filter(|(_id, score)| *score != 0.0)
-      .collect::<Vec<_>>();
+      .collect::<Vec<_>>()
   }
 
   pub fn fetch_all_raw_scores(
@@ -291,7 +291,7 @@ impl Subgraph {
     log_trace!("{} {:?} {} {}", ego, kind, num_walks, zero_opinion_factor);
 
     let scores: Vec<Weight> = node_ids
-      .into_iter()
+      .iter()
       .map(|dst| {
         self.fetch_raw_score(ego, *dst, num_walks, zero_opinion_factor)
       })

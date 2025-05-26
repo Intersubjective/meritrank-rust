@@ -108,7 +108,7 @@ impl AugMultiGraph {
     self.node_infos = other.node_infos.clone();
     self.node_ids = other.node_ids.clone();
     self.subgraphs = other.subgraphs.clone();
-    self.time_begin = other.time_begin.clone();
+    self.time_begin = other.time_begin;
     self.vsids = other.vsids.clone();
   }
 
@@ -204,7 +204,7 @@ impl AugMultiGraph {
     // Create the zero context if it doesn't exist
     if !self.subgraphs.contains_key(&"".to_string()) {
       self.create_zero_context();
-      if context == "" {
+      if context.is_empty() {
         // Handle the case where the first call to `subgraph_from_context` is for the zero context
         return self.subgraphs.get_mut(context).unwrap();
       }
@@ -243,7 +243,7 @@ impl AugMultiGraph {
 
     let node_count = self.node_count;
 
-    let time_secs = self.time_begin.elapsed().as_secs() as u64;
+    let time_secs = self.time_begin.elapsed().as_secs();
 
     let node_ids = nodes_by_kind(kind, &self.node_infos);
 
@@ -257,8 +257,7 @@ impl AugMultiGraph {
   pub fn update_all_nodes_score_clustering(&mut self) {
     log_trace!();
 
-    for context in self.subgraphs.keys().map(|s| s.clone()).collect::<Vec<_>>()
-    {
+    for context in self.subgraphs.keys().cloned().collect::<Vec<_>>() {
       for node_id in 0..self.node_count {
         for kind in ALL_NODE_KINDS {
           self.update_node_score_clustering(context.as_str(), node_id, kind);
@@ -279,7 +278,7 @@ impl AugMultiGraph {
 
     let node_count = self.node_count;
 
-    let time_secs = self.time_begin.elapsed().as_secs() as u64;
+    let time_secs = self.time_begin.elapsed().as_secs();
 
     let node_infos = self.node_infos.clone();
 
@@ -341,7 +340,7 @@ impl AugMultiGraph {
 
     let bounds = &clusters[ego][kind].bounds;
 
-    if bounds_are_empty(&bounds) {
+    if bounds_are_empty(bounds) {
       return (score, 0);
     }
 
@@ -356,7 +355,7 @@ impl AugMultiGraph {
       cluster += step;
     }
 
-    return (score, cluster);
+    (score, cluster)
   }
 
   pub fn fetch_all_scores(
@@ -399,16 +398,20 @@ impl AugMultiGraph {
       .get_node_data(focus)
       .map(|node_data| {
         let edges: Vec<_> = match dir {
-          crate::protocol::NeighborDirection::Outbound => { // Changed to use protocol::NeighborDirection
+          crate::protocol::NeighborDirection::Outbound => {
+            // Changed to use protocol::NeighborDirection
             node_data.get_outgoing_edges().collect()
           },
-          crate::protocol::NeighborDirection::Inbound => { // Changed to use protocol::NeighborDirection
+          crate::protocol::NeighborDirection::Inbound => {
+            // Changed to use protocol::NeighborDirection
             node_data.get_inbound_edges().collect()
           },
-          crate::protocol::NeighborDirection::All => node_data // Changed to use protocol::NeighborDirection
-            .get_outgoing_edges()
-            .chain(node_data.get_inbound_edges())
-            .collect(),
+          crate::protocol::NeighborDirection::All => {
+            node_data // Changed to use protocol::NeighborDirection
+              .get_outgoing_edges()
+              .chain(node_data.get_inbound_edges())
+              .collect()
+          },
         };
         edges.into_iter()
       })
@@ -483,7 +486,7 @@ impl AugMultiGraph {
         if x.pos_edges.len() == 1 {
           Some(x.pos_edges.keys()[0])
         } else {
-          if x.pos_edges.len() == 0 {
+          if x.pos_edges.is_empty() {
             log_error!("Non-user node has no owner");
           }
           if x.pos_edges.len() > 1 && node_kind != NodeKind::Opinion {
@@ -521,7 +524,7 @@ impl AugMultiGraph {
       self.node_count += 1;
       self.node_infos.resize(self.node_count, NodeInfo::default());
       self.node_infos[node_id] = NodeInfo {
-        kind:       kind_from_name(&node_name),
+        kind:       kind_from_name(node_name),
         name:       node_name.to_string(),
         seen_nodes: Default::default(),
       };

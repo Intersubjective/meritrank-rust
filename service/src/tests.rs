@@ -61,7 +61,7 @@ fn encoding_response() {
 
 #[test]
 fn no_assert() {
-  assert_eq!(meritrank_core::constants::ASSERT, false);
+  assert!(!meritrank_core::constants::ASSERT);
 }
 
 #[test]
@@ -1939,7 +1939,7 @@ fn vsids_edges_churn() {
   // adding many edges of ever-increasing magnitude
   for n in 0..1000 {
     let dst = format!("U{}", n + 2);
-    graph.write_put_edge("", "U1", &*dst, 1.0, n);
+    graph.write_put_edge("", "U1", &dst, 1.0, n);
   }
 
   //  FIXME: This test is too low-level.

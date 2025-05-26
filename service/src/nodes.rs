@@ -92,7 +92,7 @@ impl IndexMut<NodeKind> for ScoreClustersByKind {
 pub fn kind_from_name(name: &str) -> NodeKind {
   log_trace!("{:?}", name);
 
-  match name.chars().nth(0) {
+  match name.chars().next() {
     Some('U') => NodeKind::User,
     Some('B') => NodeKind::Beacon,
     Some('C') => NodeKind::Comment,
@@ -145,7 +145,7 @@ pub fn nodes_by_kind(
   node_infos: &[NodeInfo],
 ) -> Vec<NodeId> {
   node_infos
-    .into_iter()
+    .iter()
     .enumerate()
     .filter(|(_, info)| info.kind == kind)
     .map(|(id, _)| id)
