@@ -4,6 +4,7 @@ use std::{env::var, string::ToString, sync::atomic::Ordering};
 use crate::aug_multi_graph::*;
 use crate::constants::*;
 use crate::log::*;
+use crate::operations::*;
 use crate::protocol::*;
 use crate::state_manager::*;
 use std::time::SystemTime;
@@ -216,13 +217,7 @@ fn decode_and_handle_request(
 
   let command = decode_request(request)?;
 
-  log_verbose!(
-    "Decoded command `{}` in {:?}, blocking {:?}, with payload {:?}",
-    command.id,
-    command.context,
-    command.blocking,
-    command.payload
-  );
+  log_verbose!("Decoded command: {:?}", command);
 
   if !command.context.is_empty()
     && (command.id == CMD_VERSION
@@ -235,8 +230,31 @@ fn decode_and_handle_request(
       || command.id == CMD_WRITE_NEW_EDGES_FILTER
       || command.id == CMD_FETCH_NEW_EDGES)
   {
-    log_error!("Context should be empty");
+    log_error!("Context should be empty.");
     return Err(());
+  }
+
+  //  Special commands
+  match command.id.as_str() {
+    CMD_VERSION => {
+      if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
+        return encode_response(&read_version());
+      }
+      log_error!("Invalid payload.");
+      return Err(());
+    },
+    CMD_LOG_LEVEL => {
+      if let Ok(log_level) = rmp_serde::from_slice(command.payload.as_slice()) {
+        return encode_response(&write_log_level(log_level));
+      }
+      log_error!("Invalid payload.");
+      return Err(());
+    },
+    CMD_SYNC => {
+      sync(state);
+      return encode_response(&());
+    },
+    _ => {},
   }
 
   let request = request_from_command(&command);
@@ -252,7 +270,7 @@ fn decode_and_handle_request(
     let duration = SystemTime::now().duration_since(begin).unwrap().as_secs();
 
     if duration > 5 {
-      log_warning!("Command was done in {} seconds", duration);
+      log_warning!("Command was done in {} seconds.", duration);
     }
 
     encode_response_dispatch(response)
