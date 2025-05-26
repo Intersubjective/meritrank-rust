@@ -7,7 +7,8 @@ pub mod nodes;
 pub mod operations;
 pub mod protocol;
 pub mod quantiles;
-pub mod service;
+pub mod request_handler;
+pub mod state_manager;
 pub mod subgraph;
 pub mod vsids;
 pub mod zero_opinion;
@@ -18,7 +19,7 @@ mod tests;
 #[cfg(test)]
 mod test_data;
 
-use crate::service::main_async;
+use crate::request_handler::main_async;
 use ctrlc;
 
 fn main() -> Result<(), ()> {
