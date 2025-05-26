@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use std::fs::File;
-use std::io::{BufReader};
+use std::io::BufReader;
 
 #[cfg(test)]
 #[macro_export]
@@ -20,17 +20,18 @@ macro_rules! assert_approx_eq {
 
 #[derive(Debug, Deserialize)]
 pub struct Edge {
-    pub src: usize,
-    pub dst: usize,
-    pub weight: f64,
+  pub src:    usize,
+  pub dst:    usize,
+  pub weight: f64,
 }
 
 pub fn read_edges_from_csv(file_path: &str) -> Vec<Edge> {
-    let file = File::open(file_path).unwrap();
-    let reader = BufReader::new(file);
-    csv::ReaderBuilder::new()
-    .trim(csv::Trim::All).from_reader(reader)
-        .deserialize()
-        .collect::<Result<Vec<Edge>, _>>()
-        .expect("Failed to read CSV data")
+  let file = File::open(file_path).unwrap();
+  let reader = BufReader::new(file);
+  csv::ReaderBuilder::new()
+    .trim(csv::Trim::All)
+    .from_reader(reader)
+    .deserialize()
+    .collect::<Result<Vec<Edge>, _>>()
+    .expect("Failed to read CSV data")
 }
