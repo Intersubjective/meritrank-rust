@@ -3,11 +3,12 @@ use std::{env::var, string::ToString, sync::atomic::Ordering};
 
 use crate::aug_multi_graph::*;
 use crate::constants::*;
+use crate::errors::ServiceError;
 use crate::log::*;
-use crate::read_ops;
-use crate::write_ops;
 use crate::protocol::*;
+use crate::read_ops;
 use crate::state_manager::*;
+use crate::write_ops;
 use std::time::SystemTime;
 
 pub use meritrank_core::Weight;
@@ -197,7 +198,9 @@ fn request_from_command(command: &Command) -> Request {
   Request::None
 }
 
-fn encode_response_dispatch(response: Response) -> Result<Vec<u8>, ()> {
+fn encode_response_dispatch(
+  response: Response
+) -> Result<Vec<u8>, ServiceError> {
   match response {
     Response::NodeList(nodes) => encode_response(&nodes),
     Response::NewEdgesFilter(bytes) => encode_response(&bytes),
@@ -213,7 +216,7 @@ fn encode_response_dispatch(response: Response) -> Result<Vec<u8>, ()> {
 fn decode_and_handle_request(
   state: &mut InternalState,
   request: &[u8],
-) -> Result<Vec<u8>, ()> {
+) -> Result<Vec<u8>, ServiceError> {
   log_trace!();
 
   let command = decode_request(request)?;
@@ -231,25 +234,28 @@ fn decode_and_handle_request(
       || command.id == CMD_WRITE_NEW_EDGES_FILTER
       || command.id == CMD_FETCH_NEW_EDGES)
   {
-    log_error!("Context should be empty.");
-    return Err(());
+    let err_msg = "Context should be empty.".to_string();
+    log_error!("{}", err_msg);
+    return Err(ServiceError::Internal(err_msg));
   }
 
   //  Special commands
   match command.id.as_str() {
     CMD_VERSION => {
       if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
-        return encode_response(&read_ops::read_version()); // Changed here
+        return encode_response(&read_ops::read_version());
       }
-      log_error!("Invalid payload.");
-      return Err(());
+      let err_msg = "Invalid payload.".to_string();
+      log_error!("{}", err_msg);
+      return Err(ServiceError::Internal(err_msg));
     },
     CMD_LOG_LEVEL => {
       if let Ok(log_level) = rmp_serde::from_slice(command.payload.as_slice()) {
-        return encode_response(&write_ops::write_log_level(log_level)); // Changed here
+        return encode_response(&write_ops::write_log_level(log_level));
       }
-      log_error!("Invalid payload.");
-      return Err(());
+      let err_msg = "Invalid payload.".to_string();
+      log_error!("{}", err_msg);
+      return Err(ServiceError::Internal(err_msg));
     },
     CMD_SYNC => {
       sync(state);
@@ -261,12 +267,12 @@ fn decode_and_handle_request(
   let request = request_from_command(&command);
 
   if !command.blocking {
-    let _ = queue(state, request);
+    let _ = queue(state, request); // Assuming queue handles its own errors or is infallible
     encode_response(&())
   } else {
     let begin = SystemTime::now();
 
-    let response = perform(state, request);
+    let response = perform(state, request); // Assuming perform handles its own errors or is infallible
 
     let duration = SystemTime::now().duration_since(begin).unwrap().as_secs();
 
@@ -295,12 +301,14 @@ fn worker_callback(
     },
 
     AioResult::Recv(Ok(req)) => {
-      let msg: Vec<u8> = decode_and_handle_request(state, req.as_slice()).unwrap_or_else(|_| {
-        encode_response(&"Internal error, see server logs".to_string()).unwrap_or_else(|error| {
-          log_error!("Unable to serialize error: {:?}", error);
-          vec![]
-        })
-      });
+      let msg: Vec<u8> = decode_and_handle_request(state, req.as_slice())
+        .unwrap_or_else(|_| {
+          encode_response(&"Internal error, see server logs".to_string())
+            .unwrap_or_else(|error| {
+              log_error!("Unable to serialize error: {:?}", error);
+              vec![]
+            })
+        });
 
       match ctx.send(&aio, msg.as_slice()) {
         Ok(_) => {},
@@ -326,10 +334,11 @@ fn parse_env_var<T>(
   name: &str,
   min: T,
   max: T,
-) -> Result<Option<T>, ()>
+) -> Result<Option<T>, ServiceError>
 where
   T: std::str::FromStr,
   T: std::cmp::Ord,
+  T: std::fmt::Debug,
 {
   match var(name) {
     Ok(s) => match s.parse::<T>() {
@@ -337,13 +346,18 @@ where
         if n >= min && n <= max {
           Ok(Some(n))
         } else {
-          log_error!("Invalid {}: {:?}", name, s);
-          Err(())
+          let err_msg = format!(
+            "Invalid {}: {:?} not in range [{:?}, {:?}]",
+            name, s, min, max
+          );
+          log_error!("{}", err_msg);
+          Err(ServiceError::Internal(err_msg))
         }
       },
       _ => {
-        log_error!("Invalid {}: {:?}", name, s);
-        Err(())
+        let err_msg = format!("Invalid {}: {:?}", name, s);
+        log_error!("{}", err_msg);
+        Err(ServiceError::Internal(err_msg))
       },
     },
     _ => Ok(None),
@@ -355,14 +369,14 @@ fn parse_and_set_value<T>(
   name: &str,
   min: T,
   max: T,
-) -> Result<(), ()>
+) -> Result<(), ServiceError>
 where
   T: std::str::FromStr,
   T: std::cmp::Ord,
+  T: std::fmt::Debug,
 {
-  match parse_env_var(name, min, max)? {
-    Some(n) => *value = n,
-    _ => {},
+  if let Some(n) = parse_env_var(name, min, max)? {
+    *value = n
   }
   Ok(())
 }
@@ -370,7 +384,7 @@ where
 fn parse_and_set_bool(
   value: &mut bool,
   name: &str,
-) -> Result<(), ()> {
+) -> Result<(), ServiceError> {
   match var(name) {
     Ok(s) => {
       if s == "1" || s.to_lowercase() == "true" || s.to_lowercase() == "yes" {
@@ -383,30 +397,27 @@ fn parse_and_set_bool(
         *value = false;
         Ok(())
       } else {
-        log_error!(
+        let err_msg = format!(
           "Invalid {} (expected 0/1, true/false, yes/no): {:?}",
-          name,
-          s
+          name, s
         );
-        Err(())
+        log_error!("{}", err_msg);
+        Err(ServiceError::Internal(err_msg))
       }
     },
     _ => Ok(()),
   }
 }
 
-pub fn parse_settings() -> Result<AugMultiGraphSettings, ()> {
+pub fn parse_settings() -> Result<AugMultiGraphSettings, ServiceError> {
   let mut settings = AugMultiGraphSettings::default();
 
   //  TODO: Remove.
-  match parse_env_var("MERITRANK_NUM_WALK", 0, 1000000)? {
-    Some(n) => {
-      log_warning!(
-        "DEPRECATED: Use MERITRANK_NUM_WALKS instead of MERITRANK_NUM_WALK."
-      );
-      settings.num_walks = n;
-    },
-    _ => {},
+  if let Some(n) = parse_env_var("MERITRANK_NUM_WALK", 0, 1000000)? {
+    log_warning!(
+      "DEPRECATED: Use MERITRANK_NUM_WALKS instead of MERITRANK_NUM_WALK."
+    );
+    settings.num_walks = n;
   }
 
   parse_and_set_value(
@@ -428,14 +439,13 @@ pub fn parse_settings() -> Result<AugMultiGraphSettings, ()> {
     1000000,
   )?;
 
-  match parse_env_var("MERITRANK_ZERO_OPINION_FACTOR", 0, 100)? {
-    Some(n) => settings.zero_opinion_factor = (n as f64) * 0.01,
-    _ => {},
+  if let Some(n) = parse_env_var("MERITRANK_ZERO_OPINION_FACTOR", 0, 100)? {
+    settings.zero_opinion_factor = (n as f64) * 0.01
   }
 
-  static MIN_CACHE_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(1) };
+  static MIN_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1).unwrap();
   static MAX_CACHE_SIZE: NonZeroUsize =
-    unsafe { NonZeroUsize::new_unchecked(1024 * 1024 * 100) };
+    NonZeroUsize::new(1024 * 1024 * 100).unwrap();
 
   parse_and_set_value(
     &mut settings.score_clusters_timeout,
@@ -485,20 +495,22 @@ pub fn parse_settings() -> Result<AugMultiGraphSettings, ()> {
   Ok(settings)
 }
 
-pub fn main_async() -> Result<(), ()> {
+pub fn main_async() -> Result<(), ServiceError> {
   let threads = match var("MERITRANK_SERVICE_THREADS") {
     Ok(s) => match s.parse::<usize>() {
       Ok(n) => {
         if n > 0 {
           n
         } else {
-          log_error!("Invalid MERITRANK_SERVICE_THREADS: {:?}", s);
-          return Err(());
+          let err_msg = format!("Invalid MERITRANK_SERVICE_THREADS: {:?}", s);
+          log_error!("{}", err_msg);
+          return Err(ServiceError::Internal(err_msg));
         }
       },
       _ => {
-        log_error!("Invalid MERITRANK_SERVICE_THREADS: {:?}", s);
-        return Err(());
+        let err_msg = format!("Invalid MERITRANK_SERVICE_THREADS: {:?}", s);
+        log_error!("{}", err_msg);
+        return Err(ServiceError::Internal(err_msg));
       },
     },
     _ => 1,
@@ -522,15 +534,9 @@ pub fn main_async() -> Result<(), ()> {
 
   let state = init();
 
-  let s = match Socket::new(Protocol::Rep0) {
-    Ok(x) => x,
-    Err(e) => {
-      log_error!("{}", e);
-      return Err(());
-    },
-  };
+  let s = Socket::new(Protocol::Rep0)?;
 
-  let workers: Vec<_> = match (0..threads)
+  let workers: Vec<_> = (0..threads)
     .map(|_| {
       let ctx = Context::new(&s)?;
       let ctx_cloned = ctx.clone();
@@ -542,31 +548,12 @@ pub fn main_async() -> Result<(), ()> {
 
       Ok((aio, ctx))
     })
-    .collect::<Result<_, nng::Error>>()
-  {
-    Ok(x) => x,
-    Err(e) => {
-      log_error!("{}", e);
-      return Err(());
-    },
-  };
+    .collect::<Result<_, nng::Error>>()?;
 
-  match s.listen(&url) {
-    Err(e) => {
-      log_error!("{}", e);
-      return Err(());
-    },
-    _ => {},
-  };
+  s.listen(&url)?;
 
   for (a, c) in &workers {
-    match c.recv(a) {
-      Err(e) => {
-        log_error!("{}", e);
-        return Err(());
-      },
-      _ => {},
-    };
+    c.recv(a)?;
   }
 
   std::thread::park();

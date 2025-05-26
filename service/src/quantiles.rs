@@ -2,7 +2,7 @@ use crate::constants::*;
 pub use meritrank_core::{constants::EPSILON, Weight};
 
 pub fn bounds_are_empty(bounds: &[Weight; NUM_SCORE_QUANTILES - 1]) -> bool {
-  return bounds[0] == 0.0 && bounds[bounds.len() - 1] == 0.0;
+  bounds[0] == 0.0 && bounds[bounds.len() - 1] == 0.0
 }
 
 pub fn calculate_quantiles_bounds(

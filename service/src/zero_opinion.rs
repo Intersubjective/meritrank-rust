@@ -25,17 +25,14 @@ impl Subgraph {
     let mut all_edges = vec![];
 
     for src in 0..infos.len() {
-      match self.meritrank_data.graph.get_node_data(src) {
-        Some(data) => {
-          for (dst, _) in &data.pos_edges {
-            all_edges.push((src, *dst));
-          }
+      if let Some(data) = self.meritrank_data.graph.get_node_data(src) {
+        for (dst, _) in &data.pos_edges {
+          all_edges.push((src, *dst));
+        }
 
-          for (dst, _) in &data.neg_edges {
-            all_edges.push((src, *dst));
-          }
-        },
-        _ => {},
+        for (dst, _) in &data.neg_edges {
+          all_edges.push((src, *dst));
+        }
       }
     }
 
@@ -49,7 +46,7 @@ impl Subgraph {
             return true;
           }
         }
-        return false;
+        false
       })
       .map(|(id, _info)| id)
       .collect();
@@ -67,7 +64,7 @@ impl Subgraph {
 
     let edges: Vec<(NodeId, NodeId, Weight)> = users
       .into_iter()
-      .map(|id| -> Vec<(NodeId, NodeId, Weight)> {
+      .flat_map(|id| -> Vec<(NodeId, NodeId, Weight)> {
         self
           .fetch_all_raw_scores(id, num_walks, zero_opinion_factor)
           .into_iter()
@@ -81,7 +78,6 @@ impl Subgraph {
           })
           .collect()
       })
-      .flatten()
       .collect();
 
     let result: Vec<(NodeId, NodeId, Weight)> = edges
@@ -134,7 +130,6 @@ impl Subgraph {
         .nodes()  // already sorted by score
         .into_iter()
         .take(top_nodes_limit)
-        .into_iter()
         .unzip();
 
     let res = nodes.into_iter().zip(scores).collect::<Vec<_>>();
@@ -143,7 +138,7 @@ impl Subgraph {
       log_error!("No top nodes");
     }
 
-    return res;
+    res
   }
 
   pub fn recalculate_all_users(
@@ -173,7 +168,7 @@ impl AugMultiGraph {
 
     let infos = self.node_infos.clone();
 
-    for (_, subgraph) in &mut self.subgraphs {
+    for subgraph in self.subgraphs.values_mut() {
       //  Save the current state of the graph
       let data_bak = subgraph.meritrank_data.clone();
 

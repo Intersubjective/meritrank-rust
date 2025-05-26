@@ -1,3 +1,4 @@
+use crate::errors::ServiceError;
 use crate::log::*;
 use std::sync::atomic::Ordering;
 
@@ -51,7 +52,7 @@ pub fn encode_request(command: &Command) -> Result<Vec<u8>, String> {
   }
 }
 
-pub fn decode_request(request: &[u8]) -> Result<Command, ()> {
+pub fn decode_request(request: &[u8]) -> Result<Command, ServiceError> {
   match rmp_serde::from_slice(request) {
     Ok((command_value, context_value, blocking_value, payload_value)) => {
       Ok(Command {
@@ -63,12 +64,12 @@ pub fn decode_request(request: &[u8]) -> Result<Command, ()> {
     },
     Err(e) => {
       log_error!("(request_decode) {}", e);
-      Err(())
+      Err(ServiceError::from(e))
     },
   }
 }
 
-pub fn encode_response<T>(response: &T) -> Result<Vec<u8>, ()>
+pub fn encode_response<T>(response: &T) -> Result<Vec<u8>, ServiceError>
 where
   T: serde::ser::Serialize,
 {
@@ -76,9 +77,9 @@ where
     Ok(x) => Ok(x),
     Err(e) => match rmp_serde::to_vec(&e.to_string()) {
       Ok(x) => Ok(x),
-      Err(e) => {
-        log_error!("(response_encode) {}", e);
-        Err(())
+      Err(inner_e) => {
+        log_error!("(response_encode) {}", inner_e);
+        Err(ServiceError::from(e)) //  Return the original encode error
       },
     },
   }
@@ -96,16 +97,22 @@ where
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NeighborDirection {
-    All,
-    Outbound,
-    Inbound,
+  All,
+  Outbound,
+  Inbound,
 }
 
-pub fn neighbor_dir_from(direction: i64) -> Result<NeighborDirection, ()> {
-    match direction {
-        NEIGHBORS_ALL => Ok(NeighborDirection::All),
-        NEIGHBORS_OUTBOUND => Ok(NeighborDirection::Outbound),
-        NEIGHBORS_INBOUND => Ok(NeighborDirection::Inbound),
-        _ => Err(()),
-    }
+pub fn neighbor_dir_from(
+  direction: i64
+) -> Result<NeighborDirection, ServiceError> {
+  match direction {
+    NEIGHBORS_ALL => Ok(NeighborDirection::All),
+    NEIGHBORS_OUTBOUND => Ok(NeighborDirection::Outbound),
+    NEIGHBORS_INBOUND => Ok(NeighborDirection::Inbound),
+    _ => {
+      let err_msg = format!("Invalid direction: {}", direction);
+      log_error!("{}", err_msg);
+      Err(ServiceError::Internal(err_msg))
+    },
+  }
 }

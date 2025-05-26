@@ -69,6 +69,12 @@ pub struct VSIDSManager {
   pub(crate) deletion_ratio:    Weight,
 }
 
+impl Default for VSIDSManager {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl VSIDSManager {
   pub fn new() -> Self {
     let bump_factor = env::var("VSIDS_BUMP")

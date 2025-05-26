@@ -13,9 +13,9 @@ pub const DEFAULT_TOP_NODES_LIMIT: usize = 100;
 pub const DEFAULT_ZERO_OPINION_FACTOR: f64 = 0.20;
 pub const DEFAULT_SCORE_CLUSTERS_TIMEOUT: u64 = 60 * 60 * 6; // 6 hours
 pub static DEFAULT_SCORES_CACHE_SIZE: NonZeroUsize =
-  unsafe { NonZeroUsize::new_unchecked(1024 * 10) };
+  NonZeroUsize::new(1024 * 10).unwrap();
 pub static DEFAULT_WALKS_CACHE_SIZE: NonZeroUsize =
-  unsafe { NonZeroUsize::new_unchecked(1024) };
+  NonZeroUsize::new(1024).unwrap();
 pub const DEFAULT_FILTER_NUM_HASHES: usize = 10;
 pub const DEFAULT_FILTER_MAX_SIZE: usize = 8192;
 pub const DEFAULT_FILTER_MIN_SIZE: usize = 32;

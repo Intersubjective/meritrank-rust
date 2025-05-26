@@ -1,13 +1,14 @@
 // service/src/write_ops.rs
-use std::sync::atomic::Ordering;
 use meritrank_core::constants::EPSILON;
+use std::sync::atomic::Ordering;
 
 use crate::aug_multi_graph::{AugMultiGraph, Cluster}; // NodeId and Weight removed
-use meritrank_core::{NodeId, Weight}; // NodeId and Weight added directly
+use crate::bloom_filter::{
+  bloom_filter_add, bloom_filter_bits, bloom_filter_contains,
+};
 use crate::log::*;
 use crate::nodes::*;
-use crate::bloom_filter::{bloom_filter_add, bloom_filter_bits, bloom_filter_contains};
-
+use meritrank_core::{NodeId, Weight}; // NodeId and Weight added directly
 
 pub fn write_log_level(log_level: u32) {
   log_command!("{}", log_level);
@@ -187,14 +188,8 @@ impl AugMultiGraph {
       .meritrank_data
       .graph
       .get_node_data(id)
-      .map(|data| {
-        data
-          .get_outgoing_edges()
-          .into_iter()
-          .map(|(n, _)| n)
-          .collect()
-      })
-      .unwrap_or_else(Vec::new); // Use unwrap_or_else as per prompt
+      .map(|data| data.get_outgoing_edges().map(|(n, _)| n).collect())
+      .unwrap_or_default(); // Use unwrap_or_else as per prompt
 
     for n in outgoing_edges {
       self.set_edge(context, id, n, 0.0);
@@ -215,20 +210,24 @@ impl AugMultiGraph {
 
     let src_id = self.find_or_add_node_by_name(src);
 
-    let mut v: Vec<u64> = vec![];
-    v.resize((filter_bytes.len() + 7) / 8, 0); // Corrected resize
+    let mut v: Vec<u64> = vec![0; filter_bytes.len().div_ceil(8)]; // Corrected resize
 
     for i in 0..filter_bytes.len() {
-        v[i / 8] |= (filter_bytes[i] as u64) << (8 * (i % 8)); // Corrected logic
+      v[i / 8] |= (filter_bytes[i] as u64) << (8 * (i % 8)); // Corrected logic
     }
 
     self.node_infos[src_id].seen_nodes = v;
   }
 
-  fn _initialize_source_node_filter_if_empty(&mut self, src_id: NodeId) {
+  fn _initialize_source_node_filter_if_empty(
+    &mut self,
+    src_id: NodeId,
+  ) {
     if self.node_infos[src_id].seen_nodes.is_empty() {
-      let min_filter_elements = (self.settings.filter_min_size + 7) / 8;
-      self.node_infos[src_id].seen_nodes.resize(min_filter_elements, 0);
+      let min_filter_elements = self.settings.filter_min_size.div_ceil(8);
+      self.node_infos[src_id]
+        .seen_nodes
+        .resize(min_filter_elements, 0);
       log_verbose!(
         "Create the bloom filter with {} bytes for node ID {}", // Changed log to use ID
         8 * self.node_infos[src_id].seen_nodes.len(),
@@ -249,8 +248,11 @@ impl AugMultiGraph {
     // Avoid processing if filter length is 0, as bloom_filter_bits might behave unexpectedly
     // or it simply means no items can be "contained".
     if current_filter_len == 0 {
-        log_warning!("Source node {} filter is empty, cannot fetch new edges based on it.", src_id);
-        return new_edges;
+      log_warning!(
+        "Source node {} filter is empty, cannot fetch new edges based on it.",
+        src_id
+      );
+      return new_edges;
     }
 
     for dst_id in 0..self.node_count {
@@ -290,21 +292,28 @@ impl AugMultiGraph {
     max_filter_elements: usize,
   ) {
     let mut new_filter_data = vec![];
-    
-    let initial_filter_elements = if self.node_infos[src_id].seen_nodes.is_empty() {
-        (self.settings.filter_min_size + 7) / 8
-    } else {
+
+    let initial_filter_elements =
+      if self.node_infos[src_id].seen_nodes.is_empty() {
+        self.settings.filter_min_size.div_ceil(8)
+      } else {
         self.node_infos[src_id].seen_nodes.len()
-    };
-    new_filter_data.resize(std::cmp::min(initial_filter_elements, max_filter_elements), 0);
+      };
+    new_filter_data.resize(
+      std::cmp::min(initial_filter_elements, max_filter_elements),
+      0,
+    );
 
     // Handle cases where max_filter_elements is 0, which means filter should be empty.
     if max_filter_elements == 0 {
-        if !self.node_infos[src_id].seen_nodes.is_empty() {
-             log_verbose!("Max filter elements is 0, clearing filter for node ID {}", src_id);
-        }
-        self.node_infos[src_id].seen_nodes = vec![];
-        return;
+      if !self.node_infos[src_id].seen_nodes.is_empty() {
+        log_verbose!(
+          "Max filter elements is 0, clearing filter for node ID {}",
+          src_id
+        );
+      }
+      self.node_infos[src_id].seen_nodes = vec![];
+      return;
     }
 
     loop {
@@ -319,12 +328,15 @@ impl AugMultiGraph {
       // This case is now handled by the early exit for max_filter_elements == 0.
 
       for dst_id_filter in 0..self.node_count {
-        let bits = bloom_filter_bits(current_filter_elements, num_hashes, dst_id_filter);
+        let bits =
+          bloom_filter_bits(current_filter_elements, num_hashes, dst_id_filter);
         let collision = bloom_filter_contains(&mut new_filter_data, &bits);
 
         if collision && current_filter_elements < max_filter_elements {
-          let next_size_elements = std::cmp::min(current_filter_elements * 2, max_filter_elements);
-          if next_size_elements > current_filter_elements { // Ensure growth
+          let next_size_elements =
+            std::cmp::min(current_filter_elements * 2, max_filter_elements);
+          if next_size_elements > current_filter_elements {
+            // Ensure growth
             new_filter_data.resize(next_size_elements, 0);
             log_verbose!(
               "Resize the bloom filter to {} bytes for node ID {}", // Changed log
@@ -333,7 +345,7 @@ impl AugMultiGraph {
             );
             saturated = true;
             break;
-          } else { 
+          } else {
             // Cannot grow further due to max_filter_elements, treat as saturated for this iteration.
             // This means we will try to populate with current size, and if still collisions, it is what it is.
           }
@@ -342,19 +354,27 @@ impl AugMultiGraph {
         if self.node_infos[dst_id_filter].name.starts_with(prefix) {
           let num_walks = self.settings.num_walks;
           let k = self.settings.zero_opinion_factor;
-          let score = self
-            .subgraph_from_context("")
-            .fetch_raw_score(src_id, dst_id_filter, num_walks, k);
+          let score = self.subgraph_from_context("").fetch_raw_score(
+            src_id,
+            dst_id_filter,
+            num_walks,
+            k,
+          );
 
           if !(score < EPSILON) {
             bloom_filter_add(&mut new_filter_data, &bits);
           }
         } else {
           let original_filter_len = self.node_infos[src_id].seen_nodes.len();
-          if original_filter_len > 0 { // Only check original if it was populated
+          if original_filter_len > 0 {
+            // Only check original if it was populated
             let already_seen_in_original = bloom_filter_contains(
               &self.node_infos[src_id].seen_nodes,
-              &bloom_filter_bits(original_filter_len, num_hashes, dst_id_filter),
+              &bloom_filter_bits(
+                original_filter_len,
+                num_hashes,
+                dst_id_filter,
+              ),
             );
             if already_seen_in_original {
               bloom_filter_add(&mut new_filter_data, &bits);
@@ -365,7 +385,10 @@ impl AugMultiGraph {
 
       if !saturated {
         if new_filter_data.len() >= max_filter_elements {
-          log_warning!("Max bloom filter size is reached for node ID {}", src_id); // Changed log
+          log_warning!(
+            "Max bloom filter size is reached for node ID {}",
+            src_id
+          ); // Changed log
         }
         self.node_infos[src_id].seen_nodes = new_filter_data;
         break;
@@ -382,15 +405,21 @@ impl AugMultiGraph {
 
     let num_hashes = self.settings.filter_num_hashes;
     // filter_max_size is in bytes, convert to number of u64 elements
-    let max_filter_elements = self.settings.filter_max_size / 8; 
+    let max_filter_elements = self.settings.filter_max_size / 8;
 
     let src_id = self.find_or_add_node_by_name(src);
 
     self._initialize_source_node_filter_if_empty(src_id);
 
-    let new_edges_found = self._fetch_new_edges_using_filter(src_id, prefix, num_hashes);
+    let new_edges_found =
+      self._fetch_new_edges_using_filter(src_id, prefix, num_hashes);
 
-    self._rebuild_source_node_filter(src_id, prefix, num_hashes, max_filter_elements);
+    self._rebuild_source_node_filter(
+      src_id,
+      prefix,
+      num_hashes,
+      max_filter_elements,
+    );
 
     new_edges_found
   }
@@ -404,10 +433,11 @@ impl AugMultiGraph {
     log_command!("{:?} {} {}", context, node, score);
 
     let id = self.find_or_add_node_by_name(node);
-    let zero_opinion_map = &mut self.subgraph_from_context(context).zero_opinion;
+    let zero_opinion_map =
+      &mut self.subgraph_from_context(context).zero_opinion;
 
     if id >= zero_opinion_map.len() {
-        zero_opinion_map.resize(id + 1, 0.0);
+      zero_opinion_map.resize(id + 1, 0.0);
     }
     zero_opinion_map[id] = score;
   }

@@ -8,8 +8,7 @@ pub fn bloom_filter_bits(
   num_hashes: usize,
   id: usize,
 ) -> Vec<u64> {
-  let mut v: Vec<u64> = vec![];
-  v.resize(size, 0);
+  let mut v: Vec<u64> = vec![0; size];
 
   for n in 1..=num_hashes {
     let mut h = DefaultHasher::new();
@@ -55,5 +54,5 @@ pub fn bloom_filter_contains(
     }
   }
 
-  return true;
+  true
 }

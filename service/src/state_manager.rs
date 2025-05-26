@@ -349,9 +349,9 @@ fn perform_writing(
 
       if need_response {
         pick_id = None;
-        response = perform_request(&mut *graph, &request.data);
+        response = perform_request(&mut graph, &request.data);
       } else {
-        perform_request(&mut *graph, &request.data);
+        perform_request(&mut graph, &request.data);
       }
 
       queue_performed.push(request); // Save the request to apply in later
@@ -395,13 +395,13 @@ fn perform_writing(
   //  Apply requests for the other graph copy.
 
   for request in queue_performed {
-    perform_request(&mut *other_graph, &request.data);
+    perform_request(&mut other_graph, &request.data);
   }
 
   drop(other_graph);
   drop(writing);
 
-  return response;
+  response
 }
 
 fn writing_loop(state: InternalState) {
@@ -558,8 +558,8 @@ pub fn perform(
       },
     };
 
-    return perform_request(&mut *graph, &request);
+    perform_request(&mut graph, &request)
   } else {
-    return perform_writing(state, Some(request));
+    perform_writing(state, Some(request))
   }
 }
