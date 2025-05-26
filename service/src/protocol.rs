@@ -93,3 +93,19 @@ where
     Err(e) => Err(e.to_string()),
   }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum NeighborDirection {
+    All,
+    Outbound,
+    Inbound,
+}
+
+pub fn neighbor_dir_from(direction: i64) -> Result<NeighborDirection, ()> {
+    match direction {
+        NEIGHBORS_ALL => Ok(NeighborDirection::All),
+        NEIGHBORS_OUTBOUND => Ok(NeighborDirection::Outbound),
+        NEIGHBORS_INBOUND => Ok(NeighborDirection::Inbound),
+        _ => Err(()),
+    }
+}
