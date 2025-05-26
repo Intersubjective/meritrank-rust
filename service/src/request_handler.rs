@@ -4,7 +4,9 @@ use std::{env::var, string::ToString, sync::atomic::Ordering};
 use crate::aug_multi_graph::*;
 use crate::constants::*;
 use crate::log::*;
-use crate::operations::*;
+// use crate::operations::*; // Removed
+use crate::read_ops;      // Added
+use crate::write_ops;     // Added
 use crate::protocol::*;
 use crate::state_manager::*;
 use std::time::SystemTime;
@@ -238,14 +240,14 @@ fn decode_and_handle_request(
   match command.id.as_str() {
     CMD_VERSION => {
       if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
-        return encode_response(&read_version());
+        return encode_response(&read_ops::read_version()); // Changed here
       }
       log_error!("Invalid payload.");
       return Err(());
     },
     CMD_LOG_LEVEL => {
       if let Ok(log_level) = rmp_serde::from_slice(command.payload.as_slice()) {
-        return encode_response(&write_log_level(log_level));
+        return encode_response(&write_ops::write_log_level(log_level)); // Changed here
       }
       log_error!("Invalid payload.");
       return Err(());
@@ -440,9 +442,9 @@ pub fn parse_settings() -> Result<AugMultiGraphSettings, ()> {
     _ => {},
   }
 
-  const MIN_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1).unwrap();
-  const MAX_CACHE_SIZE: NonZeroUsize =
-    NonZeroUsize::new(1024 * 1024 * 100).unwrap();
+  static MIN_CACHE_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(1) };
+  static MAX_CACHE_SIZE: NonZeroUsize =
+    unsafe { NonZeroUsize::new_unchecked(1024 * 1024 * 100) };
 
   parse_and_set_value(
     &mut settings.score_clusters_timeout,

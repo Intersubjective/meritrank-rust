@@ -1,6 +1,6 @@
 use crate::constants::*;
 use crate::log::*;
-use crate::protocol::*;
+// use crate::protocol::*; // Removed unused import
 use std::ops::{Index, IndexMut};
 
 pub use meritrank_core::{NodeId, Weight};
@@ -22,12 +22,7 @@ pub const ALL_NODE_KINDS: [NodeKind; 4] = [
   NodeKind::Opinion,
 ];
 
-#[derive(Debug, PartialEq)]
-pub enum NeighborDirection {
-  All,
-  Outbound,
-  Inbound,
-}
+// NeighborDirection enum REMOVED from here
 
 #[derive(PartialEq, Clone, Default)]
 pub struct NodeInfo {
@@ -117,14 +112,7 @@ pub fn kind_from_prefix(prefix: &str) -> Result<NodeKind, ()> {
   }
 }
 
-pub fn neighbor_dir_from(dir: i64) -> Result<NeighborDirection, ()> {
-  match dir {
-    NEIGHBORS_ALL => Ok(NeighborDirection::All),
-    NEIGHBORS_OUTBOUND => Ok(NeighborDirection::Outbound),
-    NEIGHBORS_INBOUND => Ok(NeighborDirection::Inbound),
-    _ => Err(()),
-  }
-}
+// neighbor_dir_from function REMOVED from here
 
 pub fn node_name_from_id(
   infos: &[NodeInfo],

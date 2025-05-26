@@ -389,7 +389,7 @@ impl AugMultiGraph {
     context: &str,
     ego: NodeId,
     focus: NodeId,
-    dir: NeighborDirection,
+    dir: crate::protocol::NeighborDirection, // Changed to use protocol::NeighborDirection
   ) -> Vec<(NodeId, Weight, Cluster)> {
     log_trace!("{:?} {} {} {:?}", context, ego, focus, dir);
     self
@@ -399,11 +399,13 @@ impl AugMultiGraph {
       .get_node_data(focus)
       .map(|node_data| {
         let edges: Vec<_> = match dir {
-          NeighborDirection::Outbound => {
+          crate::protocol::NeighborDirection::Outbound => { // Changed to use protocol::NeighborDirection
             node_data.get_outgoing_edges().collect()
           },
-          NeighborDirection::Inbound => node_data.get_inbound_edges().collect(),
-          NeighborDirection::All => node_data
+          crate::protocol::NeighborDirection::Inbound => { // Changed to use protocol::NeighborDirection
+            node_data.get_inbound_edges().collect()
+          },
+          crate::protocol::NeighborDirection::All => node_data // Changed to use protocol::NeighborDirection
             .get_outgoing_edges()
             .chain(node_data.get_inbound_edges())
             .collect(),
