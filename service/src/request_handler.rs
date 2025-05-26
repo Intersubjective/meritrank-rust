@@ -4,9 +4,8 @@ use std::{env::var, string::ToString, sync::atomic::Ordering};
 use crate::aug_multi_graph::*;
 use crate::constants::*;
 use crate::log::*;
-// use crate::operations::*; // Removed
-use crate::read_ops;      // Added
-use crate::write_ops;     // Added
+use crate::read_ops;
+use crate::write_ops;
 use crate::protocol::*;
 use crate::state_manager::*;
 use std::time::SystemTime;
@@ -195,7 +194,7 @@ fn request_from_command(command: &Command) -> Request {
   };
 
   log_error!("Invalid payload for command: {:?}", command);
-  return Request::None;
+  Request::None
 }
 
 fn encode_response_dispatch(response: Response) -> Result<Vec<u8>, ()> {
@@ -296,20 +295,12 @@ fn worker_callback(
     },
 
     AioResult::Recv(Ok(req)) => {
-      let msg: Vec<u8> = match decode_and_handle_request(state, req.as_slice())
-      {
-        Ok(bytes) => bytes,
-        Err(_) => {
-          match encode_response(&"Internal error, see server logs".to_string())
-          {
-            Ok(bytes) => bytes,
-            Err(error) => {
-              log_error!("Unable to serialize error: {:?}", error);
-              vec![]
-            },
-          }
-        },
-      };
+      let msg: Vec<u8> = decode_and_handle_request(state, req.as_slice()).unwrap_or_else(|_| {
+        encode_response(&"Internal error, see server logs".to_string()).unwrap_or_else(|error| {
+          log_error!("Unable to serialize error: {:?}", error);
+          vec![]
+        })
+      });
 
       match ctx.send(&aio, msg.as_slice()) {
         Ok(_) => {},
