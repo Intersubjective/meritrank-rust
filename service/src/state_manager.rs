@@ -118,144 +118,155 @@ fn perform_request(
 ) -> Response {
   log_trace!();
 
-  match request {
-    Request::ReadNodeList => Response::NodeList(graph.read_node_list()),
-
-    Request::ReadNewEdgesFilter(src) => {
-      Response::NewEdgesFilter(graph.read_new_edges_filter(src))
-    },
-
-    Request::ReadNodeScore(context, ego, dst) => {
-      Response::NodeScores(graph.read_node_score(context, ego, dst))
-    },
-
-    Request::ReadScores(
-      context,
-      ego,
-      kind_str,
-      hide_personal,
-      score_lt,
-      score_lte,
-      score_gt,
-      score_gte,
-      index,
-      count,
-    ) => Response::NodeScores(graph.read_scores(
-      context,
-      ego,
-      kind_str,
-      *hide_personal,
-      *score_lt,
-      *score_lte,
-      *score_gt,
-      *score_gte,
-      *index,
-      *count,
-    )),
-
-    Request::ReadGraph(context, ego, focus, positive_only, index, count) => {
-      Response::Graph(graph.read_graph(
-        context,
-        ego,
-        focus,
-        *positive_only,
-        *index,
-        *count,
-      ))
-    },
-
-    Request::ReadConnected(context, ego) => {
-      Response::Connections(graph.read_connected(context, ego))
-    },
-
-    Request::ReadEdges(context) => Response::Edges(graph.read_edges(context)),
-
-    Request::ReadMutualScores(context, ego) => {
-      Response::NodeScores(graph.read_mutual_scores(context, ego))
-    },
-
-    Request::ReadNeighbors(
-      context,
-      ego,
-      focus,
-      direction,
-      kind_str,
-      hide_personal,
-      score_lt,
-      score_lte,
-      score_gt,
-      score_gte,
-      index,
-      count,
-    ) => Response::NodeScores(graph.read_neighbors(
-      context,
-      ego,
-      focus,
-      *direction,
-      kind_str,
-      *hide_personal,
-      *score_lt,
-      *score_lte,
-      *score_gt,
-      *score_gte,
-      *index,
-      *count,
-    )),
-
-    Request::WriteReset => {
-      graph.reset();
-      Response::None
-    },
-
-    Request::WriteRecalculateZero => {
-      graph.write_recalculate_zero();
-      Response::None
-    },
-
-    Request::WriteRecalculateClustering => {
-      graph.write_recalculate_clustering();
-      Response::None
-    },
-
-    Request::WriteNewEdgesFilter(src, filter_bytes) => {
-      graph.write_new_edges_filter(src, filter_bytes);
-      Response::None
-    },
-
-    Request::WriteFetchNewEdges(src, prefix) => {
-      Response::NewEdges(graph.write_fetch_new_edges(src, prefix))
-    },
-
-    Request::WritePutEdge(context, src, dst, new_weight, magnitude) => {
-      graph.write_put_edge(context, src, dst, *new_weight, *magnitude);
-      Response::None
-    },
-
-    Request::WriteDeleteEdge(context, src, dst, index) => {
-      graph.write_delete_edge(context, src, dst, *index);
-      Response::None
-    },
-
-    Request::WriteDeleteNode(context, node, index) => {
-      graph.write_delete_node(context, node, *index);
-      Response::None
-    },
-
-    Request::WriteCreateContext(context) => {
-      graph.write_create_context(context);
-      Response::None
-    },
-
-    Request::WriteSetZeroOpinion(context, node, score) => {
-      graph.write_set_zero_opinion(context, node, *score);
-      Response::None
-    },
-
-    _ => {
-      log_error!("Unknown request: {:?}", request);
-      Response::None
-    },
+  if let Some(response) = handle_read_node_score_requests(graph, request) {
+      return response;
   }
+  if let Some(response) = handle_other_read_requests(graph, request) {
+      return response;
+  }
+  if let Some(response) = handle_write_requests(graph, request) {
+      return response;
+  }
+
+  // Fallback for Request::None or any request not covered by helpers
+  if matches!(request, Request::None) {
+      // Request::None is a valid case, should return Response::None without error
+      return Response::None;
+  }
+
+  log_error!("Unknown or unhandled request type in perform_request: {:?}", request);
+  Response::None // Default for truly unhandled cases
+}
+
+fn handle_read_node_score_requests(graph: &mut AugMultiGraph, request: &Request) -> Option<Response> {
+    match request {
+        Request::ReadNodeScore(context, ego, dst) => {
+            Some(Response::NodeScores(graph.read_node_score(context, ego, dst)))
+        },
+        Request::ReadScores(
+            context,
+            ego,
+            kind_str,
+            hide_personal,
+            score_lt,
+            score_lte,
+            score_gt,
+            score_gte,
+            index,
+            count,
+        ) => Some(Response::NodeScores(graph.read_scores(
+            context,
+            ego,
+            kind_str,
+            *hide_personal,
+            *score_lt,
+            *score_lte,
+            *score_gt,
+            *score_gte,
+            *index,
+            *count,
+        ))),
+        Request::ReadNeighbors(
+            context,
+            ego,
+            focus,
+            direction,
+            kind_str,
+            hide_personal,
+            score_lt,
+            score_lte,
+            score_gt,
+            score_gte,
+            index,
+            count,
+        ) => Some(Response::NodeScores(graph.read_neighbors(
+            context,
+            ego,
+            focus,
+            *direction,
+            kind_str,
+            *hide_personal,
+            *score_lt,
+            *score_lte,
+            *score_gt,
+            *score_gte,
+            *index,
+            *count,
+        ))),
+        Request::ReadMutualScores(context, ego) => {
+            Some(Response::NodeScores(graph.read_mutual_scores(context, ego)))
+        },
+        _ => None,
+    }
+}
+
+fn handle_other_read_requests(graph: &mut AugMultiGraph, request: &Request) -> Option<Response> {
+    match request {
+        Request::ReadNodeList => Some(Response::NodeList(graph.read_node_list())),
+        Request::ReadNewEdgesFilter(src) => {
+            Some(Response::NewEdgesFilter(graph.read_new_edges_filter(src)))
+        },
+        Request::ReadGraph(context, ego, focus, positive_only, index, count) => {
+            Some(Response::Graph(graph.read_graph(
+                context,
+                ego,
+                focus,
+                *positive_only,
+                *index,
+                *count,
+            )))
+        },
+        Request::ReadConnected(context, ego) => {
+            Some(Response::Connections(graph.read_connected(context, ego)))
+        },
+        Request::ReadEdges(context) => Some(Response::Edges(graph.read_edges(context))),
+        _ => None,
+    }
+}
+
+fn handle_write_requests(graph: &mut AugMultiGraph, request: &Request) -> Option<Response> {
+    match request {
+        Request::WriteReset => {
+            graph.write_reset();
+            Some(Response::None)
+        },
+        Request::WriteRecalculateZero => {
+            graph.write_recalculate_zero();
+            Some(Response::None)
+        },
+        Request::WriteRecalculateClustering => {
+            graph.write_recalculate_clustering();
+            Some(Response::None)
+        },
+        Request::WriteNewEdgesFilter(src, filter_bytes) => {
+            graph.write_new_edges_filter(src, filter_bytes);
+            Some(Response::None)
+        },
+        Request::WriteFetchNewEdges(src, prefix) => {
+            Some(Response::NewEdges(graph.write_fetch_new_edges(src, prefix)))
+        },
+        Request::WritePutEdge(context, src, dst, new_weight, magnitude) => {
+            graph.write_put_edge(context, src, dst, *new_weight, *magnitude);
+            Some(Response::None)
+        },
+        Request::WriteDeleteEdge(context, src, dst, index) => {
+            graph.write_delete_edge(context, src, dst, *index);
+            Some(Response::None)
+        },
+        Request::WriteDeleteNode(context, node, index) => {
+            graph.write_delete_node(context, node, *index);
+            Some(Response::None)
+        },
+        Request::WriteCreateContext(context) => {
+            graph.write_create_context(context);
+            Some(Response::None)
+        },
+        Request::WriteSetZeroOpinion(context, node, score) => {
+            graph.write_set_zero_opinion(context, node, *score);
+            Some(Response::None)
+        },
+        _ => None,
+    }
 }
 
 fn perform_writing(
