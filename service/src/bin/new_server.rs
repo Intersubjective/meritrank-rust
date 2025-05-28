@@ -1,18 +1,85 @@
 use parking_lot::Mutex;
+use scc::HashIndex;
 use tokio::{
   io::{AsyncReadExt, AsyncWriteExt},
   net::TcpListener,
+  task,
 };
 
 use bincode::{
   config::standard, decode_from_slice, encode_to_vec, Decode, Encode,
 };
 use meritrank_service::lrgraph::{CountReader, Counter, CounterAddOp};
+use scc::ebr::Guard;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::sleep;
 use std::{error::Error, thread, time::Duration};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::mpsc;
+
+type SubgraphName = String;
+
+struct GraphOperation {
+  // fields …
+}
+use left_right::{ReadHandle, WriteHandle};
+
+#[derive(Clone)]
+struct NonblockingSubgraph {
+  name: SubgraphName,
+  writer: Arc<Mutex<WriteHandle<i32, CounterAddOp>>>,
+  reader: ReadHandle<i32>,
+  // other fields...
+}
+
+impl NonblockingSubgraph {
+  fn new(name: SubgraphName) -> Self {
+    let (write, read) = left_right::new::<i32, CounterAddOp>();
+    NonblockingSubgraph {
+      name,
+      writer: Arc::new(Mutex::new(write)),
+      reader: read,
+      // Initialize other fields...
+    }
+  }
+}
+
+struct MultigraphOperation {
+  subgraph_name: SubgraphName,
+  op: GraphOperation,
+}
+
+/// A single subgraph's mailbox & processing loop
+async fn subgraph_loop(mut rx: mpsc::Receiver<GraphOperation>) {
+  let mut writer = shared_writer.lock();
+  while let Some(op) = rx.recv().await {
+    // It is EXTREMELY important to move long-running tasks to a
+    // background thread to avoid blocking the main thread.
+    // Otherwise, the main thread pool could become clogged with
+    // long writes, and reads will not be processed either.
+    task::spawn_blocking(move || {
+      writer.append(op);
+      println!("Ops: {}", rx.len());
+
+      // Note that left-right is not really eventually-consistent,
+      // but instead strong-consistent. This means that in case of
+      // high load on reading, publish() will block readers until all
+      // the _reading_ operations are finished, and then all the operations
+      // are applied in the correct order.
+      // There are two ways to handle this:
+      // 1. sleep a bit on the write execution thread to allow the readers to flush
+      // 2. implement a truly eventually-consistent version of left-right that never blocks (arc-swap)
+      thread::sleep(Duration::from_millis(100));
+      writer.publish();
+    })
+    .await
+    .expect("TODO: panic message");
+  }
+}
+
+const PRIMARY_QUEUE_CAPACITY: usize = 1024;
+const SUBGRAPH_QUEUE_CAPACITY: usize = 1024;
 
 #[derive(Debug, Encode, Decode)]
 struct Request {
@@ -23,6 +90,33 @@ struct Request {
 struct Response {
   response: u64,
 }
+
+fn create_dispatcher_task(mut primary_rx: mpsc::Receiver<MultigraphOperation>) {
+  // ---- Dispatcher -------------------------------------------------------
+  tokio::spawn(async move {
+    // context-id → sender for that context
+    let mut mailboxes: HashMap<SubgraphName, mpsc::Sender<GraphOperation>> =
+      HashMap::new();
+
+    while let Some(multigraph_op) = primary_rx.recv().await {
+      let sender_for_subgraph = mailboxes
+        .entry(multigraph_op.subgraph_name)
+        .or_insert_with(|| {
+          // New subgraph: create its private queue & loop
+          let (tx, rx) =
+            mpsc::channel::<GraphOperation>(SUBGRAPH_QUEUE_CAPACITY);
+          tokio::spawn(subgraph_loop(rx));
+          tx
+        });
+
+      // Forward the operation to its subgraph queue
+      // Note: blocks if there is no capacity!
+      let _ = sender_for_subgraph.send(multigraph_op.op).await;
+    }
+  });
+  // -----------------------------------------------------------------------
+}
+
 #[tokio::main]
 //#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -33,31 +127,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
   let (tx, mut rx) = mpsc::channel::<CounterAddOp>(102400);
 
-  tokio::task::spawn_blocking(move || {
-    // It is EXTREMELY important to move long-running tasks to a
-    // background thread to avoid blocking the main thread.
-    // Otherwise, the main thread pool could become clogged with
-    // long writes, and reads will not be processed either.
-    let mut writer = shared_writer.lock();
+  let subgraphs_map =
+    Arc::new(HashIndex::<SubgraphName, NonblockingSubgraph>::new());
 
-    loop {
-      // drain as many ops as have arrived
-      while let Ok(op) = rx.try_recv() {
-        writer.append(op);
-        println!("Ops: {}",rx.len());
-        thread::sleep(Duration::from_millis(100));
-        writer.publish();
-        // Note that left-right is not really eventually-consistent,
-        // but instead strong-consistent. This means that in case of
-        // high load on reading, publish() will block readers until all
-        // the _reading_ operations are finished, and then all the operations
-        // are applied in the correct order.
-        // There are two ways to handle this:
-        // 1. sleep a bit on the write execution thread to allow the readers to flush
-        // 2. implement a truly eventually-consistent version of left-right that never blocks (arc-swap)
-      }
-    }
-  });
+  // Primary queue fed by your network / IO layer
+  let (primary_tx, primary_rx) =
+    mpsc::channel::<MultigraphOperation>(PRIMARY_QUEUE_CAPACITY);
+
+  create_dispatcher_task(primary_rx);
 
   let tx = Arc::new(tx); // wrap in Arc to clone inside loop
 
@@ -70,6 +147,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let read_handle_clone = read.clone();
     let tx = Arc::clone(&tx);
 
+    let subgraphs_map = Arc::clone(&subgraphs_map);
     tokio::spawn(async move {
       // These wrapper types are likely what you'll give out to your consumers.
       //let mut cw = Counter::new(write);
@@ -90,6 +168,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Err(_) => return,
       };
 
+      let subgraph_name = SubgraphName::new();
+
+      let mut response = Response {
+        response: 0,
+      }; // No subgraph found, return 0
+
+      let request_is_read = true;
+      if request_is_read {
+        let guard = Guard::new();
+        if let Some(subgraph) = subgraphs_map.peek(&subgraph_name, &guard) {
+          let reader = subgraph.reader.clone();
+        }
+      } else {
+        let subgraph = subgraphs_map
+          .entry_async(subgraph_name)
+          .await
+          .or_insert(NonblockingSubgraph::new(subgraph_name));
+      }
+
       let mut counter_state = 0;
       if req.number < 1 {
         // Simulate write request
@@ -100,7 +197,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let cr = CountReader::new(read_handle_clone);
         counter_state = cr.get();
         counter_clone.fetch_add(1, Ordering::Relaxed);
-        println!("CSTATE: {} {}",counter_clone.load(Ordering::Relaxed), counter_state );
+        println!(
+          "CSTATE: {} {}",
+          counter_clone.load(Ordering::Relaxed),
+          counter_state
+        );
       }
 
       let resp = Response {
