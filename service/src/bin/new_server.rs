@@ -1,5 +1,7 @@
 use parking_lot::Mutex;
 use scc::HashIndex;
+use dashmap::DashMap;
+
 use tokio::{
   io::{AsyncReadExt, AsyncWriteExt},
   net::TcpListener,
@@ -35,69 +37,43 @@ struct NonblockingSubgraph {
 }
 
 
-
 impl NonblockingSubgraph {
-    fn new(name: SubgraphName) -> Self {
-        let (writer, reader) = left_right::new::<i32, CounterAddOp>();
-        let (tx, rx) = mpsc::channel::<GraphOperation>(SUBGRAPH_QUEUE_CAPACITY);
-        let loop_thread = thread::spawn(move || _process_loop(writer, rx));
+  fn new(name: SubgraphName) -> Self {
+    let (writer, reader) = left_right::new::<i32, CounterAddOp>();
+    let (tx, rx) = mpsc::channel::<GraphOperation>(SUBGRAPH_QUEUE_CAPACITY);
+    let loop_thread = thread::spawn(move || _process_loop(writer, rx));
 
-        NonblockingSubgraph {
-            name,
-            loop_thread,
-            tx_ops_queue: tx,
-            reader_factory: reader.factory(),
-        }
+    NonblockingSubgraph {
+      name,
+      loop_thread,
+      tx_ops_queue: tx,
+      reader_factory: reader.factory(),
     }
-    
+  }
 }
 fn _process_loop(
-    mut writer: WriteHandle<i32, CounterAddOp>,
-    mut rx_ops_queue: mpsc::Receiver<GraphOperation>
+  mut writer: WriteHandle<i32, CounterAddOp>,
+  mut rx_ops_queue: mpsc::Receiver<GraphOperation>,
 ) {
-    while let Some(op) = rx_ops_queue.blocking_recv(){
-        writer.append(op);
-        println!("Ops: {}", rx_ops_queue.len());
-        thread::sleep(Duration::from_millis(100));
-        writer.publish();
-    }
+  while let Some(op) = rx_ops_queue.blocking_recv() {
+    writer.append(op);
+    println!("Ops: {}", rx_ops_queue.len());
+    // Note that left-right is not really eventually-consistent,
+    // but instead strong-consistent. This means that in case of
+    // high load on reading, publish() will block readers until all
+    // the _reading_ operations are finished, and then all the operations
+    // are applied in the correct order.
+    // There are two ways to handle this:
+    // 1. sleep a bit on the write execution thread to allow the readers to flush
+    // 2. implement a truly eventually-consistent version of left-right that never blocks (arc-swap)
+    thread::sleep(Duration::from_millis(100));
+    writer.publish();
+  }
 }
-
-
-
-
 
 struct MultigraphOperation {
   subgraph_name: SubgraphName,
   op: GraphOperation,
-}
-
-/// A single subgraph's mailbox & processing loop
-async fn subgraph_loop(mut rx: mpsc::Receiver<GraphOperation>) {
-  let mut writer = shared_writer.lock();
-  while let Some(op) = rx.recv().await {
-    // It is EXTREMELY important to move long-running tasks to a
-    // background thread to avoid blocking the main thread.
-    // Otherwise, the main thread pool could become clogged with
-    // long writes, and reads will not be processed either.
-    task::spawn_blocking(move || {
-      writer.append(op);
-      println!("Ops: {}", rx.len());
-
-      // Note that left-right is not really eventually-consistent,
-      // but instead strong-consistent. This means that in case of
-      // high load on reading, publish() will block readers until all
-      // the _reading_ operations are finished, and then all the operations
-      // are applied in the correct order.
-      // There are two ways to handle this:
-      // 1. sleep a bit on the write execution thread to allow the readers to flush
-      // 2. implement a truly eventually-consistent version of left-right that never blocks (arc-swap)
-      thread::sleep(Duration::from_millis(100));
-      writer.publish();
-    })
-      .await
-      .expect("TODO: panic message");
-  }
 }
 
 const PRIMARY_QUEUE_CAPACITY: usize = 1024;
@@ -113,51 +89,14 @@ struct Response {
   response: u64,
 }
 
-fn create_dispatcher_task(mut primary_rx: mpsc::Receiver<MultigraphOperation>) {
-  // ---- Dispatcher -------------------------------------------------------
-  tokio::spawn(async move {
-    // context-id → sender for that context
-    let mut mailboxes: HashMap<SubgraphName, mpsc::Sender<GraphOperation>> =
-      HashMap::new();
-
-    while let Some(multigraph_op) = primary_rx.recv().await {
-      let sender_for_subgraph = mailboxes
-        .entry(multigraph_op.subgraph_name)
-        .or_insert_with(|| {
-          // New subgraph: create its private queue & loop
-          let (tx, rx) = mpsc::channel::<GraphOperation>(SUBGRAPH_QUEUE_CAPACITY);
-          tokio::spawn(subgraph_loop(rx));
-          tx
-        });
-
-      // Forward the operation to its subgraph queue
-      // Note: blocks if there is no capacity!
-      let _ = sender_for_subgraph.send(multigraph_op.op).await;
-    }
-  });
-  // -----------------------------------------------------------------------
-}
-
 #[tokio::main]
 //#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
   let listener = TcpListener::bind("127.0.0.1:8080").await?;
   println!("Server running on 127.0.0.1:8080");
-  let (write, read) = left_right::new::<i32, CounterAddOp>();
-  let shared_writer = Arc::new(Mutex::new(write));
 
-  let (tx, mut rx) = mpsc::channel::<CounterAddOp>(102400);
+  let subgraphs_map = Arc::new(DashMap::<SubgraphName, NonblockingSubgraph>::new());
 
-  let subgraphs_map =
-    Arc::new(HashIndex::<SubgraphName, NonblockingSubgraph>::new());
-
-  // Primary queue fed by your network / IO layer
-  let (primary_tx, primary_rx) =
-    mpsc::channel::<MultigraphOperation>(PRIMARY_QUEUE_CAPACITY);
-
-  create_dispatcher_task(primary_rx);
-
-  let tx = Arc::new(tx); // wrap in Arc to clone inside loop
 
   let counter = Arc::new(AtomicUsize::new(0));
   loop {
@@ -165,9 +104,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let (mut socket, _) = listener.accept().await?;
     // We clone the reader handle outside to avoid locking it out
     // of the subsequent iterations.
-    let read_handle_clone = read.clone();
-    let tx = Arc::clone(&tx);
-
     let subgraphs_map = Arc::clone(&subgraphs_map);
     tokio::spawn(async move {
       // These wrapper types are likely what you'll give out to your consumers.
@@ -197,15 +133,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
       let request_is_read = true;
       if request_is_read {
-        let guard = Guard::new();
-        if let Some(subgraph) = subgraphs_map.peek(&subgraph_name, &guard) {
-          let reader = subgraph.reader_factory.handle();
+        if let Some(reader) = subgraphs_map
+          .get(&subgraph_name)
+          .map(|subgraph| subgraph.reader_factory.handle()) {
+          
         }
       } else {
-        let subgraph = subgraphs_map
-          .entry_async(subgraph_name.clone())
-          .await
-          .or_insert(NonblockingSubgraph::new(subgraph_name.clone()));
+        // Note: cloning the ops_sender creates additional input paths into
+        // the queue. However, when pushing multiple operation through them,
+        // the operations sent from different threads might end up interleaved.
+        // This is fine, since we always push just a single operation.
+        // In general, we want to minimize the lifetime of the reference to 
+        // the subgraphs_map, since that uses Dashmap, and that may block the
+        // readers on write, and vice-versae.
+        let ops_sender = match subgraphs_map.get(&subgraph_name) {
+          Some(subgraph) => subgraph.tx_ops_queue.clone(),
+          None => subgraphs_map
+            .entry(subgraph_name.clone())
+            .or_insert(NonblockingSubgraph::new(subgraph_name.clone()))
+            .tx_ops_queue
+            .clone(),
+        };
       }
 
       let mut counter_state = 0;
