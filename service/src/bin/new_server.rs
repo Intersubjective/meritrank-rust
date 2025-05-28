@@ -42,7 +42,6 @@ impl NonblockingSubgraph {
     let (writer, reader) = left_right::new::<i32, CounterAddOp>();
     let (tx, rx) = mpsc::channel::<GraphOperation>(SUBGRAPH_QUEUE_CAPACITY);
     let loop_thread = thread::spawn(move || _process_loop(writer, rx));
-
     NonblockingSubgraph {
       name,
       loop_thread,
@@ -76,7 +75,6 @@ struct MultigraphOperation {
   op: GraphOperation,
 }
 
-const PRIMARY_QUEUE_CAPACITY: usize = 1024;
 const SUBGRAPH_QUEUE_CAPACITY: usize = 1024;
 
 #[derive(Debug, Encode, Decode)]
@@ -136,7 +134,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         if let Some(reader) = subgraphs_map
           .get(&subgraph_name)
           .map(|subgraph| subgraph.reader_factory.handle()) {
-          
         }
       } else {
         // Note: cloning the ops_sender creates additional input paths into
