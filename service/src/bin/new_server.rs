@@ -23,14 +23,14 @@ type SubgraphName = String;
 struct GraphOperation {
   // fields …
 }
-use left_right::{ReadHandle, WriteHandle};
+use left_right::{ReadHandle, ReadHandleFactory, WriteHandle};
 
 #[derive(Clone)]
 struct NonblockingSubgraph {
   name: SubgraphName,
   writer: Arc<Mutex<WriteHandle<i32, CounterAddOp>>>,
-  reader: ReadHandle<i32>,
-  // other fields...
+  reader_factory: ReadHandleFactory<i32>, // Changed from ReadHandle
+                                          // other fields...
 }
 
 impl NonblockingSubgraph {
@@ -39,8 +39,8 @@ impl NonblockingSubgraph {
     NonblockingSubgraph {
       name,
       writer: Arc::new(Mutex::new(write)),
-      reader: read,
-      // Initialize other fields...
+      reader_factory: read.factory(), // Create factory from ReadHandle
+                                      // Initialize other fields...
     }
   }
 }
@@ -178,13 +178,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
       if request_is_read {
         let guard = Guard::new();
         if let Some(subgraph) = subgraphs_map.peek(&subgraph_name, &guard) {
-          let reader = subgraph.reader.clone();
+          let reader = subgraph.reader_factory.handle();
         }
       } else {
         let subgraph = subgraphs_map
-          .entry_async(subgraph_name)
+          .entry_async(subgraph_name.clone())
           .await
-          .or_insert(NonblockingSubgraph::new(subgraph_name));
+          .or_insert(NonblockingSubgraph::new(subgraph_name.clone()));
       }
 
       let mut counter_state = 0;
