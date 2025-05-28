@@ -25,24 +25,66 @@ struct GraphOperation {
 }
 use left_right::{ReadHandle, ReadHandleFactory, WriteHandle};
 
-#[derive(Clone)]
 struct NonblockingSubgraph {
   name: SubgraphName,
-  writer: Arc<Mutex<WriteHandle<i32, CounterAddOp>>>,
+  loop_task: tokio::task::JoinHandle<()>,
+  tx_ops_queue: mpsc::Sender<GraphOperation>,
   reader_factory: ReadHandleFactory<i32>, // Changed from ReadHandle
-                                          // other fields...
+  // other fields...
+
+}
+
+
+async fn _process_loop(
+    writer: Arc<Mutex<WriteHandle<i32, CounterAddOp>>>,
+    mut rx_ops_queue: mpsc::Receiver<GraphOperation>
+) {
+    while let Some(op) = rx_ops_queue.recv().await {
+        let writer = writer.clone();
+        // It is EXTREMELY important to move long-running tasks to a
+        // background thread to avoid blocking the main thread.
+        // Otherwise, the main thread pool could become clogged with
+        // long writes, and reads will not be processed either.
+        task::spawn_blocking(move || {
+            let mut writer = writer.lock();
+            writer.append(op);
+            println!("Ops: {}", rx_ops_queue.len());
+            // Note that left-right is not really eventually-consistent,
+            // but instead strong-consistent. This means that in case of
+            // high load on reading, publish() will block readers until all
+            // the _reading_ operations are finished, and then all the operations
+            // are applied in the correct order.
+            // There are two ways to handle this:
+            // 1. sleep a bit on the write execution thread to allow the readers to flush
+            // 2. implement a truly eventually-consistent version of left-right that never blocks (arc-swap)
+            thread::sleep(Duration::from_millis(100));
+            writer.publish();
+        })
+        .await
+        .expect("TODO: panic message");
+    }
 }
 
 impl NonblockingSubgraph {
-  fn new(name: SubgraphName) -> Self {
-    let (write, read) = left_right::new::<i32, CounterAddOp>();
-    NonblockingSubgraph {
-      name,
-      writer: Arc::new(Mutex::new(write)),
-      reader_factory: read.factory(), // Create factory from ReadHandle
-                                      // Initialize other fields...
+    fn new(name: SubgraphName) -> Self {
+        let (writer, reader) = left_right::new::<i32, CounterAddOp>();
+        let writer = Arc::new(Mutex::new(writer));
+        let (tx, rx) = mpsc::channel::<GraphOperation>(SUBGRAPH_QUEUE_CAPACITY);
+        let loop_task = tokio::spawn(_process_loop(writer.clone(), rx));
+
+        NonblockingSubgraph {
+            name,
+            loop_task,
+            tx_ops_queue: tx,
+            reader_factory: reader.factory(),
+            // Initialize other fields...
+        }
     }
-  }
+}
+
+
+
+
 }
 
 struct MultigraphOperation {
@@ -73,8 +115,8 @@ async fn subgraph_loop(mut rx: mpsc::Receiver<GraphOperation>) {
       thread::sleep(Duration::from_millis(100));
       writer.publish();
     })
-    .await
-    .expect("TODO: panic message");
+      .await
+      .expect("TODO: panic message");
   }
 }
 
@@ -103,8 +145,7 @@ fn create_dispatcher_task(mut primary_rx: mpsc::Receiver<MultigraphOperation>) {
         .entry(multigraph_op.subgraph_name)
         .or_insert_with(|| {
           // New subgraph: create its private queue & loop
-          let (tx, rx) =
-            mpsc::channel::<GraphOperation>(SUBGRAPH_QUEUE_CAPACITY);
+          let (tx, rx) = mpsc::channel::<GraphOperation>(SUBGRAPH_QUEUE_CAPACITY);
           tokio::spawn(subgraph_loop(rx));
           tx
         });
@@ -185,6 +226,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
           .entry_async(subgraph_name.clone())
           .await
           .or_insert(NonblockingSubgraph::new(subgraph_name.clone()));
+        MOVE
+        QUEUE
+        AND
+        LOOP
+        TO
+        GRAPH
+        OBJECT
       }
 
       let mut counter_state = 0;
