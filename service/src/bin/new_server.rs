@@ -27,7 +27,7 @@ use left_right::{ReadHandle, ReadHandleFactory, WriteHandle};
 
 struct NonblockingSubgraph {
   name: SubgraphName,
-  loop_task: task::JoinHandle<()>,
+  loop_thread: std::thread::JoinHandle<()>,
   tx_ops_queue: mpsc::Sender<GraphOperation>,
   reader_factory: ReadHandleFactory<i32>, // Changed from ReadHandle
   // other fields...
@@ -40,31 +40,26 @@ impl NonblockingSubgraph {
     fn new(name: SubgraphName) -> Self {
         let (writer, reader) = left_right::new::<i32, CounterAddOp>();
         let (tx, rx) = mpsc::channel::<GraphOperation>(SUBGRAPH_QUEUE_CAPACITY);
-        let loop_task = tokio::spawn(_process_loop(writer, rx));
+        let loop_thread = thread::spawn(move || _process_loop(writer, rx));
 
         NonblockingSubgraph {
             name,
-            loop_task,
+            loop_thread,
             tx_ops_queue: tx,
             reader_factory: reader.factory(),
-            // Initialize other fields...
         }
     }
     
 }
-async fn _process_loop(
+fn _process_loop(
     mut writer: WriteHandle<i32, CounterAddOp>,
     mut rx_ops_queue: mpsc::Receiver<GraphOperation>
 ) {
-    while let Some(op) = rx_ops_queue.recv().await {
-        task::spawn_blocking(move || {
-            writer.append(op);
-            println!("Ops: {}", rx_ops_queue.len());
-            thread::sleep(Duration::from_millis(100));
-            writer.publish();
-        })
-          .await
-          .expect("TODO: panic message");
+    while let Some(op) = rx_ops_queue.blocking_recv(){
+        writer.append(op);
+        println!("Ops: {}", rx_ops_queue.len());
+        thread::sleep(Duration::from_millis(100));
+        writer.publish();
     }
 }
 
