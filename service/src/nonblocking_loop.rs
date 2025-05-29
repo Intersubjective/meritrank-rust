@@ -1,45 +1,45 @@
-use left_right::{Absorb, ReadHandle, ReadHandleFactory, WriteHandle};
+use left_right::{Absorb, ReadHandleFactory, WriteHandle};
 use std::marker::PhantomData;
 use std::thread;
 use tokio::sync::mpsc;
 
-struct NonblockingSubgraph<T, Op> {
-  loop_thread: thread::JoinHandle<()>,
-  tx_ops_queue: mpsc::Sender<Op>,
-  reader_factory: ReadHandleFactory<T>,
+pub struct ConcurrentDataProcessor<T, Op> {
+  processing_thread: thread::JoinHandle<()>,
+  pub op_sender: mpsc::Sender<Op>,
+  pub data_reader_factory: ReadHandleFactory<T>,
   _phantom: PhantomData<T>, // This is needed because T is not used directly in the struct
 }
 
-impl<T, Op> NonblockingSubgraph<T, Op>
+impl<T, Op> ConcurrentDataProcessor<T, Op>
 where
   T: 'static + Send + Sync + Clone + Absorb<Op>,
   Op: 'static + Send,
 {
-  fn new_from_empty(
+  pub fn new(
     t: T,
     sleep: u64,
     queue_len: usize,
   ) -> Self {
     let (writer, reader) = left_right::new_from_empty::<T, Op>(t);
     let (tx, rx) = mpsc::channel::<Op>(queue_len);
-    let loop_thread = thread::spawn(move || _process_loop(writer, rx, sleep));
-    NonblockingSubgraph {
-      loop_thread,
-      tx_ops_queue: tx,
-      reader_factory: reader.factory(),
+    let loop_thread = thread::spawn(move || processing_loop(writer, rx, sleep));
+    ConcurrentDataProcessor {
+      processing_thread: loop_thread,
+      op_sender: tx,
+      data_reader_factory: reader.factory(),
       _phantom: PhantomData,
     }
   }
 
   pub fn shutdown(mut self) -> thread::Result<()> {
     // Drop the sender, which will close the channel
-    drop(self.tx_ops_queue);
+    drop(self.op_sender);
     // Join the thread
-    self.loop_thread.join()
+    self.processing_thread.join()
   }
 }
 
-fn _process_loop<T, Op>(
+fn processing_loop<T, Op>(
   mut writer: WriteHandle<T, Op>,
   mut rx_ops_queue: mpsc::Receiver<Op>,
   sleep: u64,
@@ -49,7 +49,7 @@ fn _process_loop<T, Op>(
 {
   while let Some(op) = rx_ops_queue.blocking_recv() {
     writer.append(op);
-    println!("Ops: {}", rx_ops_queue.len());
+    //println!("Ops: {}", rx_ops_queue.len());
     // Note that left-right is not really eventually-consistent,
     // but instead strong-consistent. This means that in case of
     // high load on reading, publish() will block readers until all
@@ -96,17 +96,15 @@ fn test_nonblocking() {
     }
   }
 
-  // Create a new NonblockingSubgraph
-  let subgraph = NonblockingSubgraph::<MyDataType, TestOp>::new_from_empty(
-    MyDataType(0),
-    0,
-    10,
-  );
-  subgraph.tx_ops_queue.blocking_send(TestOp(1)).unwrap();
-  subgraph.tx_ops_queue.blocking_send(TestOp(1)).unwrap();
-  subgraph.tx_ops_queue.blocking_send(TestOp(1)).unwrap();
+  let processor =
+    ConcurrentDataProcessor::<MyDataType, TestOp>::new(MyDataType(0), 0, 10);
+  processor.op_sender.blocking_send(TestOp(1)).unwrap();
+  processor.op_sender.blocking_send(TestOp(1)).unwrap();
+  processor.op_sender.blocking_send(TestOp(1)).unwrap();
   thread::sleep(std::time::Duration::from_millis(10));
-  let handle = subgraph.reader_factory.handle();
+  let handle = processor.data_reader_factory.handle();
   assert_eq!(handle.enter().unwrap().0, 3);
-  subgraph.shutdown().unwrap();
+  processor
+    .shutdown()
+    .expect("Failed to shutdown processing loop");
 }
