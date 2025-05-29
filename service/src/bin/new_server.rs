@@ -125,6 +125,27 @@ where
   response
 }
 
+pub async fn process_request(
+  subgraphs_map: &Arc<DashMap<SubgraphName, ConcurrentGraphProcessor>>,
+  req: &Request,
+) -> Response {
+  match req.opcode {
+    ServiceRequestOpcode::WriteEdge => {
+      send_op(
+        &*subgraphs_map,
+        &req.subgraph_name,
+        AugGraphOp::new(AugGraphOpcode::WriteEdge, req.ego.clone()),
+      )
+      .await
+    },
+    ServiceRequestOpcode::ReadRank => {
+      process_read(&*subgraphs_map, &req.subgraph_name, |aug_graph| {
+        aug_graph.get_rank(&req.ego)
+      })
+    },
+  }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
   let listener = TcpListener::bind("127.0.0.1:8080").await?;
@@ -154,23 +175,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Err(_) => return,
       };
 
-      let response = match req.opcode {
-        ServiceRequestOpcode::WriteEdge => {
-          send_op(
-            &*subgraphs_map,
-            &req.subgraph_name,
-            AugGraphOp::new(AugGraphOpcode::WriteEdge, req.ego.clone()),
-          )
-          .await
-        },
-        ServiceRequestOpcode::ReadRank => {
-          process_read(
-            &*subgraphs_map,
-            &req.subgraph_name,
-            |aug_graph| aug_graph.get_rank(&req.ego),
-          ) 
-        },
-      };
+      let response = process_request(&subgraphs_map, &req).await;
 
       let out = match encode_to_vec(&response, config) {
         Ok(data) => data,
