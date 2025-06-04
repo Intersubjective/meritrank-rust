@@ -345,6 +345,39 @@ impl AugMultiGraph {
 
     let ego_id = self.find_or_add_node_by_name(ego);
     let focus_id = self.find_or_add_node_by_name(focus);
+
+    // Handling the special case - dirty hack - of returning
+    // poll results through the neighbors method.
+    if kind == NodeKind::PollOption
+      && kind_from_name(ego) == NodeKind::User
+      && kind_from_name(focus) == NodeKind::Poll
+      && direction == NEIGHBORS_INBOUND
+    {
+      log_info!("Returning poll results through read_neighbors - ego: {}, focus: {}", ego, focus);
+      return if let Some(poll_result) = self
+        .get_subgraph_from_context(context)
+        .poll_store
+        .get_poll_results(ego_id, focus_id)
+      {
+        poll_result
+          .iter()
+          .map(|(opt, w)| {
+            (
+              focus.to_string(),
+              node_name_from_id(&self.node_infos, *opt),
+              *w,
+              0.0,
+              0,
+              0,
+            )
+          })
+          .collect()
+      } else {
+        log_warning!("No poll result found for ego: {}, focus: {}", ego, focus);
+        vec![]
+      }
+    }
+
     let mut scores = self.fetch_neighbors(context, ego_id, focus_id, dir);
 
     if kind == NodeKind::Opinion && direction == NEIGHBORS_INBOUND {

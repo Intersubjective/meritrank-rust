@@ -152,6 +152,7 @@ impl AugMultiGraph {
         cached_walks:          LruCache::new(self.settings.walks_cache_size),
         cached_score_clusters: Vec::new(),
         omit_neg_edges_scores: self.settings.omit_neg_edges_scores,
+        poll_store:            Default::default(),
       });
 
     // Add nodes to the zero context if needed
@@ -223,6 +224,7 @@ impl AugMultiGraph {
         cached_walks:          LruCache::new(self.settings.walks_cache_size),
         cached_score_clusters: Vec::new(),
         omit_neg_edges_scores: self.settings.omit_neg_edges_scores,
+        poll_store:            Default::default(),
       },
     );
 
@@ -559,50 +561,116 @@ impl AugMultiGraph {
       return;
     }
 
-    if node_kind_from_id(&self.node_infos, src) == NodeKind::User
-      && node_kind_from_id(&self.node_infos, dst) == NodeKind::User
-    {
-      self.subgraph_from_context(context);
+    let src_kind = node_kind_from_id(&self.node_infos, src);
+    let dst_kind = node_kind_from_id(&self.node_infos, dst);
 
-      for (enum_context, subgraph) in &mut self.subgraphs {
-        log_verbose!(
-          "Set user edge in {:?}: {} -> {} for {}",
-          enum_context,
-          src,
-          dst,
-          amount
+    match (src_kind, dst_kind) {
+      (NodeKind::User, NodeKind::User) => {
+        self.subgraph_from_context(context);
+
+        for (enum_context, subgraph) in &mut self.subgraphs {
+          log_verbose!(
+            "Set user edge in {:?}: {} -> {} for {}",
+            enum_context,
+            src,
+            dst,
+            amount
+          );
+          subgraph.meritrank_data.set_edge(src, dst, amount);
+        }
+      },
+      (NodeKind::User, NodeKind::PollOption) => {
+        match self
+          .subgraph_from_context(context)
+          .poll_store
+          .add_user_vote(src, dst, amount)
+        {
+          Ok(_) => {
+            log_verbose!(
+              "Set User -> PollOption edge in {:?}: {} -> {} for {}",
+              context,
+              src,
+              dst,
+              amount
+            );
+          },
+          Err(e) => {
+            log_error!(
+            "Failed to add user vote: User {} -> PollOption {} with amount {}. Error: {}",
+            src,
+            dst,
+            amount,
+            e
         );
-        subgraph.meritrank_data.set_edge(src, dst, amount);
-      }
-    } else if context.is_empty() {
-      log_verbose!("Set edge in \"\": {} -> {} for {}", src, dst, amount);
-      self
-        .subgraph_from_context(context)
-        .meritrank_data
-        .set_edge(src, dst, amount);
-    } else {
-      let null_weight = self.subgraph_from_context("").edge_weight(src, dst);
-      let old_weight =
-        self.subgraph_from_context(context).edge_weight(src, dst);
-      let delta = null_weight + amount - old_weight;
+          },
+        }
+      },
+      (NodeKind::PollOption, NodeKind::Poll) => {
+        match self
+          .subgraph_from_context(context)
+          .poll_store
+          .add_poll_option(src, dst)
+        {
+          Ok(_) => {
+            log_verbose!(
+              "Set PollOption -> Poll edge in {:?}: {} -> {} for {}",
+              context,
+              src,
+              dst,
+              amount
+            );
+          },
+          Err(e) => {
+            log_error!(
+              "Failed to add poll option: PollOption {} -> Poll {}. Error: {}",
+              src,
+              dst,
+              e
+            );
+          },
+        }
+      },
+      (src_kind, dst_kind)
+        if src_kind == NodeKind::PollOption
+          || src_kind == NodeKind::Poll
+          || dst_kind == NodeKind::PollOption
+          || dst_kind == NodeKind::Poll =>
+      {
+        log_warning!("Unexpected edge type: {:?} -> {:?} in context {:?}. No action taken.", src_kind, dst_kind, context);
+      },
+      _ => {
+        if context.is_empty() {
+          log_verbose!("Set edge in \"\": {} -> {} for {}", src, dst, amount);
+          self
+            .subgraph_from_context(context)
+            .meritrank_data
+            .set_edge(src, dst, amount);
+        } else {
+          let null_weight =
+            self.subgraph_from_context("").edge_weight(src, dst);
+          let old_weight =
+            self.subgraph_from_context(context).edge_weight(src, dst);
+          let delta = null_weight + amount - old_weight;
 
-      log_verbose!("Set edge in \"\": {} -> {} for {}", src, dst, delta);
-      self
-        .subgraph_from_context("")
-        .meritrank_data
-        .set_edge(src, dst, delta);
+          log_verbose!("Set edge in \"\": {} -> {} for {}", src, dst, delta);
+          self
+            .subgraph_from_context("")
+            .meritrank_data
+            .set_edge(src, dst, delta);
 
-      log_verbose!(
-        "Set edge in {:?}: {} -> {} for {}",
-        context,
-        src,
-        dst,
-        amount
-      );
-      self
-        .subgraph_from_context(context)
-        .meritrank_data
-        .set_edge(src, dst, amount);
+          log_verbose!(
+            "Set edge in {:?}: {} -> {} for {}",
+            context,
+            src,
+            dst,
+            amount
+          );
+          self
+            .subgraph_from_context(context)
+            .meritrank_data
+            .set_edge(src, dst, amount);
+        }
+      },
     }
   }
 }
