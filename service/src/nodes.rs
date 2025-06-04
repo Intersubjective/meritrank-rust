@@ -1,6 +1,5 @@
 use crate::constants::*;
 use crate::log::*;
-// use crate::protocol::*; // Removed unused import
 use std::ops::{Index, IndexMut};
 
 pub use meritrank_core::{NodeId, Weight};
@@ -8,18 +7,22 @@ pub use meritrank_core::{NodeId, Weight};
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub enum NodeKind {
   #[default]
-  Unknown,
+  Unknown,  // TODO: remove this completely and instead propagate errors
   User,
   Beacon,
   Comment,
   Opinion,
+  PollOption, // alt name is "Vote"
+  Poll, 
 }
 
-pub const ALL_NODE_KINDS: [NodeKind; 4] = [
+pub const ALL_NODE_KINDS: [NodeKind; 6] = [
   NodeKind::User,
   NodeKind::Beacon,
   NodeKind::Comment,
   NodeKind::Opinion,
+  NodeKind::PollOption,
+  NodeKind::Poll,
 ];
 
 // NeighborDirection enum REMOVED from here
@@ -55,6 +58,8 @@ pub struct ScoreClustersByKind {
   pub beacons:  ClusterGroupBounds,
   pub comments: ClusterGroupBounds,
   pub opinions: ClusterGroupBounds,
+  pub poll_options:    ClusterGroupBounds, // TODO: remove
+  pub polls:    ClusterGroupBounds, // TODO: remove
 }
 
 impl Index<NodeKind> for ScoreClustersByKind {
@@ -70,6 +75,8 @@ impl Index<NodeKind> for ScoreClustersByKind {
       NodeKind::Beacon => &self.beacons,
       NodeKind::Comment => &self.comments,
       NodeKind::Opinion => &self.opinions,
+      NodeKind::PollOption => &self.poll_options, // TODO: remove
+      NodeKind::Poll => &self.polls, // TODO: remove
     }
   }
 }
@@ -85,6 +92,8 @@ impl IndexMut<NodeKind> for ScoreClustersByKind {
       NodeKind::Beacon => &mut self.beacons,
       NodeKind::Comment => &mut self.comments,
       NodeKind::Opinion => &mut self.opinions,
+      NodeKind::PollOption => &mut self.poll_options, // New case
+      NodeKind::Poll => &mut self.polls, // New case
     }
   }
 }
@@ -97,6 +106,8 @@ pub fn kind_from_name(name: &str) -> NodeKind {
     Some('B') => NodeKind::Beacon,
     Some('C') => NodeKind::Comment,
     Some('O') => NodeKind::Opinion,
+    Some('V') => NodeKind::PollOption,
+    Some('P') => NodeKind::Poll,
     _ => NodeKind::Unknown,
   }
 }
@@ -108,11 +119,11 @@ pub fn kind_from_prefix(prefix: &str) -> Result<NodeKind, ()> {
     "B" => Ok(NodeKind::Beacon),
     "C" => Ok(NodeKind::Comment),
     "O" => Ok(NodeKind::Opinion),
+    "V" => Ok(NodeKind::PollOption), // "V" stands for "Vote"
+    "P" => Ok(NodeKind::Poll),
     _ => Err(()),
   }
 }
-
-// neighbor_dir_from function REMOVED from here
 
 pub fn node_name_from_id(
   infos: &[NodeInfo],

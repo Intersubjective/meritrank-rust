@@ -5,6 +5,7 @@ use crate::constants::*;
 use crate::log::*;
 use crate::nodes::*;
 use crate::quantiles::*;
+use meritrank_service::poll::PollStore;
 
 #[derive(Clone)]
 pub struct Subgraph {
@@ -14,6 +15,7 @@ pub struct Subgraph {
   pub cached_walks:          LruCache<NodeId, ()>,
   pub cached_score_clusters: Vec<ScoreClustersByKind>,
   pub omit_neg_edges_scores: bool,
+  pub poll_store: PollStore,
 }
 
 impl Subgraph {
