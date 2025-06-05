@@ -43,7 +43,7 @@ pub const ALL_NODE_KINDS: [NodeKind; 6] = [
 
 // NeighborDirection enum REMOVED from here
 
-#[derive(PartialEq, Clone, Default)] // Default derive added/kept
+#[derive(PartialEq, Clone, Default)]
 pub struct NodeInfo {
   pub kind: Option<NodeKind>, // Changed to Option<NodeKind>
   pub name: String,
@@ -134,7 +134,7 @@ pub fn node_kind_from_id(
   id: NodeId,
 ) -> Option<NodeKind> { // Return type changed
   match infos.get(id) {
-    Some(x) => x.kind, // x.kind is now Option<NodeKind>
+    Some(x) => x.kind, // This is already Option<NodeKind>
     _ => {
       log_error!("Node does not exist: {}", id);
       None // Fallback to None

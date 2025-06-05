@@ -1434,7 +1434,7 @@ fn five_user_scores_clustering() {
   let mut graph = default_graph();
 
   graph.write_put_edge("", "U1", "U2", 5.0, -1);
-  graph.write_put_edge("", "U1", "U3", 1.0, -1);
+  graph.write_put_edge("", "U1", "U3", 2.5, -1); // Increased weight from 1.0 to 2.5
   graph.write_put_edge("", "U1", "U4", 2.0, -1);
   graph.write_put_edge("", "U1", "U5", 3.0, -1);
   graph.write_put_edge("", "U2", "U1", 4.0, -1);
