@@ -588,7 +588,7 @@ impl AugMultiGraph {
           subgraph.meritrank_data.set_edge(src, dst, amount);
         }
       },
-      (Some(NodeKind::User), Some(NodeKind::PollOption)) => {
+      (Some(NodeKind::User), Some(NodeKind::PollVariant)) => {
         match self
           .subgraph_from_context(context)
           .poll_store
@@ -614,7 +614,7 @@ impl AugMultiGraph {
           },
         }
       },
-      (Some(NodeKind::PollOption), Some(NodeKind::Poll)) => {
+      (NodeKind::PollVariant, NodeKind::Poll) => {
         match self
           .subgraph_from_context(context)
           .poll_store
@@ -639,11 +639,11 @@ impl AugMultiGraph {
           },
         }
       },
-      (src_kind_opt, dst_kind_opt) // Use the Option variables here
-        if src_kind_opt == Some(NodeKind::PollOption)
-          || src_kind_opt == Some(NodeKind::Poll)
-          || dst_kind_opt == Some(NodeKind::PollOption)
-          || dst_kind_opt == Some(NodeKind::Poll) =>
+      (src_kind, dst_kind)
+        if src_kind == NodeKind::PollVariant
+          || src_kind == NodeKind::Poll
+          || dst_kind == NodeKind::PollVariant
+          || dst_kind == NodeKind::Poll =>
       {
         log_warning!("Unexpected edge type: {:?} -> {:?} in context {:?}. No action taken.", src_kind_opt, dst_kind_opt, context);
       },

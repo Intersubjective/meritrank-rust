@@ -342,9 +342,9 @@ impl AugMultiGraph {
 
     // Handling the special case - dirty hack - of returning
     // poll results through the neighbors method.
-    if kind_opt == Some(NodeKind::PollOption) // Use kind_opt
-      && node_kind_from_prefix(ego) == Some(NodeKind::User) // Use new function
-      && node_kind_from_prefix(focus) == Some(NodeKind::Poll) // Use new function
+    if kind == NodeKind::PollVariant
+      && kind_from_name(ego) == NodeKind::User
+      && kind_from_name(focus) == NodeKind::Poll
       && direction == NEIGHBORS_INBOUND
     {
       log_info!("Returning poll results through read_neighbors - ego: {}, focus: {}", ego, focus);

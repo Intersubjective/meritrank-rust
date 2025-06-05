@@ -2,19 +2,19 @@ use meritrank_core::{NodeId, Weight};
 use std::collections::{HashMap, HashSet};
 
 pub type PollId = NodeId;
-pub type PollOptionId = NodeId;
+pub type PollVariantId = NodeId;
 pub type UserId = NodeId;
 
 #[derive(Debug, Clone)]
 struct Vote {
-  option: PollOptionId,
+  option: PollVariantId,
   weight: Weight,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct PollStore {
-  polls:   HashMap<PollId, HashSet<PollOptionId>>,
-  options: HashMap<PollOptionId, PollId>,
+  polls:   HashMap<PollId, HashSet<PollVariantId>>,
+  options: HashMap<PollVariantId, PollId>,
   votes:   HashMap<PollId, HashMap<UserId, Vote>>,
 }
 
@@ -25,7 +25,7 @@ impl PollStore {
 
   pub fn add_poll_option(
     &mut self,
-    option: PollOptionId,
+    option: PollVariantId,
     poll: PollId,
   ) -> Result<(), &'static str> {
     if self.options.contains_key(&option) {
@@ -40,7 +40,7 @@ impl PollStore {
   pub fn add_user_vote(
     &mut self,
     user: UserId,
-    option: PollOptionId,
+    option: PollVariantId,
     weight: Weight,
   ) -> Result<(), &'static str> {
     let poll = self.options.get(&option).ok_or("Option does not exist")?;
@@ -54,7 +54,7 @@ impl PollStore {
 
   pub fn remove_option_from_poll(
     &mut self,
-    option: PollOptionId,
+    option: PollVariantId,
   ) -> Result<(), &'static str> {
     let poll = self
       .options
@@ -103,13 +103,13 @@ impl PollStore {
   pub fn get_poll_options(
     &self,
     poll: PollId,
-  ) -> Option<&HashSet<PollOptionId>> {
+  ) -> Option<&HashSet<PollVariantId>> {
     self.polls.get(&poll)
   }
 
   pub fn get_option_poll(
     &self,
-    option: PollOptionId,
+    option: PollVariantId,
   ) -> Option<&PollId> {
     self.options.get(&option)
   }
@@ -123,7 +123,7 @@ impl PollStore {
 
   fn get_option_votes(
     &self,
-    option: PollOptionId,
+    option: PollVariantId,
   ) -> Option<Vec<(&UserId, &Vote)>> {
     self.options.get(&option).and_then(|poll| {
       self.votes.get(poll).map(|votes| {
@@ -139,15 +139,15 @@ impl PollStore {
     &self,
     ego: UserId,
     poll: PollId,
-  ) -> Option<Vec<(PollOptionId, Weight)>> {
+  ) -> Option<Vec<(PollVariantId, Weight)>> {
     self.votes.get(&poll).map(|poll_votes| {
-        let mut results: HashMap<PollOptionId, Weight> = HashMap::new();
+        let mut results: HashMap<PollVariantId, Weight> = HashMap::new();
 
         for (user, vote) in poll_votes.iter() {
           *results.entry(vote.option).or_insert(0.0) += vote.weight;
         }
 
-        let mut sorted_results: Vec<(PollOptionId, Weight)> = results.into_iter().collect();
+        let mut sorted_results: Vec<(PollVariantId, Weight)> = results.into_iter().collect();
         sorted_results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         sorted_results
     })

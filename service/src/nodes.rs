@@ -12,7 +12,7 @@ pub enum NodeKind {
   Beacon,
   Comment,
   Opinion,
-  PollOption, // alt name is "Vote"
+  PollVariant, // alt name is "Vote"
   Poll, 
 }
 
@@ -37,7 +37,7 @@ pub const ALL_NODE_KINDS: [NodeKind; 6] = [
   NodeKind::Beacon,
   NodeKind::Comment,
   NodeKind::Opinion,
-  NodeKind::PollOption,
+  NodeKind::PollVariant,
   NodeKind::Poll,
 ];
 
@@ -90,7 +90,7 @@ impl Index<NodeKind> for ScoreClustersByKind {
       NodeKind::Beacon => &self.beacons,
       NodeKind::Comment => &self.comments,
       NodeKind::Opinion => &self.opinions,
-      NodeKind::PollOption => &self.poll_options,
+      NodeKind::PollVariant => &self.poll_options,
       NodeKind::Poll => &self.polls,
     }
   }
@@ -107,7 +107,7 @@ impl IndexMut<NodeKind> for ScoreClustersByKind {
       NodeKind::Beacon => &mut self.beacons,
       NodeKind::Comment => &mut self.comments,
       NodeKind::Opinion => &mut self.opinions,
-      NodeKind::PollOption => &mut self.poll_options,
+      NodeKind::PollVariant => &mut self.poll_options,
       NodeKind::Poll => &mut self.polls,
     }
   }
