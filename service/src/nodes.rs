@@ -4,16 +4,32 @@ use std::ops::{Index, IndexMut};
 
 pub use meritrank_core::{NodeId, Weight};
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
+// #[derive(Default)] removed
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum NodeKind {
-  #[default]
-  Unknown,  // TODO: remove this completely and instead propagate errors
+  // Unknown variant removed, #[default] removed
   User,
   Beacon,
   Comment,
   Opinion,
   PollOption, // alt name is "Vote"
   Poll, 
+}
+
+// New function
+pub fn node_kind_from_prefix(name: &str) -> Option<NodeKind> {
+    if name.is_empty() {
+        return None;
+    }
+    match name.chars().next() {
+        Some('U') => Some(NodeKind::User),
+        Some('B') => Some(NodeKind::Beacon),
+        Some('C') => Some(NodeKind::Comment),
+        Some('O') => Some(NodeKind::Opinion),
+        Some('V') => Some(NodeKind::PollOption),
+        Some('P') => Some(NodeKind::Poll),
+        _ => None,
+    }
 }
 
 pub const ALL_NODE_KINDS: [NodeKind; 6] = [
@@ -27,11 +43,10 @@ pub const ALL_NODE_KINDS: [NodeKind; 6] = [
 
 // NeighborDirection enum REMOVED from here
 
-#[derive(PartialEq, Clone, Default)]
+#[derive(PartialEq, Clone, Default)] // Default derive added/kept
 pub struct NodeInfo {
-  pub kind: NodeKind,
+  pub kind: Option<NodeKind>, // Changed to Option<NodeKind>
   pub name: String,
-
   // Bloom filter of nodes marked as seen by this node in the null context
   pub seen_nodes: Vec<u64>,
 }
@@ -53,13 +68,13 @@ impl Default for ClusterGroupBounds {
 
 #[derive(PartialEq, Clone, Default)]
 pub struct ScoreClustersByKind {
-  pub unknown:  ClusterGroupBounds,
+  // pub unknown:  ClusterGroupBounds, // Field removed
   pub users:    ClusterGroupBounds,
   pub beacons:  ClusterGroupBounds,
   pub comments: ClusterGroupBounds,
   pub opinions: ClusterGroupBounds,
-  pub poll_options:    ClusterGroupBounds, // TODO: remove
-  pub polls:    ClusterGroupBounds, // TODO: remove
+  pub poll_options:    ClusterGroupBounds,
+  pub polls:    ClusterGroupBounds,
 }
 
 impl Index<NodeKind> for ScoreClustersByKind {
@@ -70,13 +85,13 @@ impl Index<NodeKind> for ScoreClustersByKind {
     index: NodeKind,
   ) -> &ClusterGroupBounds {
     match index {
-      NodeKind::Unknown => &self.unknown,
+      // NodeKind::Unknown arm removed
       NodeKind::User => &self.users,
       NodeKind::Beacon => &self.beacons,
       NodeKind::Comment => &self.comments,
       NodeKind::Opinion => &self.opinions,
-      NodeKind::PollOption => &self.poll_options, // TODO: remove
-      NodeKind::Poll => &self.polls, // TODO: remove
+      NodeKind::PollOption => &self.poll_options,
+      NodeKind::Poll => &self.polls,
     }
   }
 }
@@ -87,43 +102,19 @@ impl IndexMut<NodeKind> for ScoreClustersByKind {
     index: NodeKind,
   ) -> &mut ClusterGroupBounds {
     match index {
-      NodeKind::Unknown => &mut self.unknown,
+      // NodeKind::Unknown arm removed
       NodeKind::User => &mut self.users,
       NodeKind::Beacon => &mut self.beacons,
       NodeKind::Comment => &mut self.comments,
       NodeKind::Opinion => &mut self.opinions,
-      NodeKind::PollOption => &mut self.poll_options, // New case
-      NodeKind::Poll => &mut self.polls, // New case
+      NodeKind::PollOption => &mut self.poll_options,
+      NodeKind::Poll => &mut self.polls,
     }
   }
 }
 
-pub fn kind_from_name(name: &str) -> NodeKind {
-  log_trace!("{:?}", name);
-
-  match name.chars().next() {
-    Some('U') => NodeKind::User,
-    Some('B') => NodeKind::Beacon,
-    Some('C') => NodeKind::Comment,
-    Some('O') => NodeKind::Opinion,
-    Some('V') => NodeKind::PollOption,
-    Some('P') => NodeKind::Poll,
-    _ => NodeKind::Unknown,
-  }
-}
-
-pub fn kind_from_prefix(prefix: &str) -> Result<NodeKind, ()> {
-  match prefix {
-    "" => Ok(NodeKind::Unknown),
-    "U" => Ok(NodeKind::User),
-    "B" => Ok(NodeKind::Beacon),
-    "C" => Ok(NodeKind::Comment),
-    "O" => Ok(NodeKind::Opinion),
-    "V" => Ok(NodeKind::PollOption), // "V" stands for "Vote"
-    "P" => Ok(NodeKind::Poll),
-    _ => Err(()),
-  }
-}
+// Removed: pub fn kind_from_name(name: &str) -> NodeKind { ... }
+// Removed: pub fn kind_from_prefix(prefix: &str) -> Result<NodeKind, ()> { ... }
 
 pub fn node_name_from_id(
   infos: &[NodeInfo],
@@ -141,24 +132,24 @@ pub fn node_name_from_id(
 pub fn node_kind_from_id(
   infos: &[NodeInfo],
   id: NodeId,
-) -> NodeKind {
+) -> Option<NodeKind> { // Return type changed
   match infos.get(id) {
-    Some(x) => x.kind,
+    Some(x) => x.kind, // x.kind is now Option<NodeKind>
     _ => {
       log_error!("Node does not exist: {}", id);
-      NodeKind::Unknown
+      None // Fallback to None
     },
   }
 }
 
 pub fn nodes_by_kind(
-  kind: NodeKind,
+  kind: NodeKind, // Parameter is a concrete NodeKind
   node_infos: &[NodeInfo],
 ) -> Vec<NodeId> {
   node_infos
     .iter()
     .enumerate()
-    .filter(|(_, info)| info.kind == kind)
+    .filter(|(_, info)| info.kind == Some(kind)) // Compare with Some(kind)
     .map(|(id, _)| id)
     .collect()
 }

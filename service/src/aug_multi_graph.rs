@@ -181,8 +181,8 @@ impl AugMultiGraph {
     for (src_id, src) in zero_graph.nodes.iter().enumerate() {
       let all_edges = src.pos_edges.iter().chain(src.neg_edges.iter());
       for (dst_id, weight) in all_edges {
-        if node_kind_from_id(&self.node_infos, src_id) == NodeKind::User
-          && node_kind_from_id(&self.node_infos, *dst_id) == NodeKind::User
+        if node_kind_from_id(&self.node_infos, src_id) == Some(NodeKind::User)
+          && node_kind_from_id(&self.node_infos, *dst_id) == Some(NodeKind::User)
         {
           new_graph_instance.set_edge(src_id, *dst_id, *weight);
         }
@@ -320,7 +320,7 @@ impl AugMultiGraph {
       return (score, 0);
     }
 
-    if node_kind_from_id(&self.node_infos, ego) != NodeKind::User {
+    if node_kind_from_id(&self.node_infos, ego) != Some(NodeKind::User) {
       //  We apply score clustering only for user nodes.
       return (score, 0);
     }
@@ -375,12 +375,13 @@ impl AugMultiGraph {
       .fetch_all_raw_scores(ego_id, num_walks, k)
       .iter()
       .map(|(dst_id, score)| {
-        let kind = node_kind_from_id(&self.node_infos, *dst_id);
-        (
-          *dst_id,
-          *score,
-          self.apply_score_clustering(context, ego_id, *score, kind).1,
-        )
+        let kind_opt = node_kind_from_id(&self.node_infos, *dst_id);
+        let cluster = if let Some(kind) = kind_opt {
+          self.apply_score_clustering(context, ego_id, *score, kind).1
+        } else {
+          0 // Default cluster for nodes with no kind
+        };
+        (*dst_id, *score, cluster)
       })
       .collect()
   }
@@ -439,8 +440,12 @@ impl AugMultiGraph {
     let score = self
       .subgraph_from_context(context)
       .fetch_raw_score(ego, dst, num_walks, k);
-    let kind = node_kind_from_id(&self.node_infos, dst);
-    self.apply_score_clustering(context, ego, score, kind)
+    let kind_opt = node_kind_from_id(&self.node_infos, dst);
+    if let Some(kind) = kind_opt {
+      self.apply_score_clustering(context, ego, score, kind)
+    } else {
+      (score, 0) // Default cluster if kind is None
+    }
   }
 
   pub fn fetch_score_cached(
@@ -461,9 +466,13 @@ impl AugMultiGraph {
       None => subgraph.fetch_raw_score(ego_id, dst_id, num_walks, k),
     };
 
-    let kind = node_kind_from_id(&self.node_infos, dst_id);
+    let kind_opt = node_kind_from_id(&self.node_infos, dst_id);
 
-    self.apply_score_clustering(context, ego_id, score, kind)
+    if let Some(kind) = kind_opt {
+      self.apply_score_clustering(context, ego_id, score, kind)
+    } else {
+      (score, 0) // Default cluster if kind is None
+    }
   }
 
   pub fn get_object_owner(
@@ -473,8 +482,8 @@ impl AugMultiGraph {
   ) -> Option<NodeId> {
     log_trace!("{:?} {}", context, dst_id);
 
-    let node_kind = node_kind_from_id(&self.node_infos, dst_id);
-    if node_kind == NodeKind::User {
+    let node_kind_opt = node_kind_from_id(&self.node_infos, dst_id);
+    if node_kind_opt == Some(NodeKind::User) {
       return Some(dst_id);
     }
 
@@ -491,10 +500,10 @@ impl AugMultiGraph {
           if x.pos_edges.is_empty() {
             log_error!("Non-user node has no owner");
           }
-          if x.pos_edges.len() > 1 && node_kind != NodeKind::Opinion {
+          if x.pos_edges.len() > 1 && node_kind_opt != Some(NodeKind::Opinion) {
             log_error!("Non-user node has too many edges");
           }
-          if x.pos_edges.len() == 2 && node_kind == NodeKind::Opinion {
+          if x.pos_edges.len() == 2 && node_kind_opt == Some(NodeKind::Opinion) {
             // FIXME! This might produce incorrect results in case the first edge is the edge to the opinion's target
             return Some(x.pos_edges.keys()[0]);
           }
@@ -524,9 +533,9 @@ impl AugMultiGraph {
       node_id = self.node_count;
 
       self.node_count += 1;
-      self.node_infos.resize(self.node_count, NodeInfo::default());
+      self.node_infos.resize(self.node_count, Default::default()); // NodeInfo now derives Default
       self.node_infos[node_id] = NodeInfo {
-        kind:       kind_from_name(node_name),
+        kind:       node_kind_from_prefix(node_name), // Use new function, returns Option<NodeKind>
         name:       node_name.to_string(),
         seen_nodes: Default::default(),
       };
@@ -561,11 +570,11 @@ impl AugMultiGraph {
       return;
     }
 
-    let src_kind = node_kind_from_id(&self.node_infos, src);
-    let dst_kind = node_kind_from_id(&self.node_infos, dst);
+    let src_kind_opt = node_kind_from_id(&self.node_infos, src);
+    let dst_kind_opt = node_kind_from_id(&self.node_infos, dst);
 
-    match (src_kind, dst_kind) {
-      (NodeKind::User, NodeKind::User) => {
+    match (src_kind_opt, dst_kind_opt) {
+      (Some(NodeKind::User), Some(NodeKind::User)) => {
         self.subgraph_from_context(context);
 
         for (enum_context, subgraph) in &mut self.subgraphs {
@@ -579,7 +588,7 @@ impl AugMultiGraph {
           subgraph.meritrank_data.set_edge(src, dst, amount);
         }
       },
-      (NodeKind::User, NodeKind::PollOption) => {
+      (Some(NodeKind::User), Some(NodeKind::PollOption)) => {
         match self
           .subgraph_from_context(context)
           .poll_store
@@ -605,7 +614,7 @@ impl AugMultiGraph {
           },
         }
       },
-      (NodeKind::PollOption, NodeKind::Poll) => {
+      (Some(NodeKind::PollOption), Some(NodeKind::Poll)) => {
         match self
           .subgraph_from_context(context)
           .poll_store
@@ -630,13 +639,13 @@ impl AugMultiGraph {
           },
         }
       },
-      (src_kind, dst_kind)
-        if src_kind == NodeKind::PollOption
-          || src_kind == NodeKind::Poll
-          || dst_kind == NodeKind::PollOption
-          || dst_kind == NodeKind::Poll =>
+      (src_kind_opt, dst_kind_opt) // Use the Option variables here
+        if src_kind_opt == Some(NodeKind::PollOption)
+          || src_kind_opt == Some(NodeKind::Poll)
+          || dst_kind_opt == Some(NodeKind::PollOption)
+          || dst_kind_opt == Some(NodeKind::Poll) =>
       {
-        log_warning!("Unexpected edge type: {:?} -> {:?} in context {:?}. No action taken.", src_kind, dst_kind, context);
+        log_warning!("Unexpected edge type: {:?} -> {:?} in context {:?}. No action taken.", src_kind_opt, dst_kind_opt, context);
       },
       _ => {
         if context.is_empty() {
