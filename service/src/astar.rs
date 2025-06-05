@@ -375,142 +375,144 @@ pub use astar_internal::*;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+  use super::*;
 
-    // Helper function to create a graph
-    fn create_graph() -> Vec<((i64, i64), i64)> {
-        vec![
-            ((0, 1), 5),
-            ((0, 2), 3),
-            ((1, 3), 4),
-            ((2, 4), 1),
-            ((3, 5), 10),
-            ((4, 6), 1),
-            ((6, 7), 1),
-            ((7, 5), 1),
-        ]
-    }
+  // Helper function to create a graph
+  fn create_graph() -> Vec<((i64, i64), i64)> {
+    vec![
+      ((0, 1), 5),
+      ((0, 2), 3),
+      ((1, 3), 4),
+      ((2, 4), 1),
+      ((3, 5), 10),
+      ((4, 6), 1),
+      ((6, 7), 1),
+      ((7, 5), 1),
+    ]
+  }
 
-    // Helper function to create a neighbor getter
-    fn create_neighbor_getter(
-        graph: Vec<((i64, i64), i64)>,
-        destination: i64,
-    ) -> impl Fn(i64, usize) -> Option<Link<i64, i64>> {
-        move |id: i64, index: usize| -> Option<Link<i64, i64>> {
-            let mut k: usize = 0;
-            for ((src, dst), cost) in graph.clone() {
-                if src == id {
-                    if k == index {
-                        return Some(Link::<i64, i64> {
-                            neighbor: dst,
-                            exact_distance: cost,
-                            estimate: (destination - dst).abs(),
-                        });
-                    } else {
-                        k += 1;
-                    }
-                }
-            }
-            None
+  // Helper function to create a neighbor getter
+  fn create_neighbor_getter(
+    graph: Vec<((i64, i64), i64)>,
+    destination: i64,
+  ) -> impl Fn(i64, usize) -> Option<Link<i64, i64>> {
+    move |id: i64, index: usize| -> Option<Link<i64, i64>> {
+      let mut k: usize = 0;
+      for ((src, dst), cost) in graph.clone() {
+        if src == id {
+          if k == index {
+            return Some(Link::<i64, i64> {
+              neighbor:       dst,
+              exact_distance: cost,
+              estimate:       (destination - dst).abs(),
+            });
+          } else {
+            k += 1;
+          }
         }
+      }
+      None
+    }
+  }
+
+  // Helper function to run the A* algorithm
+  fn run_astar(
+    get_neighbor: impl Fn(i64, usize) -> Option<Link<i64, i64>>,
+    source: i64,
+    destination: i64,
+    open_size: usize,
+    closed_size: usize,
+  ) -> (usize, Vec<i64>) {
+    let mut open: Vec<Node<i64, i64>> = vec![Node::default(); open_size];
+    let mut closed: Vec<Node<i64, i64>> = vec![Node::default(); closed_size];
+
+    let mut state = init(&mut open, source, destination, i64::MAX);
+
+    let mut steps = 0;
+    let mut neighbor = None;
+    loop {
+      steps += 1;
+
+      match iteration(&mut open, &mut closed, &mut state, neighbor.clone()) {
+        Status::NEIGHBOR(request) => {
+          neighbor = get_neighbor(request.node, request.index)
+        },
+        Status::SUCCESS => break,
+        Status::PROGRESS => {},
+        Status::FAIL => break,
+        Status::OUT_OF_MEMORY => {
+          open.resize(open.len() + 1024, Node::default());
+          closed.resize(closed.len() + 1024, Node::default());
+        },
+      };
     }
 
-    // Helper function to run the A* algorithm
-    fn run_astar(
-        get_neighbor: impl Fn(i64, usize) -> Option<Link<i64, i64>>,
-        source: i64,
-        destination: i64,
-        open_size: usize,
-        closed_size: usize,
-    ) -> (usize, Vec<i64>) {
-        let mut open: Vec<Node<i64, i64>> = vec![Node::default(); open_size];
-        let mut closed: Vec<Node<i64, i64>> = vec![Node::default(); closed_size];
+    let mut v: Vec<i64> = vec![0; state.num_closed];
+    let n = path(&closed, &state, &mut v);
+    v.resize(n, 0);
 
-        let mut state = init(&mut open, source, destination, i64::MAX);
+    (steps, v)
+  }
 
-        let mut steps = 0;
-        let mut neighbor = None;
-        loop {
-            steps += 1;
+  #[test]
+  fn path_exists() {
+    let graph = create_graph();
+    let get_neighbor = create_neighbor_getter(graph, 5);
+    let (steps, v) = run_astar(get_neighbor, 0, 5, 1024, 1024);
 
-            match iteration(&mut open, &mut closed, &mut state, neighbor.clone()) {
-                Status::NEIGHBOR(request) => neighbor = get_neighbor(request.node, request.index),
-                Status::SUCCESS => break,
-                Status::PROGRESS => {},
-                Status::FAIL => break,
-                Status::OUT_OF_MEMORY => {
-                    open.resize(open.len() + 1024, Node::default());
-                    closed.resize(closed.len() + 1024, Node::default());
-                },
-            };
-        }
+    assert_eq!(steps, 15);
+    assert_eq!(v, vec![0, 2, 4, 6, 7, 5]);
+  }
 
-        let mut v: Vec<i64> = vec![0; state.num_closed];
-        let n = path(&closed, &state, &mut v);
-        v.resize(n, 0);
+  #[test]
+  fn out_of_memory() {
+    let graph = create_graph();
+    let get_neighbor = create_neighbor_getter(graph, 5);
+    let (steps, v) = run_astar(get_neighbor, 0, 5, 1, 0);
 
-        (steps, v)
-    }
+    assert_eq!(steps, 16);
+    assert_eq!(v, vec![0, 2, 4, 6, 7, 5]);
+  }
 
-    #[test]
-    fn path_exists() {
-        let graph = create_graph();
-        let get_neighbor = create_neighbor_getter(graph, 5);
-        let (steps, v) = run_astar(get_neighbor, 0, 5, 1024, 1024);
+  #[test]
+  fn path_does_not_exist() {
+    let graph = create_graph();
+    let get_neighbor = create_neighbor_getter(graph, 15);
+    let (steps, v) = run_astar(get_neighbor, 0, 15, 1024, 1024);
 
-        assert_eq!(steps, 15);
-        assert_eq!(v, vec![0, 2, 4, 6, 7, 5]);
-    }
+    assert_eq!(steps, 25);
+    assert_eq!(v, vec![0, 2, 4, 6, 7]);
+  }
 
-    #[test]
-    fn out_of_memory() {
-        let graph = create_graph();
-        let get_neighbor = create_neighbor_getter(graph, 5);
-        let (steps, v) = run_astar(get_neighbor, 0, 5, 1, 0);
+  #[test]
+  fn empty_path() {
+    let graph = create_graph();
+    let get_neighbor = create_neighbor_getter(graph, 2);
+    let (steps, v) = run_astar(get_neighbor, 2, 2, 1024, 1024);
 
-        assert_eq!(steps, 16);
-        assert_eq!(v, vec![0, 2, 4, 6, 7, 5]);
-    }
+    assert_eq!(steps, 1);
+    assert_eq!(v, vec![2]);
+  }
 
-    #[test]
-    fn path_does_not_exist() {
-        let graph = create_graph();
-        let get_neighbor = create_neighbor_getter(graph, 15);
-        let (steps, v) = run_astar(get_neighbor, 0, 15, 1024, 1024);
+  #[test]
+  fn cyclic() {
+    let graph = vec![
+      ((0, 1), 10),
+      ((0, 2), 3),
+      ((1, 3), 20),
+      ((2, 4), 1),
+      ((3, 5), 1),
+      ((4, 6), 10),
+      ((6, 7), 1),
+      ((7, 5), 1),
+      ((7, 0), 5),
+      ((5, 1), 5),
+      ((6, 2), 5),
+    ];
+    let get_neighbor = create_neighbor_getter(graph, 5);
+    let (steps, v) = run_astar(get_neighbor, 0, 5, 1024, 1024);
 
-        assert_eq!(steps, 25);
-        assert_eq!(v, vec![0, 2, 4, 6, 7]);
-    }
-
-    #[test]
-    fn empty_path() {
-        let graph = create_graph();
-        let get_neighbor = create_neighbor_getter(graph, 2);
-        let (steps, v) = run_astar(get_neighbor, 2, 2, 1024, 1024);
-
-        assert_eq!(steps, 1);
-        assert_eq!(v, vec![2]);
-    }
-
-    #[test]
-    fn cyclic() {
-        let graph = vec![
-            ((0, 1), 10),
-            ((0, 2), 3),
-            ((1, 3), 20),
-            ((2, 4), 1),
-            ((3, 5), 1),
-            ((4, 6), 10),
-            ((6, 7), 1),
-            ((7, 5), 1),
-            ((7, 0), 5),
-            ((5, 1), 5),
-            ((6, 2), 5),
-        ];
-        let get_neighbor = create_neighbor_getter(graph, 5);
-        let (steps, v) = run_astar(get_neighbor, 0, 5, 1024, 1024);
-
-        assert_eq!(steps, 19);
-        assert_eq!(v, vec![0, 2, 4, 6, 7, 5]);
-    }
+    assert_eq!(steps, 19);
+    assert_eq!(v, vec![0, 2, 4, 6, 7, 5]);
+  }
 }
