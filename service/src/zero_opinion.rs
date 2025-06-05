@@ -39,7 +39,7 @@ impl Subgraph {
     let users: Vec<NodeId> = infos
       .iter()
       .enumerate()
-      .filter(|(_id, info)| info.kind == NodeKind::User)
+      .filter(|(_id, info)| info.kind == Some(NodeKind::User)) // Updated comparison
       .filter(|(id, _info)| {
         for (src, dst) in &all_edges {
           if *id == *src || *id == *dst {
@@ -70,9 +70,9 @@ impl Subgraph {
           .into_iter()
           .map(|(node_id, score)| (id, node_id, score))
           .filter(|(ego_id, node_id, score)| {
-            let kind = node_kind_from_id(infos, *node_id);
+            let kind_opt = node_kind_from_id(infos, *node_id); // node_kind_from_id returns Option
 
-            (kind == NodeKind::User || kind == NodeKind::Beacon)
+            (kind_opt == Some(NodeKind::User) || kind_opt == Some(NodeKind::Beacon)) // Updated comparison
               && *score > EPSILON
               && ego_id != node_id
           })
@@ -87,10 +87,10 @@ impl Subgraph {
         let dst_kind = node_kind_from_id(infos, dst_id);
         (ego_id, ego_kind, dst_id, dst_kind, weight)
       })
-      .filter(|(ego_id, ego_kind, dst_id, dst_kind, _)| {
+      .filter(|(ego_id, ego_kind_opt, dst_id, dst_kind_opt, _)| { // ego_kind and dst_kind are Option
         ego_id != dst_id
-          && *ego_kind == NodeKind::User
-          && (*dst_kind == NodeKind::User || *dst_kind == NodeKind::Beacon)
+          && *ego_kind_opt == Some(NodeKind::User) // Updated comparison
+          && (*dst_kind_opt == Some(NodeKind::User) || *dst_kind_opt == Some(NodeKind::Beacon)) // Updated comparison
       })
       .map(|(ego_id, _, dst_id, _, weight)| (ego_id, dst_id, weight))
       .collect();
@@ -152,7 +152,7 @@ impl Subgraph {
       if (id % 100) == 90 {
         log_verbose!("{}%", (id * 100) / infos.len());
       }
-      if infos[id].kind == NodeKind::User {
+      if infos[id].kind == Some(NodeKind::User) { // Updated comparison
         match self.meritrank_data.calculate(id, num_walk) {
           Ok(_) => {},
           Err(e) => log_error!("{}", e),
