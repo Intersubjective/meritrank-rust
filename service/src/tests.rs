@@ -1,9 +1,10 @@
-use crate::aug_multi_graph::*;
-use crate::nodes::*;
-use crate::protocol::*;
+use crate::meritrank_service::aug_multi_graph::*;
+use crate::meritrank_service::nodes::*;
+use crate::meritrank_service::protocol::*;
 use crate::test_data::*;
+use meritrank_service::poll::{PollStore, UserId, Vote};
+use std::collections::{HashMap, HashSet};
 use std::time::SystemTime;
-use meritrank_service::poll::PollStore;
 
 fn default_graph() -> AugMultiGraph {
   AugMultiGraph::new(AugMultiGraphSettings {
@@ -2123,71 +2124,69 @@ fn omit_neg_edges_scores_setting() {
 }
 #[test]
 fn test_poll_store_primary_use_case() {
-    let mut poll_store = PollStore::new();
-    let poll_id = 1;
-    let option1_id = 10;
-    let option2_id = 20;
-    let user1_id = 100;
-    let user2_id = 200;
+  let mut poll_store = PollStore::new();
+  let poll_id = 1;
+  let option1_id = 10;
+  let option2_id = 20;
+  let user1_id = 100;
+  let user2_id = 200;
 
-    // Add poll options
-    poll_store.add_poll_option(option1_id, poll_id).unwrap();
-    poll_store.add_poll_option(option2_id, poll_id).unwrap();
+  // Add poll options
+  poll_store.add_poll_option(option1_id, poll_id).unwrap();
+  poll_store.add_poll_option(option2_id, poll_id).unwrap();
 
-    // Add votes
-    poll_store.add_user_vote(user1_id, option1_id, 1.0).unwrap();
-    poll_store.add_user_vote(user2_id, option2_id, 2.0).unwrap();
+  // Add votes
+  poll_store.add_user_vote(user1_id, option1_id, 1.0).unwrap();
+  poll_store.add_user_vote(user2_id, option2_id, 2.0).unwrap();
 
-    // Get poll results
-    let results = poll_store.get_poll_results(user1_id, poll_id).unwrap();
+  // Get poll results
+  let results = poll_store
+    .get_poll_results_simple(user1_id, poll_id)
+    .unwrap();
 
-    // Check results
-    assert_eq!(results.len(), 2);
-    assert_eq!(results[0], (option2_id, 2.0));
+  // Check results
+  assert_eq!(results.len(), 2);
+  assert_eq!(results[0], (option2_id, 2.0));
 }
 #[test]
 fn read_neighbors_poll_results() {
-    let mut graph = default_graph();
-    let context = "test_context";
-    let ego = "U1";
-    let another_user = "U2";
-    let poll = "P1";
-    let direction = NEIGHBORS_INBOUND;
-    let kind_str = "V";
-    let poll_option1 = "V1";
-    let poll_option2 = "V2";
+  let mut graph = default_graph();
+  let context = "test_context";
+  let poll = "P1";
+  let direction = NEIGHBORS_INBOUND;
+  let kind_str = "V";
+  let poll_option1 = "V1";
+  let poll_option2 = "V2";
+  let poll_option3 = "V3";
 
+  // Create the poll by creating the options
+  graph.write_put_edge(context, poll_option1, poll, 1.0, -1);
+  graph.write_put_edge(context, poll_option2, poll, 1.0, -1);
+  graph.write_put_edge(context, poll_option3, poll, 1.0, -1);
 
+  // Create votes by users
+  graph.write_put_edge(context, "U1", poll_option1, 1.0, -1);
+  graph.write_put_edge(context, "U2", poll_option2, 1.0, -1);
+  graph.write_put_edge(context, "U3", poll_option3, 1.0, -1);
+  graph.write_put_edge(context, "U2", "U1", 1.0, -1);
+  graph.write_put_edge(context, "U3", "U2", 1.0, -1);
 
-    // Create the poll by creating the options
-    graph.write_put_edge(context, poll_option1, poll, 1.0, -1);
-    graph.write_put_edge(context, poll_option2, poll, 1.0, -1);
+  // Sybils
+  graph.write_put_edge(context, "U4", "U5", 1.0, -1);
+  graph.write_put_edge(context, "U5", "U4", 1.0, -1);
+  graph.write_put_edge(context, "U4", poll_option3, 1.0, -1);
+  graph.write_put_edge(context, "U3", poll_option3, 1.0, -1);
 
-    // Create votes by users
-    graph.write_put_edge(context, ego, poll_option1, 1.0, -1);
-    graph.write_put_edge(context, another_user, poll_option1, 10.0, -1);
-    graph.write_put_edge(context, "U3", poll_option2, 3.0, -1);
+  let results = graph.read_neighbors(
+    context, "U1", poll, direction, kind_str, false, 100.0, false, -100.0,
+    false, 0, 10,
+  );
 
-    let results = graph.read_neighbors(
-        context,
-        ego,
-        poll,
-        direction,
-        kind_str,
-        false,
-        100.0,
-        false,
-        -100.0,
-        false,
-        0,
-        10
-    );
-
-    assert_eq!(results.len(), 2);
-    assert_eq!(results[0].0, poll);
-    assert_eq!(results[0].1, poll_option1);
-    assert_eq!(results[0].2, 11.0);
-    assert_eq!(results[1].0, poll);
-    assert_eq!(results[1].1, poll_option2);
-    assert_eq!(results[1].2, 3.0);
+  assert_eq!(results.len(), 2);
+  assert_eq!(results[0].0, poll);
+  assert_eq!(results[0].1, poll_option1);
+  assert_eq!(results[0].2, 11.0);
+  assert_eq!(results[1].0, poll);
+  assert_eq!(results[1].1, poll_option2);
+  assert_eq!(results[1].2, 3.0);
 }

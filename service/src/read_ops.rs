@@ -342,24 +342,28 @@ impl AugMultiGraph {
 
     // Handling the special case - dirty hack - of returning
     // poll results through the neighbors method.
+
     if kind == NodeKind::PollVariant
       && kind_from_name(ego) == NodeKind::User
       && kind_from_name(focus) == NodeKind::Poll
       && direction == NEIGHBORS_INBOUND
     {
-      log_info!("Returning poll results through read_neighbors - ego: {}, focus: {}", ego, focus);
-      return if let Some(poll_result) = self
-        .get_subgraph_from_context(context)
-        .poll_store
-        .get_poll_results(ego_id, focus_id)
+      let mut subgraph = self.subgraph_from_context(context);
+
+      // TODO: Remove cloning, but this will require us making the subgraph immutable
+      let poll_store_clone = subgraph.poll_store.clone();
+
+      // Now use the cloned poll_store to get poll results
+      return if let Some(poll_result) =
+        poll_store_clone.get_poll_results(focus_id, &mut subgraph, 10000)
       {
         poll_result
-          .iter()
+          .into_iter()
           .map(|(opt, w)| {
             (
               focus.to_string(),
-              node_name_from_id(&self.node_infos, *opt),
-              *w,
+              node_name_from_id(&self.node_infos, opt),
+              w,
               0.0,
               0,
               0,
@@ -369,7 +373,7 @@ impl AugMultiGraph {
       } else {
         log_warning!("No poll result found for ego: {}, focus: {}", ego, focus);
         vec![]
-      }
+      };
     }
 
     let mut scores = self.fetch_neighbors(context, ego_id, focus_id, dir);

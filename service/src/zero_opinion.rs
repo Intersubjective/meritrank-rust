@@ -66,7 +66,7 @@ impl Subgraph {
       .into_iter()
       .flat_map(|id| -> Vec<(NodeId, NodeId, Weight)> {
         self
-          .fetch_all_raw_scores(id, num_walks, zero_opinion_factor)
+          .fetch_all_raw_scores(id, zero_opinion_factor)
           .into_iter()
           .map(|(node_id, score)| (id, node_id, score))
           .filter(|(ego_id, node_id, score)| {

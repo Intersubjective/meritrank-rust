@@ -153,6 +153,7 @@ impl AugMultiGraph {
         cached_score_clusters: Vec::new(),
         omit_neg_edges_scores: self.settings.omit_neg_edges_scores,
         poll_store:            Default::default(),
+        num_walks:             self.settings.num_walks,
       });
 
     // Add nodes to the zero context if needed
@@ -212,7 +213,7 @@ impl AugMultiGraph {
     }
 
     // We must first create the new graph entry, and then move it to the subgraph
-    // object to avoid triggering borrow checker error.
+  // object to avoid triggering borrow checker error.
     log_verbose!("Add subgraph: {:?}", context);
     let new_graph_instance = self.mr_graph_with_users_from_zero_context();
     self.subgraphs.insert(
@@ -225,6 +226,7 @@ impl AugMultiGraph {
         cached_score_clusters: Vec::new(),
         omit_neg_edges_scores: self.settings.omit_neg_edges_scores,
         poll_store:            Default::default(),
+        num_walks:             self.settings.num_walks,
       },
     );
 
@@ -240,7 +242,6 @@ impl AugMultiGraph {
   ) {
     log_trace!("{:?} {} {:?}", context, ego, kind);
 
-    let num_walks = self.settings.num_walks;
     let k = self.settings.zero_opinion_factor;
 
     let node_count = self.node_count;
@@ -252,7 +253,7 @@ impl AugMultiGraph {
     self
       .subgraph_from_context(context)
       .update_node_score_clustering(
-        ego, kind, time_secs, node_count, num_walks, k, &node_ids,
+        ego, kind, time_secs, node_count, k, &node_ids,
       )
   }
 
@@ -275,7 +276,6 @@ impl AugMultiGraph {
   ) {
     log_trace!("{:?} {}", context, ego);
 
-    let num_walks = self.settings.num_walks;
     let k = self.settings.zero_opinion_factor;
 
     let node_count = self.node_count;
@@ -295,7 +295,7 @@ impl AugMultiGraph {
         let node_ids = nodes_by_kind(kind, &node_infos);
 
         subgraph.update_node_score_clustering(
-          ego, kind, time_secs, node_count, num_walks, k, &node_ids,
+          ego, kind, time_secs, node_count, k, &node_ids,
         );
       }
     }
@@ -367,12 +367,11 @@ impl AugMultiGraph {
   ) -> Vec<(NodeId, Weight, Cluster)> {
     log_trace!("{:?} {}", context, ego_id);
 
-    let num_walks = self.settings.num_walks;
     let k = self.settings.zero_opinion_factor;
 
     self
       .subgraph_from_context(context)
-      .fetch_all_raw_scores(ego_id, num_walks, k)
+      .fetch_all_raw_scores(ego_id, k)
       .iter()
       .map(|(dst_id, score)| {
         let kind_opt = node_kind_from_id(&self.node_infos, *dst_id);
@@ -434,12 +433,11 @@ impl AugMultiGraph {
   ) -> (Weight, Cluster) {
     log_trace!("{:?} {} {}", context, ego, dst);
 
-    let num_walks = self.settings.num_walks;
     let k = self.settings.zero_opinion_factor;
 
     let score = self
       .subgraph_from_context(context)
-      .fetch_raw_score(ego, dst, num_walks, k);
+      .fetch_raw_score(ego, dst, k);
     let kind_opt = node_kind_from_id(&self.node_infos, dst);
     if let Some(kind) = kind_opt {
       self.apply_score_clustering(context, ego, score, kind)
@@ -456,14 +454,13 @@ impl AugMultiGraph {
   ) -> (Weight, Cluster) {
     log_trace!("{:?} {} {}", context, dst_id, ego_id);
 
-    let num_walks = self.settings.num_walks;
     let k = self.settings.zero_opinion_factor;
 
     let subgraph = self.subgraph_from_context(context);
 
     let score = match subgraph.cache_score_get(ego_id, dst_id) {
       Some(score) => subgraph.with_zero_opinion(dst_id, score, k),
-      None => subgraph.fetch_raw_score(ego_id, dst_id, num_walks, k),
+      None => subgraph.fetch_raw_score(ego_id, dst_id, k),
     };
 
     let kind_opt = node_kind_from_id(&self.node_infos, dst_id);
