@@ -4,6 +4,7 @@
 //
 //  ================================================
 
+use std::collections::HashMap;
 use lru::LruCache;
 use meritrank_core::{constants::EPSILON, NodeId};
 use simple_pagerank::Pagerank;
@@ -11,14 +12,52 @@ use simple_pagerank::Pagerank;
 use crate::aug_multi_graph::*;
 use crate::log::*;
 use crate::nodes::*;
+use crate::poll::UserId;
 use crate::subgraph::*;
 
 impl Subgraph {
+  pub fn get_users_scores(
+    &mut self,
+    infos: &[NodeInfo],
+  ) -> Vec<(UserId, Weight)> {
+    let users: Vec<NodeId> = infos
+      .iter()
+      .enumerate()
+      .filter(|(_id, info)| info.kind == NodeKind::User)
+      .map(|(id, _info)| id)
+      .collect();
+    if users.is_empty() {
+      return Vec::new();
+    }
+
+    let scores: Vec<(UserId, Weight)> = users
+      .into_iter()
+      .flat_map(|id| -> Vec<(NodeId, Weight)> {
+        self
+          .fetch_all_raw_scores(id, 0.0)
+          .into_iter()
+          .filter(|(node_id, _score)| {
+            let kind = node_kind_from_id(infos, *node_id);
+            kind == NodeKind::User
+          })
+          .collect()
+      })
+      .collect();
+
+    // Aggregate scores for each user
+    let mut aggregated_scores: HashMap<UserId, Weight> = HashMap::new();
+    for (user_id, score) in scores {
+      *aggregated_scores.entry(user_id).or_insert(0.0) += score;
+    }
+
+    aggregated_scores.into_iter().collect()
+  }
+  
+  
   pub fn reduced_graph(
     &mut self,
     infos: &[NodeInfo],
     num_walks: usize,
-    zero_opinion_factor: f64,
   ) -> Vec<(NodeId, NodeId, Weight)> {
     log_trace!();
 
@@ -66,7 +105,7 @@ impl Subgraph {
       .into_iter()
       .flat_map(|id| -> Vec<(NodeId, NodeId, Weight)> {
         self
-          .fetch_all_raw_scores(id, zero_opinion_factor)
+          .fetch_all_raw_scores(id, 0.0)
           .into_iter()
           .map(|(node_id, score)| (id, node_id, score))
           .filter(|(ego_id, node_id, score)| {
@@ -103,17 +142,20 @@ impl Subgraph {
     infos: &[NodeInfo],
     top_nodes_limit: usize,
     num_walks: usize,
-    zero_opinion_factor: f64,
   ) -> Vec<(NodeId, f64)> {
     log_trace!();
 
-    let reduced = self.reduced_graph(infos, num_walks, zero_opinion_factor);
+    let reduced = self.reduced_graph(infos, num_walks);
 
     if reduced.is_empty() {
       log_error!("Reduced graph is empty");
       return vec![];
     }
 
+    // TODO: remove PageRank in favor of direct sum of scores
+    // Actually, instead of calculating page rank it is 
+    // possible to just sum all the scores by each user for each other.
+    // The result should be the same after normalization.
     let mut pr = Pagerank::<NodeId>::new();
 
     reduced
@@ -177,7 +219,6 @@ impl AugMultiGraph {
         &infos,
         self.settings.top_nodes_limit,
         self.settings.zero_opinion_num_walks,
-        self.settings.zero_opinion_factor,
       );
 
       //  Drop all walks and make sure to empty caches.

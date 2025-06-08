@@ -296,6 +296,108 @@ impl AugMultiGraph {
     )
   }
 
+  fn handle_poll_variant_case(
+    &mut self,
+    context: &str,
+    ego_id: NodeId,
+    focus_id: NodeId,
+    focus: &str,
+  ) -> Vec<(String, String, Weight, Weight, Cluster, Cluster)> {
+    let num_quantiles = 10; // TODO: make this configurable
+    let node_infos_clone = self.node_infos.clone();
+    let subgraph = self.subgraph_from_context(context);
+
+    if let Some(poll_votes) = subgraph.poll_store.votes.get(&focus_id).cloned()
+    {
+      // Personalized poll results
+      let personalized_scores: Vec<(NodeId, Weight)> = subgraph
+        .fetch_all_raw_scores(ego_id, 0.0)
+        .into_iter()
+        .filter(|(node_id, _)| {
+          node_kind_from_id(&node_infos_clone, *node_id) == NodeKind::User
+            && *node_id != ego_id
+        })
+        .collect();
+      let personalized_poll_result =
+        subgraph.poll_store.calculate_poll_results(
+          &poll_votes,
+          &personalized_scores,
+          num_quantiles,
+          true,
+        );
+
+      // Global poll results
+      let global_scores = subgraph.get_users_scores(&node_infos_clone);
+      let global_poll_results = subgraph.poll_store.calculate_poll_results(
+        &poll_votes,
+        &global_scores,
+        num_quantiles,
+        true,
+      );
+
+      // Simple scores count in the personal circle: each user's score is normalized to 1.0
+      let mut pers_unit_scores: Vec<(NodeId, Weight)> = personalized_scores
+        .into_iter()
+        .filter_map(|(user_id, score)| {
+          if score > 0.0 {
+            Some((user_id, 1.0))
+          } else {
+            None
+          }
+        })
+        .collect();
+      // We want to count ego in the total count,
+      // as point of reference for the user
+      pers_unit_scores.insert(0, (ego_id, 1.0));
+      
+      let pers_unit_scores_sum: Weight =
+        pers_unit_scores.iter().map(|(_, w)| *w).sum();
+
+      let pers_unit_poll_results = subgraph.poll_store.calculate_poll_results(
+        &poll_votes,
+        &pers_unit_scores,
+        1,
+        false,
+      );
+
+      let personal_circle_voted_share: Weight =
+        pers_unit_poll_results.values().sum::<Weight>() / pers_unit_scores_sum;
+
+      // Combine results from all result hashmaps
+      let mut results: Vec<_> = global_poll_results
+        .into_iter()
+        .map(|(option_id, global_poll_variant_votes_share)| {
+          let pers_poll_variant_votes_share = personalized_poll_result
+            .get(&option_id)
+            .cloned()
+            .unwrap_or(0.0);
+          let pers_poll_variant_votes_count = pers_unit_poll_results
+            .get(&option_id)
+            .cloned()
+            .unwrap_or(0.0);
+          (
+            focus.to_string(),                              // Poll ID
+            node_name_from_id(&self.node_infos, option_id), // PollVariant ID
+            pers_poll_variant_votes_share,
+            global_poll_variant_votes_share,
+            (personal_circle_voted_share * 100.0).round() as Cluster,
+            pers_poll_variant_votes_count.round() as Cluster,
+          )
+        })
+        .collect();
+
+      results.sort_by(|a, b| a.1.cmp(&b.1));
+      results
+    } else {
+      log_warning!(
+        "No poll result found for ego: {}, focus: {}",
+        node_name_from_id(&self.node_infos, ego_id),
+        node_name_from_id(&self.node_infos, focus_id)
+      );
+      vec![]
+    }
+  }
+
   pub fn read_neighbors(
     &mut self,
     context: &str,
@@ -348,32 +450,7 @@ impl AugMultiGraph {
       && kind_from_name(focus) == NodeKind::Poll
       && direction == NEIGHBORS_INBOUND
     {
-      let mut subgraph = self.subgraph_from_context(context);
-
-      // TODO: Remove cloning, but this will require us making the subgraph immutable
-      let poll_store_clone = subgraph.poll_store.clone();
-
-      // Now use the cloned poll_store to get poll results
-      return if let Some(poll_result) =
-        poll_store_clone.get_poll_results(focus_id, &mut subgraph, 10000)
-      {
-        poll_result
-          .into_iter()
-          .map(|(opt, w)| {
-            (
-              focus.to_string(),
-              node_name_from_id(&self.node_infos, opt),
-              w,
-              0.0,
-              0,
-              0,
-            )
-          })
-          .collect()
-      } else {
-        log_warning!("No poll result found for ego: {}, focus: {}", ego, focus);
-        vec![]
-      };
+      return self.handle_poll_variant_case(context, ego_id, focus_id, focus);
     }
 
     let mut scores = self.fetch_neighbors(context, ego_id, focus_id, dir);

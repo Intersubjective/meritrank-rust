@@ -54,14 +54,14 @@ pub struct NodeInfo {
 #[derive(PartialEq, Clone)]
 pub struct ClusterGroupBounds {
   pub updated_sec: u64,
-  pub bounds:      [Weight; NUM_SCORE_QUANTILES - 1],
+  pub bounds:      Vec<Weight>,
 }
 
 impl Default for ClusterGroupBounds {
   fn default() -> ClusterGroupBounds {
     ClusterGroupBounds {
       updated_sec: 0,
-      bounds:      [0.0; NUM_SCORE_QUANTILES - 1],
+      bounds:      vec![0.0; NUM_SCORE_QUANTILES - 1],
     }
   }
 }

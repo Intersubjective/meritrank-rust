@@ -287,7 +287,7 @@ impl Subgraph {
     kind: NodeKind,
     zero_opinion_factor: f64,
     node_ids: &[NodeId],
-  ) -> [Weight; NUM_SCORE_QUANTILES - 1] {
+  ) -> Vec<Weight> {
     log_trace!("{} {:?} {} {}", ego, kind, self.num_walks, zero_opinion_factor);
 
     let scores: Vec<Weight> = node_ids
@@ -299,10 +299,10 @@ impl Subgraph {
       .collect();
 
     if scores.is_empty() {
-      return [0.0; NUM_SCORE_QUANTILES - 1];
+      return vec![0.0; NUM_SCORE_QUANTILES - 1];
     }
 
-    calculate_quantiles_bounds(scores)
+    calculate_quantiles_bounds(scores, NUM_SCORE_QUANTILES)
   }
 
   pub fn update_node_score_clustering(

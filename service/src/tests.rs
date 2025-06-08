@@ -5,6 +5,7 @@ use crate::test_data::*;
 use meritrank_service::poll::{PollStore, UserId, Vote};
 use std::collections::{HashMap, HashSet};
 use std::time::SystemTime;
+use meritrank_core::assert_approx_eq;
 
 fn default_graph() -> AugMultiGraph {
   AugMultiGraph::new(AugMultiGraphSettings {
@@ -1357,8 +1358,8 @@ fn mutual_scores_cluster_single_score_uncontexted() {
   println!("{:?}", res);
 
   assert_eq!(res.len(), 2);
-  assert!(res[0].4 == 100);
-  assert!(res[1].4 == 1);
+  assert_eq!(res[0].4, 100);
+  assert_eq!(res[1].4, 1);
 }
 
 #[test]
@@ -2123,32 +2124,6 @@ fn omit_neg_edges_scores_setting() {
   );
 }
 #[test]
-fn test_poll_store_primary_use_case() {
-  let mut poll_store = PollStore::new();
-  let poll_id = 1;
-  let option1_id = 10;
-  let option2_id = 20;
-  let user1_id = 100;
-  let user2_id = 200;
-
-  // Add poll options
-  poll_store.add_poll_option(option1_id, poll_id).unwrap();
-  poll_store.add_poll_option(option2_id, poll_id).unwrap();
-
-  // Add votes
-  poll_store.add_user_vote(user1_id, option1_id, 1.0).unwrap();
-  poll_store.add_user_vote(user2_id, option2_id, 2.0).unwrap();
-
-  // Get poll results
-  let results = poll_store
-    .get_poll_results_simple(user1_id, poll_id)
-    .unwrap();
-
-  // Check results
-  assert_eq!(results.len(), 2);
-  assert_eq!(results[0], (option2_id, 2.0));
-}
-#[test]
 fn read_neighbors_poll_results() {
   let mut graph = default_graph();
   let context = "test_context";
@@ -2168,8 +2143,9 @@ fn read_neighbors_poll_results() {
   graph.write_put_edge(context, "U1", poll_option1, 1.0, -1);
   graph.write_put_edge(context, "U2", poll_option2, 1.0, -1);
   graph.write_put_edge(context, "U3", poll_option3, 1.0, -1);
-  graph.write_put_edge(context, "U2", "U1", 1.0, -1);
+  graph.write_put_edge(context, "U1", "U2", 1.0, -1);
   graph.write_put_edge(context, "U3", "U2", 1.0, -1);
+  graph.write_put_edge(context, "U1", "U6", 1.0, -1);
 
   // Sybils
   graph.write_put_edge(context, "U4", "U5", 1.0, -1);
@@ -2182,11 +2158,25 @@ fn read_neighbors_poll_results() {
     false, 0, 10,
   );
 
-  assert_eq!(results.len(), 2);
+  assert_eq!(results.len(), 3);
   assert_eq!(results[0].0, poll);
   assert_eq!(results[0].1, poll_option1);
-  assert_eq!(results[0].2, 11.0);
+  assert_eq!(results[0].2, 0.0); //personalized
+  assert_approx_eq!(results[0].3, 0.15 as Weight, 0.1); //personalized
+  assert_eq!(results[0].4, 67); // percentage of personal circle voted in total
+  assert_eq!(results[0].5, 1); // just ego's personal vote
+  
   assert_eq!(results[1].0, poll);
   assert_eq!(results[1].1, poll_option2);
-  assert_eq!(results[1].2, 3.0);
+  assert_eq!(results[1].2, 1.0); //personalized
+  assert_approx_eq!(results[1].3, 0.41 as Weight, 0.1); //personalized
+  assert_eq!(results[1].4, 67); // percentage of personal circle voted in total
+  assert_eq!(results[1].5, 1); // U2's vote
+  
+  assert_eq!(results[2].0, poll);
+  assert_eq!(results[2].1, poll_option3);
+  assert_approx_eq!(results[0].2, 0.0 as Weight, 0.1); //personalized
+  assert_approx_eq!(results[0].3, 0.162 as Weight, 0.1); //personalized
+  assert_eq!(results[2].4, 67); // percentage of personal circle voted in total
+  assert_eq!(results[2].5, 0); // no votes from U1's personal circle
 }

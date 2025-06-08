@@ -213,7 +213,7 @@ impl AugMultiGraph {
     }
 
     // We must first create the new graph entry, and then move it to the subgraph
-  // object to avoid triggering borrow checker error.
+    // object to avoid triggering borrow checker error.
     log_verbose!("Add subgraph: {:?}", context);
     let new_graph_instance = self.mr_graph_with_users_from_zero_context();
     self.subgraphs.insert(
@@ -343,18 +343,16 @@ impl AugMultiGraph {
     let bounds = &clusters[ego][kind].bounds;
 
     if bounds_are_empty(bounds) {
-      return (score, 0);
+      return (score, 1); // Return 1 instead of 0 for empty bounds
     }
 
-    let step = 1;
-    let mut cluster = 1;
+    let mut cluster = 1; // Start with cluster 1
 
     for bound in bounds {
-      if score < *bound - EPSILON {
+      if score <= *bound {
         break;
       }
-
-      cluster += step;
+      cluster += 1;
     }
 
     (score, cluster)
