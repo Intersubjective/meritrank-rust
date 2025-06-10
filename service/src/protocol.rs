@@ -1,6 +1,7 @@
+use std::sync::atomic::Ordering;
+
 use crate::errors::ServiceError;
 use crate::log::*;
-use std::sync::atomic::Ordering;
 
 //  No context
 pub const CMD_VERSION: &str = "version";

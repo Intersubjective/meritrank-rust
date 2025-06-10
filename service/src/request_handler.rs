@@ -1,7 +1,7 @@
-use nng::{Aio, AioResult, Context, Protocol, Socket};
+use async_nng::AsyncSocket;
+use nng::{Socket, Protocol, Message};
 use std::{env::var, string::ToString, sync::atomic::Ordering};
 
-use crate::aug_multi_graph::*;
 use crate::constants::*;
 use crate::errors::ServiceError;
 use crate::log::*;
@@ -9,6 +9,7 @@ use crate::protocol::*;
 use crate::read_ops;
 use crate::state_manager::*;
 use crate::write_ops;
+use crate::settings::parse_settings;
 use std::time::SystemTime;
 
 pub use meritrank_core::Weight;
@@ -284,248 +285,16 @@ fn decode_and_handle_request(
   }
 }
 
-fn worker_callback(
-  state: &mut InternalState,
-  aio: Aio,
-  ctx: &Context,
-  res: AioResult,
-) {
-  log_trace!();
-
-  match res {
-    AioResult::Send(Ok(_)) => match ctx.recv(&aio) {
-      Ok(_) => {},
-      Err(error) => {
-        log_error!("RECV failed: {}", error);
-      },
-    },
-
-    AioResult::Recv(Ok(req)) => {
-      let msg: Vec<u8> = decode_and_handle_request(state, req.as_slice())
-        .unwrap_or_else(|_| {
-          encode_response(&"Internal error, see server logs".to_string())
-            .unwrap_or_else(|error| {
-              log_error!("Unable to serialize error: {:?}", error);
-              vec![]
-            })
-        });
-
-      match ctx.send(&aio, msg.as_slice()) {
-        Ok(_) => {},
-        Err(error) => {
-          log_error!("SEND failed: {:?}", error);
-        },
-      };
-    },
-
-    AioResult::Sleep(_) => {},
-
-    AioResult::Send(Err(error)) => {
-      log_error!("Async SEND failed: {:?}", error);
-    },
-
-    AioResult::Recv(Err(error)) => {
-      log_error!("Async RECV failed: {:?}", error);
-    },
-  };
-}
-
-fn parse_env_var<T>(
-  name: &str,
-  min: T,
-  max: T,
-) -> Result<Option<T>, ServiceError>
-where
-  T: std::str::FromStr,
-  T: std::cmp::Ord,
-  T: std::fmt::Debug,
-{
-  match var(name) {
-    Ok(s) => match s.parse::<T>() {
-      Ok(n) => {
-        if n >= min && n <= max {
-          Ok(Some(n))
-        } else {
-          let err_msg = format!(
-            "Invalid {}: {:?} not in range [{:?}, {:?}]",
-            name, s, min, max
-          );
-          log_error!("{}", err_msg);
-          Err(ServiceError::Internal(err_msg))
-        }
-      },
-      _ => {
-        let err_msg = format!("Invalid {}: {:?}", name, s);
-        log_error!("{}", err_msg);
-        Err(ServiceError::Internal(err_msg))
-      },
-    },
-    _ => Ok(None),
-  }
-}
-
-fn parse_and_set_value<T>(
-  value: &mut T,
-  name: &str,
-  min: T,
-  max: T,
-) -> Result<(), ServiceError>
-where
-  T: std::str::FromStr,
-  T: std::cmp::Ord,
-  T: std::fmt::Debug,
-{
-  if let Some(n) = parse_env_var(name, min, max)? {
-    *value = n
-  }
-  Ok(())
-}
-
-fn parse_and_set_bool(
-  value: &mut bool,
-  name: &str,
-) -> Result<(), ServiceError> {
-  match var(name) {
-    Ok(s) => {
-      if s == "1" || s.to_lowercase() == "true" || s.to_lowercase() == "yes" {
-        *value = true;
-        Ok(())
-      } else if s == "0"
-        || s.to_lowercase() == "false"
-        || s.to_lowercase() == "no"
-      {
-        *value = false;
-        Ok(())
-      } else {
-        let err_msg = format!(
-          "Invalid {} (expected 0/1, true/false, yes/no): {:?}",
-          name, s
-        );
-        log_error!("{}", err_msg);
-        Err(ServiceError::Internal(err_msg))
-      }
-    },
-    _ => Ok(()),
-  }
-}
-
-pub fn parse_settings() -> Result<AugMultiGraphSettings, ServiceError> {
-  let mut settings = AugMultiGraphSettings::default();
-
-  //  TODO: Remove.
-  if let Some(n) = parse_env_var("MERITRANK_NUM_WALK", 0, 1000000)? {
-    log_warning!(
-      "DEPRECATED: Use MERITRANK_NUM_WALKS instead of MERITRANK_NUM_WALK."
-    );
-    settings.num_walks = n;
-  }
-
-  parse_and_set_value(
-    &mut settings.num_walks,
-    "MERITRANK_NUM_WALKS",
-    0,
-    1000000,
-  )?;
-  parse_and_set_value(
-    &mut settings.top_nodes_limit,
-    "MERITRANK_TOP_NODES_LIMIT",
-    0,
-    1000000,
-  )?;
-  parse_and_set_value(
-    &mut settings.zero_opinion_num_walks,
-    "MERITRANK_ZERO_OPINION_NUM_WALKS",
-    0,
-    1000000,
-  )?;
-
-  if let Some(n) = parse_env_var("MERITRANK_ZERO_OPINION_FACTOR", 0, 100)? {
-    settings.zero_opinion_factor = (n as f64) * 0.01
-  }
-
-  static MIN_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1).unwrap();
-  static MAX_CACHE_SIZE: NonZeroUsize =
-    NonZeroUsize::new(1024 * 1024 * 100).unwrap();
-
-  parse_and_set_value(
-    &mut settings.score_clusters_timeout,
-    "MERITRANK_SCORE_CLUSTERS_TIMEOUT",
-    0,
-    60 * 60 * 24 * 365,
-  )?;
-  parse_and_set_value(
-    &mut settings.scores_cache_size,
-    "MERITRANK_SCORES_CACHE_SIZE",
-    MIN_CACHE_SIZE,
-    MAX_CACHE_SIZE,
-  )?;
-  parse_and_set_value(
-    &mut settings.walks_cache_size,
-    "MERITRANK_WALKS_CACHE_SIZE",
-    MIN_CACHE_SIZE,
-    MAX_CACHE_SIZE,
-  )?;
-  parse_and_set_value(
-    &mut settings.filter_num_hashes,
-    "MERITRANK_FILTER_NUM_HASHES",
-    1,
-    1024,
-  )?;
-  parse_and_set_value(
-    &mut settings.filter_max_size,
-    "MERITRANK_FILTER_MAX_SIZE",
-    1,
-    1024 * 1024 * 10,
-  )?;
-  parse_and_set_value(
-    &mut settings.filter_min_size,
-    "MERITRANK_FILTER_MIN_SIZE",
-    1,
-    1024 * 1024 * 10,
-  )?;
-  parse_and_set_bool(
-    &mut settings.omit_neg_edges_scores,
-    "MERITRANK_OMIT_NEG_EDGES_SCORES",
-  )?;
-  parse_and_set_bool(
-    &mut settings.force_read_graph_conn,
-    "MERITRANK_FORCE_READ_GRAPH_CONN",
-  )?;
-
-  Ok(settings)
-}
-
-pub fn main_async() -> Result<(), ServiceError> {
-  let threads = match var("MERITRANK_SERVICE_THREADS") {
-    Ok(s) => match s.parse::<usize>() {
-      Ok(n) => {
-        if n > 0 {
-          n
-        } else {
-          let err_msg = format!("Invalid MERITRANK_SERVICE_THREADS: {:?}", s);
-          log_error!("{}", err_msg);
-          return Err(ServiceError::Internal(err_msg));
-        }
-      },
-      _ => {
-        let err_msg = format!("Invalid MERITRANK_SERVICE_THREADS: {:?}", s);
-        log_error!("{}", err_msg);
-        return Err(ServiceError::Internal(err_msg));
-      },
-    },
-    _ => 1,
-  };
-
+pub async fn run() -> Result<(), ServiceError> {
   let url = match var("MERITRANK_SERVICE_URL") {
     Ok(s) => s,
     _ => "tcp://127.0.0.1:10234".to_string(),
   };
 
   log_info!(
-    "Starting server {} at {}, {} threads",
+    "Starting server {} at {}",
     VERSION,
-    url,
-    threads
+    url
   );
 
   let settings = parse_settings()?;
@@ -534,30 +303,35 @@ pub fn main_async() -> Result<(), ServiceError> {
 
   let state = init();
 
-  let s = Socket::new(Protocol::Rep0)?;
+  // Request/Reply NNG protocol.
+  let nng_socket = Socket::new(Protocol::Rep0)?;
 
-  let workers: Vec<_> = (0..threads)
-    .map(|_| {
-      let ctx = Context::new(&s)?;
-      let ctx_cloned = ctx.clone();
-      let state_cloned = state.internal.clone();
+  nng_socket.listen(&url)?;
 
-      let aio = Aio::new(move |aio, res| {
-        worker_callback(&mut state_cloned.clone(), aio, &ctx_cloned, res);
-      })?;
+  loop {
+    let mut async_socket : AsyncSocket = nng_socket.clone().try_into()?; 
+    let mut state_cloned  = state.internal.clone();
+    let request = async_socket.receive(None).await?;
 
-      Ok((aio, ctx))
-    })
-    .collect::<Result<_, nng::Error>>()?;
+    tokio::spawn(async move {
+      let reply = decode_and_handle_request(&mut state_cloned, &request.to_vec())
+        .unwrap_or_else(|_| {
+          encode_response(&"Internal error, see server logs".to_string())
+            .unwrap_or_else(|error| {
+              log_error!("Unable to serialize error: {:?}", error);
+              vec![]
+            })
+        });
 
-  s.listen(&url)?;
+      let mut message = Message::with_capacity(reply.len());
+      message.push_back(&reply);
 
-  for (a, c) in &workers {
-    c.recv(a)?;
-  }
-
-  std::thread::park();
-  shutdown(state);
-
-  Ok(())
+      match async_socket.send(message, None).await {
+        Ok(_) => {},
+        Err(e) => {
+          log_error!("NNG send failed: {:?}", e);
+        },
+      };
+    });
+  };
 }

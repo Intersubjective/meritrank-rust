@@ -1,7 +1,7 @@
+use std::ops::{Index, IndexMut};
+
 use crate::constants::*;
 use crate::log::*;
-// use crate::protocol::*; // Removed unused import
-use std::ops::{Index, IndexMut};
 
 pub use meritrank_core::{NodeId, Weight};
 

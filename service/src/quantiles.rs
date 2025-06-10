@@ -1,5 +1,6 @@
-use crate::constants::*;
 pub use meritrank_core::{constants::EPSILON, Weight};
+
+use crate::constants::*;
 
 pub fn bounds_are_empty(bounds: &[Weight; NUM_SCORE_QUANTILES - 1]) -> bool {
   bounds[0] == 0.0 && bounds[bounds.len() - 1] == 0.0

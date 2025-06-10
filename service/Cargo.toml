@@ -11,8 +11,6 @@ meritrank_core = { path = "../core" }
 
 petgraph = "0.6.3"
 serde = { version = "1.0.166", features = ["derive"] }
-
-nng = "1.0.1"
 rmp-serde = "1.1.2"
 simple-pagerank = "0.2.0"
 
@@ -28,6 +26,8 @@ parking_lot = "0.12.3"
 scc = "2.3.4"
 async-trait = "0.1.88"
 dashmap = "6.1.0"
+async-nng = "0.2.0"
+nng = "1.0.1"
 
 [dev-dependencies]
 flate2 = "1.1.1"

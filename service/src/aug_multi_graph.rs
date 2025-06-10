@@ -4,17 +4,18 @@
 //
 //  ================================================================
 
+use lru::LruCache;
+use meritrank_core::{constants::EPSILON, Graph, MeritRank, NodeId};
+use std::{
+  collections::HashMap, string::ToString, sync::atomic::Ordering, time::Instant,
+};
+
 use crate::constants::*;
 use crate::log::*;
 use crate::nodes::*;
 use crate::quantiles::*;
 use crate::subgraph::*;
 use crate::vsids::VSIDSManager;
-use lru::LruCache;
-use meritrank_core::{constants::EPSILON, Graph, MeritRank, NodeId};
-use std::{
-  collections::HashMap, string::ToString, sync::atomic::Ordering, time::Instant,
-};
 
 pub type Cluster = i32;
 

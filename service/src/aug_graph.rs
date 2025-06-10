@@ -4,7 +4,7 @@ use meritrank_core::MeritRank;
 
 #[derive(Clone)]
 pub struct AugGraph {
-  mr: MeritRank,
+  _mr: MeritRank,
 }
 
 #[derive(Debug, Encode, Decode, Eq, PartialEq)]
@@ -35,7 +35,7 @@ impl AugGraph {
 impl Absorb<AugGraphOp> for AugGraph {
   fn absorb_first(
     &mut self,
-    operation: &mut AugGraphOp,
+    _operation: &mut AugGraphOp,
     _: &Self,
   ) {
     todo!()
