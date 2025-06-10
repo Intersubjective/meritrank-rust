@@ -9,12 +9,12 @@ pub mod protocol;
 pub mod quantiles;
 pub mod read_ops;
 pub mod request_handler;
+pub mod settings;
 pub mod state_manager;
 pub mod subgraph;
 pub mod vsids;
 pub mod write_ops;
 pub mod zero_opinion;
-pub mod settings;
 
 #[cfg(test)]
 mod tests;

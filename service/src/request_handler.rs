@@ -1,5 +1,5 @@
 use async_nng::AsyncSocket;
-use nng::{Socket, Protocol, Message};
+use nng::{Message, Protocol, Socket};
 use std::{env::var, string::ToString, sync::atomic::Ordering};
 
 use crate::constants::*;
@@ -7,9 +7,9 @@ use crate::errors::ServiceError;
 use crate::log::*;
 use crate::protocol::*;
 use crate::read_ops;
+use crate::settings::parse_settings;
 use crate::state_manager::*;
 use crate::write_ops;
-use crate::settings::parse_settings;
 use std::time::SystemTime;
 
 pub use meritrank_core::Weight;
@@ -291,11 +291,7 @@ pub async fn run() -> Result<(), ServiceError> {
     _ => "tcp://127.0.0.1:10234".to_string(),
   };
 
-  log_info!(
-    "Starting server {} at {}",
-    VERSION,
-    url
-  );
+  log_info!("Starting server {} at {}", VERSION, url);
 
   let settings = parse_settings()?;
 
@@ -309,19 +305,20 @@ pub async fn run() -> Result<(), ServiceError> {
   nng_socket.listen(&url)?;
 
   loop {
-    let mut async_socket : AsyncSocket = nng_socket.clone().try_into()?; 
-    let mut state_cloned  = state.internal.clone();
+    let mut async_socket: AsyncSocket = nng_socket.clone().try_into()?;
+    let mut state_cloned = state.internal.clone();
     let request = async_socket.receive(None).await?;
 
     tokio::spawn(async move {
-      let reply = decode_and_handle_request(&mut state_cloned, &request.to_vec())
-        .unwrap_or_else(|_| {
-          encode_response(&"Internal error, see server logs".to_string())
-            .unwrap_or_else(|error| {
-              log_error!("Unable to serialize error: {:?}", error);
-              vec![]
-            })
-        });
+      let reply =
+        decode_and_handle_request(&mut state_cloned, &request.to_vec())
+          .unwrap_or_else(|_| {
+            encode_response(&"Internal error, see server logs".to_string())
+              .unwrap_or_else(|error| {
+                log_error!("Unable to serialize error: {:?}", error);
+                vec![]
+              })
+          });
 
       let mut message = Message::with_capacity(reply.len());
       message.push_back(&reply);
@@ -333,5 +330,5 @@ pub async fn run() -> Result<(), ServiceError> {
         },
       };
     });
-  };
+  }
 }

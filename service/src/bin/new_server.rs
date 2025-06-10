@@ -142,7 +142,9 @@ pub async fn process_request(
       process_read(&*subgraphs_map, &req.subgraph_name, |_aug_graph| {
         // aug_graph.get_rank(&req.ego)
         //  FIXME, TODO
-        Response{ response: 0}
+        Response {
+          response: 0,
+        }
       })
     },
   }
