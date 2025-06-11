@@ -95,7 +95,7 @@ jobs:
         cargo build --release
         export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10444
         export MERITRANK_NUM_WALK=500
-        cargo run --release --bin meritrack_service >/dev/null 2>&1 &
+        cargo run --release --bin meritrank_service >/dev/null 2>&1 &
     - name: Do the tests
       run: |
         export RUST_TEST_THREADS=1
