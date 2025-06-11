@@ -314,7 +314,7 @@ impl AugMultiGraph {
         .fetch_all_raw_scores(ego_id, 0.0)
         .into_iter()
         .filter(|(node_id, _)| {
-          node_kind_from_id(&node_infos_clone, *node_id) == NodeKind::User
+          node_kind_from_id(&node_infos_clone, *node_id) == Some(NodeKind::User)
             && *node_id != ego_id
         })
         .collect();
@@ -445,9 +445,9 @@ impl AugMultiGraph {
     // Handling the special case - dirty hack - of returning
     // poll results through the neighbors method.
 
-    if kind == NodeKind::PollVariant
-      && kind_from_name(ego) == NodeKind::User
-      && kind_from_name(focus) == NodeKind::Poll
+    if kind_opt == Some(NodeKind::PollVariant)
+      && node_kind_from_prefix(ego) == Some(NodeKind::User)
+      && node_kind_from_prefix(focus) == Some(NodeKind::Poll)
       && direction == NEIGHBORS_INBOUND
     {
       return self.handle_poll_variant_case(context, ego_id, focus_id, focus);

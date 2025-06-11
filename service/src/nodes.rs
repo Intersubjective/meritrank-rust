@@ -26,7 +26,7 @@ pub fn node_kind_from_prefix(name: &str) -> Option<NodeKind> {
         Some('B') => Some(NodeKind::Beacon),
         Some('C') => Some(NodeKind::Comment),
         Some('O') => Some(NodeKind::Opinion),
-        Some('V') => Some(NodeKind::PollOption),
+        Some('V') => Some(NodeKind::PollVariant),
         Some('P') => Some(NodeKind::Poll),
         _ => None,
     }
@@ -149,7 +149,7 @@ pub fn nodes_by_kind(
   node_infos
     .iter()
     .enumerate()
-    .filter(|(_, info)| info.kind == Some(kind)) // Compare with Some(kind)
+  .filter(|(_, info)| info.kind == Some(kind)) // Compare with Some(kind)
     .map(|(id, _)| id)
     .collect()
 }

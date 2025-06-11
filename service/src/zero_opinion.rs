@@ -23,7 +23,7 @@ impl Subgraph {
     let users: Vec<NodeId> = infos
       .iter()
       .enumerate()
-      .filter(|(_id, info)| info.kind == NodeKind::User)
+      .filter(|(_id, info)| info.kind == Some(NodeKind::User))
       .map(|(id, _info)| id)
       .collect();
     if users.is_empty() {
@@ -38,7 +38,7 @@ impl Subgraph {
           .into_iter()
           .filter(|(node_id, _score)| {
             let kind = node_kind_from_id(infos, *node_id);
-            kind == NodeKind::User
+            kind == Some(NodeKind::User)
           })
           .collect()
       })

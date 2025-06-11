@@ -63,7 +63,7 @@ impl PollStore {
       .options
       .remove(&option)
       .ok_or("Option does not exist")?;
-    self.polls.get_mut(&poll).unwrap().remove(&option);
+    self.polls.get_mut(&poll).unwrap().swap_remove(&option);
 
     if let Some(poll_votes) = self.votes.get_mut(&poll) {
       poll_votes.retain(|_, vote| vote.option != option);

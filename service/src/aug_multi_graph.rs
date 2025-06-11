@@ -609,7 +609,7 @@ impl AugMultiGraph {
           },
         }
       },
-      (NodeKind::PollVariant, NodeKind::Poll) => {
+      (Some(NodeKind::PollVariant), Some(NodeKind::Poll)) => {
         match self
           .subgraph_from_context(context)
           .poll_store
@@ -635,13 +635,13 @@ impl AugMultiGraph {
         }
       },
       (src_kind, dst_kind)
-        if src_kind == NodeKind::PollVariant
-          || src_kind == NodeKind::Poll
-          || dst_kind == NodeKind::PollVariant
-          || dst_kind == NodeKind::Poll =>
+        if src_kind == Some(NodeKind::PollVariant)
+          || src_kind == Some(NodeKind::Poll)
+          || dst_kind == Some(NodeKind::PollVariant)
+          || dst_kind == Some(NodeKind::Poll) =>
       {
         log_warning!("Unexpected edge type: {:?} -> {:?} in context {:?}. No action taken.", src_kind_opt, dst_kind_opt, context);
-      },
+      }
       _ => {
         if context.is_empty() {
           log_verbose!("Set edge in \"\": {} -> {} for {}", src, dst, amount);
