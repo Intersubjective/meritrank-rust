@@ -335,6 +335,9 @@ fn nng_task(
   url: &str,
   num_workers: usize,
 ) -> Result<(), ServiceError> {
+  //  NOTE: Don't bother to clean this up.
+  //        This code will become obsolete after we stop using NNG.
+
   log_info!("Starting {} NNG workers.", num_workers);
 
   // Request/Reply NNG protocol.
@@ -397,11 +400,7 @@ pub async fn run() -> Result<(), ServiceError> {
 
   let state = init();
 
-  //  ================================================================
   //  Wrap NNG inside a tokio task.
-  //
-  //  NOTE: Don't bother to clean this up.
-  //        This code will become obsolete after we stop using NNG.
 
   let state_cloned = state.internal.clone();
 
