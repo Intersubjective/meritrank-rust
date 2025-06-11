@@ -404,11 +404,13 @@ pub async fn run() -> Result<(), ServiceError> {
 
   let state_cloned = state.internal.clone();
 
-  tokio::spawn(async move {
+  match tokio::spawn(async move {
     match nng_task(state_cloned, &url, threads) {
       _ => {},
     }
-  });
+  }).await {
+    _ => {},
+  }
 
   Ok(())
 }
