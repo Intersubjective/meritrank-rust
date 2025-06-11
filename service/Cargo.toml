@@ -26,7 +26,6 @@ parking_lot = "0.12.3"
 scc = "2.3.4"
 async-trait = "0.1.88"
 dashmap = "6.1.0"
-async-nng = "0.2.0"
 nng = "1.0.1"
 
 [dev-dependencies]
