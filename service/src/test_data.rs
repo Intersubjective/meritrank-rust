@@ -1,4 +1,4 @@
-use crate::aug_multi_graph::*;
+use crate::meritrank_service::aug_multi_graph::*;
 
 use flate2::read::GzDecoder;
 use serde::Deserialize;

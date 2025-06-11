@@ -5,7 +5,7 @@ use crate::constants::*;
 use crate::log::*;
 use crate::nodes::*;
 use crate::quantiles::*;
-use meritrank_service::poll::PollStore;
+use crate::poll::PollStore;
 
 #[derive(Clone)]
 pub struct Subgraph {
@@ -16,6 +16,7 @@ pub struct Subgraph {
   pub cached_score_clusters: Vec<ScoreClustersByKind>,
   pub omit_neg_edges_scores: bool,
   pub poll_store: PollStore,
+  pub num_walks: usize,
 }
 
 impl Subgraph {
@@ -200,13 +201,12 @@ impl Subgraph {
   pub fn fetch_all_raw_scores(
     &mut self,
     ego_id: NodeId,
-    num_walks: usize,
     zero_opinion_factor: f64,
   ) -> Vec<(NodeId, Weight)> {
-    log_trace!("{} {} {}", ego_id, num_walks, zero_opinion_factor);
+    log_trace!("{} {} {}", ego_id, self.num_walks, zero_opinion_factor);
 
     if !self.cache_walk_get(ego_id) {
-      match self.meritrank_data.calculate(ego_id, num_walks) {
+      match self.meritrank_data.calculate(ego_id, self.num_walks) {
         Ok(()) => {
           self.cache_walk_add(ego_id);
         },
@@ -251,19 +251,18 @@ impl Subgraph {
     &mut self,
     ego_id: NodeId,
     dst_id: NodeId,
-    num_walks: usize,
     zero_opinion_factor: f64,
   ) -> Weight {
     log_trace!(
       "{} {} {} {}",
       ego_id,
       dst_id,
-      num_walks,
+      self.num_walks,
       zero_opinion_factor
     );
 
     if !self.cache_walk_get(ego_id) {
-      if let Err(e) = self.meritrank_data.calculate(ego_id, num_walks) {
+      if let Err(e) = self.meritrank_data.calculate(ego_id, self.num_walks) {
         log_error!("Failed to calculate: {}", e);
         return 0.0;
       }
@@ -286,25 +285,24 @@ impl Subgraph {
     &mut self,
     ego: NodeId,
     kind: NodeKind,
-    num_walks: usize,
     zero_opinion_factor: f64,
     node_ids: &[NodeId],
-  ) -> [Weight; NUM_SCORE_QUANTILES - 1] {
-    log_trace!("{} {:?} {} {}", ego, kind, num_walks, zero_opinion_factor);
+  ) -> Vec<Weight> {
+    log_trace!("{} {:?} {} {}", ego, kind, self.num_walks, zero_opinion_factor);
 
     let scores: Vec<Weight> = node_ids
       .iter()
       .map(|dst| {
-        self.fetch_raw_score(ego, *dst, num_walks, zero_opinion_factor)
+        self.fetch_raw_score(ego, *dst, zero_opinion_factor)
       })
       .filter(|score| *score >= EPSILON)
       .collect();
 
     if scores.is_empty() {
-      return [0.0; NUM_SCORE_QUANTILES - 1];
+      return vec![0.0; NUM_SCORE_QUANTILES - 1];
     }
 
-    calculate_quantiles_bounds(scores)
+    calculate_quantiles_bounds(scores, NUM_SCORE_QUANTILES)
   }
 
   pub fn update_node_score_clustering(
@@ -313,7 +311,6 @@ impl Subgraph {
     kind: NodeKind,
     time_secs: u64,
     node_count: usize,
-    num_walks: usize,
     zero_opinion_factor: f64,
     node_ids: &[NodeId],
   ) {
@@ -323,14 +320,13 @@ impl Subgraph {
       kind,
       time_secs,
       node_count,
-      num_walks,
+      self.num_walks,
       zero_opinion_factor
     );
 
     let bounds = self.calculate_score_clusters_bounds(
       ego,
       kind,
-      num_walks,
       zero_opinion_factor,
       node_ids,
     );

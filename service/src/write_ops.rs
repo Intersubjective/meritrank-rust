@@ -352,12 +352,10 @@ impl AugMultiGraph {
         }
 
         if self.node_infos[dst_id_filter].name.starts_with(prefix) {
-          let num_walks = self.settings.num_walks;
           let k = self.settings.zero_opinion_factor;
           let score = self.subgraph_from_context("").fetch_raw_score(
             src_id,
             dst_id_filter,
-            num_walks,
             k,
           );
 
