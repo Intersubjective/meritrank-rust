@@ -1,4 +1,4 @@
-use nng::{Aio, AioResult, Context, Message, Protocol, Socket};
+use nng::{Aio, AioResult, Context, Protocol, Socket};
 use std::{env::var, string::ToString, sync::atomic::Ordering};
 
 use crate::constants::*;
@@ -284,7 +284,106 @@ fn decode_and_handle_request(
   }
 }
 
+fn worker_callback(
+  state: &mut InternalState,
+  aio: Aio,
+  ctx: &Context,
+  res: AioResult,
+) {
+  log_trace!();
+
+  match res {
+    AioResult::Send(Ok(_)) => match ctx.recv(&aio) {
+      Ok(_) => {},
+      Err(error) => {
+        log_error!("RECV failed: {}", error);
+      },
+    },
+
+    AioResult::Recv(Ok(req)) => {
+      let msg: Vec<u8> = decode_and_handle_request(state, req.as_slice())
+        .unwrap_or_else(|_| {
+          encode_response(&"Internal error, see server logs".to_string())
+            .unwrap_or_else(|error| {
+              log_error!("Unable to serialize error: {:?}", error);
+              vec![]
+            })
+        });
+
+      match ctx.send(&aio, msg.as_slice()) {
+        Ok(_) => {},
+        Err(error) => {
+          log_error!("SEND failed: {:?}", error);
+        },
+      };
+    },
+
+    AioResult::Sleep(_) => {},
+
+    AioResult::Send(Err(error)) => {
+      log_error!("Async SEND failed: {:?}", error);
+    },
+
+    AioResult::Recv(Err(error)) => {
+      log_error!("Async RECV failed: {:?}", error);
+    },
+  };
+}
+
+fn nng_task(
+  state: InternalState,
+  url: &str,
+  num_workers: usize,
+) -> Result<(), ServiceError> {
+  log_info!("Starting {} NNG workers.", num_workers);
+
+  // Request/Reply NNG protocol.
+  let nng_socket = Socket::new(Protocol::Rep0)?;
+
+  let workers: Vec<_> = (0..num_workers)
+    .map(|_| {
+      let ctx = Context::new(&nng_socket)?;
+      let ctx_cloned = ctx.clone();
+      let state_cloned = state.clone();
+      let aio = Aio::new(move |aio, res| {
+        worker_callback(&mut state_cloned.clone(), aio, &ctx_cloned, res);
+      })?;
+      Ok((aio, ctx))
+    })
+    .collect::<Result<_, nng::Error>>()?;
+
+  nng_socket.listen(url)?;
+
+  for (a, c) in &workers {
+    c.recv(a)?;
+  }
+
+  //  This should never return.
+  std::thread::park();
+  Ok(())
+}
+
 pub async fn run() -> Result<(), ServiceError> {
+  let threads = match var("MERITRANK_SERVICE_THREADS") {
+    Ok(s) => match s.parse::<usize>() {
+      Ok(n) => {
+        if n > 0 {
+          n
+        } else {
+          let err_msg = format!("Invalid MERITRANK_SERVICE_THREADS: {:?}", s);
+          log_error!("{}", err_msg);
+          return Err(ServiceError::Internal(err_msg));
+        }
+      },
+      _ => {
+        let err_msg = format!("Invalid MERITRANK_SERVICE_THREADS: {:?}", s);
+        log_error!("{}", err_msg);
+        return Err(ServiceError::Internal(err_msg));
+      },
+    },
+    _ => 1,
+  };
+
   let url = match var("MERITRANK_SERVICE_URL") {
     Ok(s) => s,
     _ => "tcp://127.0.0.1:10234".to_string(),
@@ -298,71 +397,18 @@ pub async fn run() -> Result<(), ServiceError> {
 
   let state = init();
 
-  // Request/Reply NNG protocol.
-  let nng_socket = Socket::new(Protocol::Rep0)?;
-
-  nng_socket.listen(&url)?;
-
-  let nng_context = Context::new(&nng_socket)?;
-
+  //  ================================================================
+  //  Wrap NNG inside a tokio task.
+  //
   //  NOTE: Don't bother to clean this up.
   //        This code will become obsolete after we stop using NNG.
 
+  let state_cloned = state.internal.clone();
+
   tokio::spawn(async move {
-    let nng_context_cloned = nng_context.clone();
-    let state_cloned = state.internal.clone();
-
-    match Aio::new(move |aio, result| match result {
-      AioResult::Send(Ok(_)) => {
-        match nng_context_cloned.recv(&aio) {
-          Ok(_) => {},
-          Err(e) => {
-            log_error!("NNG recv failed: {}", e);
-          },
-        };
-      },
-
-      AioResult::Recv(Ok(message)) => {
-        let reply = decode_and_handle_request(
-          &mut state_cloned.clone(),
-          &message.to_vec(),
-        )
-        .unwrap_or_else(|_| {
-          encode_response(&"Internal error, see server logs".to_string())
-            .unwrap_or_else(|error| {
-              log_error!("Unable to serialize error: {:?}", error);
-              vec![]
-            })
-        });
-
-        let mut message = Message::with_capacity(reply.len());
-        message.push_back(&reply);
-
-        match nng_context_cloned.send(&aio, message) {
-          Ok(_) => {},
-          Err(e) => {
-            log_error!("NNG send failed: {:?}", e);
-          },
-        };
-      },
-
-      x => {
-        log_error!("Unexpected AioResult: {:?}", x);
-      },
-    }) {
-      Ok(aio) => {
-        match nng_context.recv(&aio) {
-          Ok(_) => {},
-          Err(e) => {
-            log_error!("NNG Aio recv failed: {}", e);
-          },
-        };
-      },
-
-      Err(e) => {
-        log_error!("{}", e);
-      },
-    };
+    match nng_task(state_cloned, &url, threads) {
+      _ => {},
+    }
   });
 
   Ok(())
