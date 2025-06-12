@@ -139,8 +139,10 @@ pub async fn process_request(
       .await
     },
     ServiceRequestOpcode::ReadRank => {
-      process_read(&*subgraphs_map, &req.subgraph_name, |aug_graph| {
-        aug_graph.get_rank(&req.ego)
+      process_read(&*subgraphs_map, &req.subgraph_name, |_aug_graph| {
+        //  TODO
+        // aug_graph.get_rank(&req.ego)
+        return Response { response: 0};
       })
     },
   }

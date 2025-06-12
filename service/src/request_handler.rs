@@ -1,12 +1,12 @@
 use nng::{Aio, AioResult, Context, Protocol, Socket};
 use std::{env::var, string::ToString, sync::atomic::Ordering};
 
-use crate::aug_multi_graph::*;
 use crate::constants::*;
 use crate::errors::ServiceError;
 use crate::log::*;
 use crate::protocol::*;
 use crate::read_ops;
+use crate::settings::parse_settings;
 use crate::state_manager::*;
 use crate::write_ops;
 use std::time::SystemTime;
@@ -330,172 +330,43 @@ fn worker_callback(
   };
 }
 
-fn parse_env_var<T>(
-  name: &str,
-  min: T,
-  max: T,
-) -> Result<Option<T>, ServiceError>
-where
-  T: std::str::FromStr,
-  T: std::cmp::Ord,
-  T: std::fmt::Debug,
-{
-  match var(name) {
-    Ok(s) => match s.parse::<T>() {
-      Ok(n) => {
-        if n >= min && n <= max {
-          Ok(Some(n))
-        } else {
-          let err_msg = format!(
-            "Invalid {}: {:?} not in range [{:?}, {:?}]",
-            name, s, min, max
-          );
-          log_error!("{}", err_msg);
-          Err(ServiceError::Internal(err_msg))
-        }
-      },
-      _ => {
-        let err_msg = format!("Invalid {}: {:?}", name, s);
-        log_error!("{}", err_msg);
-        Err(ServiceError::Internal(err_msg))
-      },
-    },
-    _ => Ok(None),
-  }
-}
+fn nng_task(
+  state: InternalState,
+  url: &str,
+  num_workers: usize,
+) -> Result<(), ServiceError> {
+  //  NOTE: Don't bother to clean this up.
+  //        This code will become obsolete after we stop using NNG.
 
-fn parse_and_set_value<T>(
-  value: &mut T,
-  name: &str,
-  min: T,
-  max: T,
-) -> Result<(), ServiceError>
-where
-  T: std::str::FromStr,
-  T: std::cmp::Ord,
-  T: std::fmt::Debug,
-{
-  if let Some(n) = parse_env_var(name, min, max)? {
-    *value = n
+  log_info!("Starting {} NNG workers.", num_workers);
+
+  // Request/Reply NNG protocol.
+  let nng_socket = Socket::new(Protocol::Rep0)?;
+
+  let workers: Vec<_> = (0..num_workers)
+    .map(|_| {
+      let ctx = Context::new(&nng_socket)?;
+      let ctx_cloned = ctx.clone();
+      let state_cloned = state.clone();
+      let aio = Aio::new(move |aio, res| {
+        worker_callback(&mut state_cloned.clone(), aio, &ctx_cloned, res);
+      })?;
+      Ok((aio, ctx))
+    })
+    .collect::<Result<_, nng::Error>>()?;
+
+  nng_socket.listen(url)?;
+
+  for (a, c) in &workers {
+    c.recv(a)?;
   }
+
+  //  This should never return.
+  std::thread::park();
   Ok(())
 }
 
-fn parse_and_set_bool(
-  value: &mut bool,
-  name: &str,
-) -> Result<(), ServiceError> {
-  match var(name) {
-    Ok(s) => {
-      if s == "1" || s.to_lowercase() == "true" || s.to_lowercase() == "yes" {
-        *value = true;
-        Ok(())
-      } else if s == "0"
-        || s.to_lowercase() == "false"
-        || s.to_lowercase() == "no"
-      {
-        *value = false;
-        Ok(())
-      } else {
-        let err_msg = format!(
-          "Invalid {} (expected 0/1, true/false, yes/no): {:?}",
-          name, s
-        );
-        log_error!("{}", err_msg);
-        Err(ServiceError::Internal(err_msg))
-      }
-    },
-    _ => Ok(()),
-  }
-}
-
-pub fn parse_settings() -> Result<AugMultiGraphSettings, ServiceError> {
-  let mut settings = AugMultiGraphSettings::default();
-
-  //  TODO: Remove.
-  if let Some(n) = parse_env_var("MERITRANK_NUM_WALK", 0, 1000000)? {
-    log_warning!(
-      "DEPRECATED: Use MERITRANK_NUM_WALKS instead of MERITRANK_NUM_WALK."
-    );
-    settings.num_walks = n;
-  }
-
-  parse_and_set_value(
-    &mut settings.num_walks,
-    "MERITRANK_NUM_WALKS",
-    0,
-    1000000,
-  )?;
-  parse_and_set_value(
-    &mut settings.top_nodes_limit,
-    "MERITRANK_TOP_NODES_LIMIT",
-    0,
-    1000000,
-  )?;
-  parse_and_set_value(
-    &mut settings.zero_opinion_num_walks,
-    "MERITRANK_ZERO_OPINION_NUM_WALKS",
-    0,
-    1000000,
-  )?;
-
-  if let Some(n) = parse_env_var("MERITRANK_ZERO_OPINION_FACTOR", 0, 100)? {
-    settings.zero_opinion_factor = (n as f64) * 0.01
-  }
-
-  static MIN_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1).unwrap();
-  static MAX_CACHE_SIZE: NonZeroUsize =
-    NonZeroUsize::new(1024 * 1024 * 100).unwrap();
-
-  parse_and_set_value(
-    &mut settings.score_clusters_timeout,
-    "MERITRANK_SCORE_CLUSTERS_TIMEOUT",
-    0,
-    60 * 60 * 24 * 365,
-  )?;
-  parse_and_set_value(
-    &mut settings.scores_cache_size,
-    "MERITRANK_SCORES_CACHE_SIZE",
-    MIN_CACHE_SIZE,
-    MAX_CACHE_SIZE,
-  )?;
-  parse_and_set_value(
-    &mut settings.walks_cache_size,
-    "MERITRANK_WALKS_CACHE_SIZE",
-    MIN_CACHE_SIZE,
-    MAX_CACHE_SIZE,
-  )?;
-  parse_and_set_value(
-    &mut settings.filter_num_hashes,
-    "MERITRANK_FILTER_NUM_HASHES",
-    1,
-    1024,
-  )?;
-  parse_and_set_value(
-    &mut settings.filter_max_size,
-    "MERITRANK_FILTER_MAX_SIZE",
-    1,
-    1024 * 1024 * 10,
-  )?;
-  parse_and_set_value(
-    &mut settings.filter_min_size,
-    "MERITRANK_FILTER_MIN_SIZE",
-    1,
-    1024 * 1024 * 10,
-  )?;
-  parse_and_set_bool(
-    &mut settings.omit_neg_edges_scores,
-    "MERITRANK_OMIT_NEG_EDGES_SCORES",
-  )?;
-  parse_and_set_bool(
-    &mut settings.force_read_graph_conn,
-    "MERITRANK_FORCE_READ_GRAPH_CONN",
-  )?;
-
-  Ok(settings)
-}
-
-pub fn main_async() -> Result<(), ServiceError> {
+pub async fn run() -> Result<(), ServiceError> {
   let threads = match var("MERITRANK_SERVICE_THREADS") {
     Ok(s) => match s.parse::<usize>() {
       Ok(n) => {
@@ -521,12 +392,7 @@ pub fn main_async() -> Result<(), ServiceError> {
     _ => "tcp://127.0.0.1:10234".to_string(),
   };
 
-  log_info!(
-    "Starting server {} at {}, {} threads",
-    VERSION,
-    url,
-    threads
-  );
+  log_info!("Starting server {} at {}", VERSION, url);
 
   let settings = parse_settings()?;
 
@@ -534,30 +400,17 @@ pub fn main_async() -> Result<(), ServiceError> {
 
   let state = init();
 
-  let s = Socket::new(Protocol::Rep0)?;
+  //  Wrap NNG inside a tokio task.
 
-  let workers: Vec<_> = (0..threads)
-    .map(|_| {
-      let ctx = Context::new(&s)?;
-      let ctx_cloned = ctx.clone();
-      let state_cloned = state.internal.clone();
+  let state_cloned = state.internal.clone();
 
-      let aio = Aio::new(move |aio, res| {
-        worker_callback(&mut state_cloned.clone(), aio, &ctx_cloned, res);
-      })?;
-
-      Ok((aio, ctx))
-    })
-    .collect::<Result<_, nng::Error>>()?;
-
-  s.listen(&url)?;
-
-  for (a, c) in &workers {
-    c.recv(a)?;
+  match tokio::spawn(async move {
+    match nng_task(state_cloned, &url, threads) {
+      _ => {},
+    }
+  }).await {
+    _ => {},
   }
-
-  std::thread::park();
-  shutdown(state);
 
   Ok(())
 }

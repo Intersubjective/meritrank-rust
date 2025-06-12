@@ -1,5 +1,4 @@
 use bincode::{Decode, Encode};
-use crate::aug_graph::AugGraphOpcode;
 
 #[derive(Debug, Encode, Decode, Eq, PartialEq)]
 pub enum ServiceRequestOpcode  {

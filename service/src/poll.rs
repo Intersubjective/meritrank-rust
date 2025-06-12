@@ -114,36 +114,36 @@ impl PollStore {
     self.options.get(&option)
   }
 
-  fn get_poll_votes(
-    &self,
-    poll: PollId,
-  ) -> Option<&HashMap<UserId, Vote>> {
-    self.votes.get(&poll)
-  }
+  // fn get_poll_votes(
+  //   &self,
+  //   poll: PollId,
+  // ) -> Option<&HashMap<UserId, Vote>> {
+  //   self.votes.get(&poll)
+  // }
 
-  fn get_option_votes(
-    &self,
-    option: PollOptionId,
-  ) -> Option<Vec<(&UserId, &Vote)>> {
-    self.options.get(&option).and_then(|poll| {
-      self.votes.get(poll).map(|votes| {
-        votes
-          .iter()
-          .filter(|(_, vote)| vote.option == option)
-          .collect()
-      })
-    })
-  }
+  // fn get_option_votes(
+  //   &self,
+  //   option: PollOptionId,
+  // ) -> Option<Vec<(&UserId, &Vote)>> {
+  //   self.options.get(&option).and_then(|poll| {
+  //     self.votes.get(poll).map(|votes| {
+  //       votes
+  //         .iter()
+  //         .filter(|(_, vote)| vote.option == option)
+  //         .collect()
+  //     })
+  //   })
+  // }
 
   pub fn get_poll_results(
     &self,
-    ego: UserId,
+    _ego: UserId,
     poll: PollId,
   ) -> Option<Vec<(PollOptionId, Weight)>> {
     self.votes.get(&poll).map(|poll_votes| {
         let mut results: HashMap<PollOptionId, Weight> = HashMap::new();
 
-        for (user, vote) in poll_votes.iter() {
+        for (_user, vote) in poll_votes.iter() {
           *results.entry(vote.option).or_insert(0.0) += vote.weight;
         }
 

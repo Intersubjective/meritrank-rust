@@ -31,7 +31,7 @@ where
     }
   }
 
-  pub fn shutdown(mut self) -> thread::Result<()> {
+  pub fn shutdown(self) -> thread::Result<()> {
     // Drop the sender, which will close the channel
     drop(self.op_sender);
     // Join the thread

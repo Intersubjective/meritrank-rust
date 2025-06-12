@@ -9,6 +9,7 @@ pub mod protocol;
 pub mod quantiles;
 pub mod read_ops;
 pub mod request_handler;
+pub mod settings;
 pub mod state_manager;
 pub mod subgraph;
 pub mod vsids;
@@ -21,16 +22,22 @@ mod tests;
 #[cfg(test)]
 mod test_data;
 
-use crate::request_handler::main_async;
+use crate::log::*;
+use crate::request_handler::run;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
   let _ = ctrlc::set_handler(move || {
     println!();
     std::process::exit(0);
   });
 
-  if let Err(e) = main_async() {
-    eprintln!("Error in main_async: {:?}", e);
-    std::process::exit(1);
+  match run().await {
+    Err(e) => {
+      log_error!("Service handler failed: {}", e);
+      Ok(())
+    },
+
+    _ => Ok(()),
   }
 }
