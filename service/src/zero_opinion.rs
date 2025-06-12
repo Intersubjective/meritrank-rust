@@ -4,10 +4,10 @@
 //
 //  ================================================
 
-use std::collections::HashMap;
 use lru::LruCache;
 use meritrank_core::{constants::EPSILON, NodeId};
 use simple_pagerank::Pagerank;
+use std::collections::HashMap;
 
 use crate::aug_multi_graph::*;
 use crate::log::*;
@@ -52,8 +52,7 @@ impl Subgraph {
 
     aggregated_scores.into_iter().collect()
   }
-  
-  
+
   pub fn reduced_graph(
     &mut self,
     infos: &[NodeInfo],
@@ -153,7 +152,7 @@ impl Subgraph {
     }
 
     // TODO: remove PageRank in favor of direct sum of scores
-    // Actually, instead of calculating page rank it is 
+    // Actually, instead of calculating page rank it is
     // possible to just sum all the scores by each user for each other.
     // The result should be the same after normalization.
     let mut pr = Pagerank::<NodeId>::new();
@@ -194,7 +193,8 @@ impl Subgraph {
       if (id % 100) == 90 {
         log_verbose!("{}%", (id * 100) / infos.len());
       }
-      if infos[id].kind == Some(NodeKind::User) { // Updated comparison
+      if infos[id].kind == Some(NodeKind::User) {
+        // Updated comparison
         match self.meritrank_data.calculate(id, num_walk) {
           Ok(_) => {},
           Err(e) => log_error!("{}", e),

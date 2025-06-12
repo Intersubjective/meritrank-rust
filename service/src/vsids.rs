@@ -64,7 +64,7 @@ pub enum GraphOp {
 #[derive(Clone, Debug)]
 pub struct VSIDSManager {
   pub(crate) min_max_weights: HashMap<(String, NodeId), (Weight, Weight, u32)>,
-  pub bump_factor:       Weight,
+  pub bump_factor:              Weight,
   pub(crate) rescale_threshold: Weight,
   pub(crate) deletion_ratio:    Weight,
 }

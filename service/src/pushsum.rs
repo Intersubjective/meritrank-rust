@@ -1,10 +1,8 @@
 use indexmap::IndexMap;
 use rand::prelude::*;
 use std::collections::HashMap;
-use std::env;
 use std::f64;
 
-const MAX_STEPS: usize = 100;
 const EPS: f64 = 0.1; // convergence threshold
 
 pub type PsNodeId = usize;
@@ -19,19 +17,6 @@ pub struct PsNode {
 }
 
 impl PsNode {
-  pub(crate) fn new_hot(
-    weight_choices: Vec<Weight>,
-    edges: HashMap<PsNodeId, Weight>,
-  ) -> Self {
-    let total_weight: Weight = weight_choices.iter().sum();
-
-    Self {
-      s: weight_choices,
-      w: total_weight,
-      edges,
-    }
-  }
-
   fn estimate(&self) -> Vec<Weight> {
     self.s.iter().map(|&v| v / self.w).collect()
   }
@@ -193,8 +178,26 @@ fn calculate_spread(
     .fold(0.0_f64, f64::max)
 }
 
+#[cfg(test)]
+impl PsNode {
+  pub fn new_hot(
+    weight_choices: Vec<Weight>,
+    edges: HashMap<PsNodeId, Weight>,
+  ) -> Self {
+    let total_weight: Weight = weight_choices.iter().sum();
+
+    Self {
+      s: weight_choices,
+      w: total_weight,
+      edges,
+    }
+  }
+}
+
 #[test]
 fn test_pushsum() {
+  const MAX_STEPS: usize = 100;
+
   let rows: Vec<HashMap<PsNodeId, Weight>> = vec![
     [(0, 0.15), (1, 0.25), (2, 0.20), (3, 0.20), (4, 0.20)]
       .iter()
@@ -220,7 +223,9 @@ fn test_pushsum() {
 
   let init_choice = vec![0_usize, 1, 2, 0, 1];
 
-  let m_arg = env::args().nth(1).and_then(|s| s.parse::<usize>().ok());
+  let m_arg = std::env::args()
+    .nth(1)
+    .and_then(|s| s.parse::<usize>().ok());
   let m =
     m_arg.unwrap_or_else(|| init_choice.iter().copied().max().unwrap_or(0) + 1);
 

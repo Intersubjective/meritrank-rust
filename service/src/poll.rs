@@ -2,7 +2,7 @@ use crate::quantiles::calculate_quantiles_bounds;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use meritrank_core::{NodeId, Weight};
-use std::collections::{HashMap};
+use std::collections::HashMap;
 
 pub type PollId = NodeId;
 pub type PollVariantId = NodeId;
@@ -162,100 +162,127 @@ impl PollStore {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+  use super::*;
 
-    #[test]
-    fn test_cap_scores() {
-        let poll_store = PollStore::new();
-        let scores = vec![
-            (1, 10.0),
-            (2, 20.0),
-            (3, 30.0),
-            (4, 40.0),
-            (5, 50.0),
-        ];
-        let num_quantiles = 4;
+  #[test]
+  fn test_cap_scores() {
+    let poll_store = PollStore::new();
+    let scores = vec![(1, 10.0), (2, 20.0), (3, 30.0), (4, 40.0), (5, 50.0)];
+    let num_quantiles = 4;
 
-        let capped_scores = poll_store.cap_scores(&scores, num_quantiles);
+    let capped_scores = poll_store.cap_scores(&scores, num_quantiles);
 
-        // The expected cap should be at the 75th percentile (3rd quantile)
-        assert_eq!(capped_scores.len(), 5);
-        assert_eq!(capped_scores[0], (1, 10.0));
-        assert_eq!(capped_scores[1], (2, 20.0));
-        assert_eq!(capped_scores[2], (3, 30.0));
-        assert_eq!(capped_scores[3], (4, 35.0)); // Capped at 75th percentile
-        assert_eq!(capped_scores[4], (5, 35.0)); // Capped at 75th percentile
-    }
+    // The expected cap should be at the 75th percentile (3rd quantile)
+    assert_eq!(capped_scores.len(), 5);
+    assert_eq!(capped_scores[0], (1, 10.0));
+    assert_eq!(capped_scores[1], (2, 20.0));
+    assert_eq!(capped_scores[2], (3, 30.0));
+    assert_eq!(capped_scores[3], (4, 35.0)); // Capped at 75th percentile
+    assert_eq!(capped_scores[4], (5, 35.0)); // Capped at 75th percentile
+  }
 
-    #[test]
-    fn test_calculate_poll_results() {
-        let mut poll_store = PollStore::new();
+  #[test]
+  fn test_calculate_poll_results() {
+    let mut poll_store = PollStore::new();
 
-        // Set up a poll with two options
-        poll_store.add_poll_option(101, 1).unwrap(); // Option 1 for Poll 1
-        poll_store.add_poll_option(102, 1).unwrap(); // Option 2 for Poll 1
+    // Set up a poll with two options
+    poll_store.add_poll_option(101, 1).unwrap(); // Option 1 for Poll 1
+    poll_store.add_poll_option(102, 1).unwrap(); // Option 2 for Poll 1
 
-        // Set up votes
-        let poll_votes = HashMap::from([
-            (1, Vote { option: 101, weight: 1.0 }),
-            (3, Vote { option: 101, weight: 1.0 }),
-            (4, Vote { option: 102, weight: 1.0 }),
-            (5, Vote { option: 101, weight: 1.0 }),
-        ]);
+    // Set up votes
+    let poll_votes = HashMap::from([
+      (
+        1,
+        Vote {
+          option: 101,
+          weight: 1.0,
+        },
+      ),
+      (
+        3,
+        Vote {
+          option: 101,
+          weight: 1.0,
+        },
+      ),
+      (
+        4,
+        Vote {
+          option: 102,
+          weight: 1.0,
+        },
+      ),
+      (
+        5,
+        Vote {
+          option: 101,
+          weight: 1.0,
+        },
+      ),
+    ]);
 
-        // Set up user scores
-        let scores = vec![
-            (1, 10.0),
-            (2, 20.0),
-            (3, 30.0),
-            (4, 40.0),
-            (5, 50.0),
-        ];
+    // Set up user scores
+    let scores = vec![(1, 10.0), (2, 20.0), (3, 30.0), (4, 40.0), (5, 50.0)];
 
-        let results = poll_store.calculate_poll_results(&poll_votes, &scores, 4, true);
+    let results =
+      poll_store.calculate_poll_results(&poll_votes, &scores, 4, true);
 
-        // Check that we have results for both options
-        assert_eq!(results.len(), 2);
+    // Check that we have results for both options
+    assert_eq!(results.len(), 2);
 
-        // Check that the results are normalized
-        let total: f64 = results.values().sum();
-        assert!((total - 1.0).abs() < 1e-6);
+    // Check that the results are normalized
+    let total: f64 = results.values().sum();
+    assert!((total - 1.0).abs() < 1e-6);
 
-        // Option 101 should have more weight due to user 5's high score
-        assert!(results[&101] > results[&102]);
-    }
+    // Option 101 should have more weight due to user 5's high score
+    assert!(results[&101] > results[&102]);
+  }
 
-    #[test]
-    fn test_calculate_poll_results_empty_votes() {
-        let poll_store = PollStore::new();
-        let poll_votes = HashMap::new();
-        let scores = vec![(1, 10.0), (2, 20.0)];
+  #[test]
+  fn test_calculate_poll_results_empty_votes() {
+    let poll_store = PollStore::new();
+    let poll_votes = HashMap::new();
+    let scores = vec![(1, 10.0), (2, 20.0)];
 
-        let results = poll_store.calculate_poll_results(&poll_votes, &scores, 4, true);
+    let results =
+      poll_store.calculate_poll_results(&poll_votes, &scores, 4, true);
 
-        // Results should be empty when there are no votes
-        assert!(results.is_empty());
-    }
+    // Results should be empty when there are no votes
+    assert!(results.is_empty());
+  }
 
-    #[test]
-    fn test_calculate_poll_results_zero_scores() {
-        let mut poll_store = PollStore::new();
+  #[test]
+  fn test_calculate_poll_results_zero_scores() {
+    let mut poll_store = PollStore::new();
 
-        poll_store.add_poll_option(101, 1).unwrap();
-        poll_store.add_poll_option(102, 1).unwrap();
+    poll_store.add_poll_option(101, 1).unwrap();
+    poll_store.add_poll_option(102, 1).unwrap();
 
-        let poll_votes = HashMap::from([
-            (1, Vote { option: 101, weight: 1.0 }),
-            (2, Vote { option: 102, weight: 1.0 }),
-        ]);
+    let poll_votes = HashMap::from([
+      (
+        1,
+        Vote {
+          option: 101,
+          weight: 1.0,
+        },
+      ),
+      (
+        2,
+        Vote {
+          option: 102,
+          weight: 1.0,
+        },
+      ),
+    ]);
 
-        let scores = vec![(1, 0.0), (2, 0.0)];
+    let scores = vec![(1, 0.0), (2, 0.0)];
 
-        let results = poll_store.calculate_poll_results(&poll_votes, &scores, 4, true);
+    let results =
+      poll_store.calculate_poll_results(&poll_votes, &scores, 4, true);
 
-        // Results should have zero weight for each option
-        assert_eq!(results.len(), 2);
-        assert_eq!(results.get(&101), Some(&0.0));
-        assert_eq!(results.get(&102), Some(&0.0));
-    }
+    // Results should have zero weight for each option
+    assert_eq!(results.len(), 2);
+    assert_eq!(results.get(&101), Some(&0.0));
+    assert_eq!(results.get(&102), Some(&0.0));
+  }
 }
