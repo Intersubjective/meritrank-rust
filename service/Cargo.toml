@@ -43,3 +43,11 @@ panic = "unwind"
 opt-level = 3
 lto = "fat"
 codegen-units = 1
+
+[[bin]]
+name = "meritrank-service-nng"
+path = "src/server/nng/main.rs"
+
+[[bin]]
+name = "meritrank-service-tokio"
+path = "src/server/tokio/server.rs"

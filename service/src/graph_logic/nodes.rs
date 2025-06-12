@@ -1,5 +1,5 @@
-use crate::constants::*;
-use crate::log::*;
+use crate::utils::constants::*;
+use crate::utils::log::*;
 use std::ops::{Index, IndexMut};
 
 pub use meritrank_core::{NodeId, Weight};

@@ -1,9 +1,3 @@
-pub use crate::log_command;
-pub use crate::log_error;
-pub use crate::log_info;
-pub use crate::log_trace;
-pub use crate::log_verbose;
-pub use crate::log_warning;
 pub use std::sync::atomic::Ordering;
 use std::{sync::atomic::AtomicBool, sync::Mutex, thread};
 

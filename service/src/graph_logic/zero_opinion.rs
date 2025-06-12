@@ -9,11 +9,11 @@ use meritrank_core::{constants::EPSILON, NodeId};
 use simple_pagerank::Pagerank;
 use std::collections::HashMap;
 
-use crate::aug_multi_graph::*;
-use crate::log::*;
-use crate::nodes::*;
-use crate::poll::UserId;
-use crate::subgraph::*;
+use crate::graph_logic::aug_multi_graph::*;
+use crate::utils::log::*;
+use crate::graph_logic::nodes::*;
+use crate::graph_logic::poll::UserId;
+use crate::graph_logic::subgraph::*;
 
 impl Subgraph {
   pub fn get_users_scores(

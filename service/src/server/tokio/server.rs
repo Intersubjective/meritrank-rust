@@ -1,17 +1,17 @@
 use dashmap::DashMap;
-use meritrank_service::aug_graph::{AugGraph, AugGraphOp, AugGraphOpcode};
-use meritrank_service::new_server_ops::Response;
-use meritrank_service::new_server_ops::{Request, ServiceRequestOpcode};
+use crate::graph_logic::aug_graph::{AugGraph, AugGraphOp, AugGraphOpcode};
+use crate::server::tokio::new_server_ops::Response;
+use crate::server::tokio::new_server_ops::{Request, ServiceRequestOpcode};
 
-use meritrank_service::log::*;
+use crate::utils::log::*;
 use tokio::{
   io::{AsyncReadExt, AsyncWriteExt},
   net::TcpListener,
 };
 
 use bincode::{config::standard, decode_from_slice, encode_to_vec};
-use meritrank_service::new_server_ops::SubgraphName;
-use meritrank_service::nonblocking_loop::ConcurrentDataProcessor;
+use crate::server::tokio::new_server_ops::SubgraphName;
+use crate::server::tokio::nonblocking_loop::ConcurrentDataProcessor;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::mpsc;

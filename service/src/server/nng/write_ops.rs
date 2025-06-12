@@ -2,12 +2,12 @@
 use meritrank_core::constants::EPSILON;
 use std::sync::atomic::Ordering;
 
-use crate::aug_multi_graph::{AugMultiGraph, Cluster}; // NodeId and Weight removed
-use crate::bloom_filter::{
+use crate::graph_logic::aug_multi_graph::{AugMultiGraph, Cluster}; // NodeId and Weight removed
+use crate::utils::bloom_filter::{
   bloom_filter_add, bloom_filter_bits, bloom_filter_contains,
 };
-use crate::log::*;
-use crate::nodes::*;
+use crate::utils::log::*;
+use crate::graph_logic::nodes::*;
 use meritrank_core::{NodeId, Weight}; // NodeId and Weight added directly
 
 pub fn write_log_level(log_level: u32) {

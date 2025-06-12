@@ -4,15 +4,15 @@ use meritrank_core::{constants::EPSILON, NodeId};
 use petgraph::graph::{DiGraph, NodeIndex};
 use std::collections::HashMap;
 
-use crate::aug_multi_graph::{AugMultiGraph, Cluster}; // Weight removed
-use crate::constants::VERSION;
-use crate::log::*;
-use crate::nodes::*;
-use crate::protocol::{neighbor_dir_from, NEIGHBORS_INBOUND}; // Assuming neighbor_dir_from is pub in protocol
-use crate::subgraph::Subgraph;
+use crate::graph_logic::aug_multi_graph::{AugMultiGraph, Cluster}; // Weight removed
+use crate::utils::constants::VERSION;
+use crate::utils::log::*;
+use crate::graph_logic::nodes::*;
+use self::protocol::{neighbor_dir_from, NEIGHBORS_INBOUND}; // Assuming neighbor_dir_from is pub in protocol
+use crate::graph_logic::subgraph::Subgraph;
 use meritrank_core::Weight; // Weight added directly
                             // use crate::bloom_filter::*; // Removed unused import
-use crate::astar::*; // For A*
+use crate::graph_logic::astar::*; // For A*
 use meritrank_core::Graph; // For A*
 use petgraph::visit::EdgeRef; // Added for edge.target() and edge.id()
 

@@ -1,30 +1,11 @@
-pub mod astar;
-pub mod aug_multi_graph;
-pub mod bloom_filter;
-pub mod constants;
-pub mod errors;
-pub mod log;
-pub mod nodes;
-pub mod poll;
 pub mod protocol;
-pub mod quantiles;
 pub mod read_ops;
 pub mod request_handler;
-pub mod settings;
 pub mod state_manager;
-pub mod subgraph;
-pub mod vsids;
 pub mod write_ops;
-pub mod zero_opinion;
 
-#[cfg(test)]
-mod tests;
-
-#[cfg(test)]
-mod test_data;
-
-use crate::log::*;
-use crate::request_handler::run;
+use crate::utils::log::*;
+use self::request_handler::run;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

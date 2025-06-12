@@ -4,12 +4,12 @@
 //
 //  ================================================================
 
-use crate::constants::*;
-use crate::log::*;
-use crate::nodes::*;
-use crate::quantiles::*;
-use crate::subgraph::*;
-use crate::vsids::VSIDSManager;
+use crate::utils::constants::*;
+use crate::utils::log::*;
+use crate::graph_logic::nodes::*;
+use crate::utils::quantiles::*;
+use crate::graph_logic::subgraph::*;
+use crate::graph_logic::vsids::VSIDSManager;
 use lru::LruCache;
 use meritrank_core::{constants::EPSILON, Graph, MeritRank, NodeId};
 use std::{
@@ -389,7 +389,7 @@ impl AugMultiGraph {
     context: &str,
     ego: NodeId,
     focus: NodeId,
-    dir: crate::protocol::NeighborDirection, // Changed to use protocol::NeighborDirection
+    dir: crate::server::nng::protocol::NeighborDirection, // Changed to use protocol::NeighborDirection
   ) -> Vec<(NodeId, Weight, Cluster)> {
     log_trace!("{:?} {} {} {:?}", context, ego, focus, dir);
     self
@@ -399,15 +399,15 @@ impl AugMultiGraph {
       .get_node_data(focus)
       .map(|node_data| {
         let edges: Vec<_> = match dir {
-          crate::protocol::NeighborDirection::Outbound => {
+          crate::server::nng::protocol::NeighborDirection::Outbound => {
             // Changed to use protocol::NeighborDirection
             node_data.get_outgoing_edges().collect()
           },
-          crate::protocol::NeighborDirection::Inbound => {
+          crate::server::nng::protocol::NeighborDirection::Inbound => {
             // Changed to use protocol::NeighborDirection
             node_data.get_inbound_edges().collect()
           },
-          crate::protocol::NeighborDirection::All => {
+          crate::server::nng::protocol::NeighborDirection::All => {
             node_data // Changed to use protocol::NeighborDirection
               .get_outgoing_edges()
               .chain(node_data.get_inbound_edges())

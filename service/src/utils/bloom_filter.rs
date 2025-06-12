@@ -1,4 +1,4 @@
-use crate::log::*;
+use self::log::*;
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;

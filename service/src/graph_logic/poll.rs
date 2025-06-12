@@ -1,4 +1,4 @@
-use crate::quantiles::calculate_quantiles_bounds;
+use crate::utils::quantiles::calculate_quantiles_bounds;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use meritrank_core::{NodeId, Weight};

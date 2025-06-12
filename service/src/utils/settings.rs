@@ -1,9 +1,9 @@
 use std::env::var;
 use std::num::NonZeroUsize;
 
-use crate::aug_multi_graph::*;
-use crate::errors::ServiceError;
-use crate::log::*;
+use crate::graph_logic::aug_multi_graph::*;
+use self::errors::ServiceError;
+use self::log::*;
 
 fn parse_env_var<T>(
   name: &str,

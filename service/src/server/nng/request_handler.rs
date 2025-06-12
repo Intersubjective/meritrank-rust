@@ -1,14 +1,14 @@
 use nng::{Aio, AioResult, Context, Protocol, Socket};
 use std::{env::var, string::ToString, sync::atomic::Ordering};
 
-use crate::constants::*;
-use crate::errors::ServiceError;
-use crate::log::*;
-use crate::protocol::*;
-use crate::read_ops;
-use crate::settings::parse_settings;
-use crate::state_manager::*;
-use crate::write_ops;
+use crate::utils::constants::*;
+use crate::utils::errors::ServiceError;
+use crate::utils::log::*;
+use self::protocol::*;
+use self::read_ops;
+use crate::utils::settings::parse_settings;
+use self::state_manager::*;
+use self::write_ops;
 use std::time::SystemTime;
 
 pub use meritrank_core::Weight;

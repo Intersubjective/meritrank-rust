@@ -8,8 +8,8 @@ use std::thread;
 
 pub use meritrank_core::Weight;
 
-use crate::aug_multi_graph::*;
-use crate::log::*;
+use crate::graph_logic::aug_multi_graph::*;
+use crate::utils::log::*;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Request {

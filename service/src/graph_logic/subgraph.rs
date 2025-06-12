@@ -1,11 +1,11 @@
 use lru::LruCache;
 use meritrank_core::{constants::EPSILON, MeritRank, NodeId, Weight};
 
-use crate::constants::*;
-use crate::log::*;
-use crate::nodes::*;
-use crate::poll::PollStore;
-use crate::quantiles::*;
+use crate::utils::constants::*;
+use crate::utils::log::*;
+use crate::graph_logic::nodes::*;
+use crate::graph_logic::poll::PollStore;
+use crate::utils::quantiles::*;
 
 #[derive(Clone)]
 pub struct Subgraph {
