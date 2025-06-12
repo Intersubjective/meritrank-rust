@@ -1,7 +1,7 @@
 use dashmap::DashMap;
 use meritrank_service::aug_graph::{AugGraph, AugGraphOp, AugGraphOpcode};
-use meritrank_service::new_sever_ops::Response;
-use meritrank_service::new_sever_ops::{Request, ServiceRequestOpcode};
+use meritrank_service::new_server_ops::Response;
+use meritrank_service::new_server_ops::{Request, ServiceRequestOpcode};
 
 use meritrank_service::log::*;
 use tokio::{
@@ -10,7 +10,7 @@ use tokio::{
 };
 
 use bincode::{config::standard, decode_from_slice, encode_to_vec};
-use meritrank_service::new_sever_ops::SubgraphName;
+use meritrank_service::new_server_ops::SubgraphName;
 use meritrank_service::nonblocking_loop::ConcurrentDataProcessor;
 use std::error::Error;
 use std::sync::Arc;
