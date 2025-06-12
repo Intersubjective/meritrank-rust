@@ -76,7 +76,7 @@ impl AugMultiGraph {
     scores: Vec<(NodeId, Weight, Cluster)>,
     context: &str,
     ego_id: NodeId,
-    kind: NodeKind,
+    kind_filter: Option<NodeKind>, // Changed parameter name and type
     hide_personal: bool,
     score_lt: f64,
     score_lte: bool,
@@ -86,10 +86,16 @@ impl AugMultiGraph {
     let mut im: Vec<(NodeId, Weight, Cluster)> = scores
       .into_iter()
       .map(|(n, w, cluster)| {
-        (n, node_kind_from_id(&self.node_infos, n), w, cluster)
+        (n, node_kind_from_id(&self.node_infos, n), w, cluster) // node_kind_from_id now returns Option<NodeKind>
       })
-      .filter(|(_, target_kind, _, _)| {
-        kind == NodeKind::Unknown || kind == *target_kind
+      .filter(|(_id, opt_node_kind, _w, _c)| { // Filter by kind_filter
+        match kind_filter {
+          None => true,
+          Some(filter_k) => *opt_node_kind == Some(filter_k),
+        }
+      })
+      .filter_map(|(id, opt_node_kind, w, c)| { // Convert Option<NodeKind> to NodeKind, filtering out Nones
+        opt_node_kind.map(|concrete_kind| (id, concrete_kind, w, c))
       })
       .filter(|(_, _, score, _)| {
         score_gt < *score || (score_gte && score_gt <= *score)
@@ -97,13 +103,13 @@ impl AugMultiGraph {
       .filter(|(_, _, score, _)| {
         *score < score_lt || (score_lte && score_lt >= *score)
       })
-      .collect::<Vec<(NodeId, NodeKind, Weight, Cluster)>>()
+      .collect::<Vec<(NodeId, NodeKind, Weight, Cluster)>>() // This collect now receives concrete NodeKind
       .into_iter()
-      .filter(|(target_id, target_kind, _, _)| {
+      .filter(|(target_id, current_node_kind, _, _)| { // current_node_kind is NodeKind here
         if !hide_personal
-          || (*target_kind != NodeKind::Comment
-            && *target_kind != NodeKind::Beacon
-            && *target_kind != NodeKind::Opinion)
+          || (*current_node_kind != NodeKind::Comment
+            && *current_node_kind != NodeKind::Beacon
+            && *current_node_kind != NodeKind::Opinion)
         {
           return true;
         }
@@ -196,7 +202,7 @@ impl AugMultiGraph {
     context: &str,
     ego: &str,
     ego_id: NodeId,
-    kind: NodeKind,
+    kind_filter: Option<NodeKind>, // Changed parameter
     hide_personal: bool,
     score_lt: f64,
     score_lte: bool,
@@ -210,7 +216,7 @@ impl AugMultiGraph {
       scores,
       context,
       ego_id,
-      kind,
+      kind_filter, // Pass Option<NodeKind>
       hide_personal,
       score_lt,
       score_lte,
@@ -263,13 +269,7 @@ impl AugMultiGraph {
       count
     );
 
-    let kind = match kind_from_prefix(kind_str) {
-      Ok(x) => x,
-      _ => {
-        log_error!("Invalid node kind string: {:?}", kind_str);
-        return vec![];
-      },
-    };
+    let kind_opt = node_kind_from_prefix(kind_str); // Use new function from nodes.rs
 
     if !self.subgraphs.contains_key(context) {
       log_error!("Context does not exist: {:?}", context);
@@ -284,7 +284,7 @@ impl AugMultiGraph {
       context,
       ego,
       ego_id,
-      kind,
+      kind_opt, // Pass Option<NodeKind>
       hide_personal,
       score_lt,
       score_lte,
@@ -294,6 +294,108 @@ impl AugMultiGraph {
       count,
       false,
     )
+  }
+
+  fn handle_poll_variant_case(
+    &mut self,
+    context: &str,
+    ego_id: NodeId,
+    focus_id: NodeId,
+    focus: &str,
+  ) -> Vec<(String, String, Weight, Weight, Cluster, Cluster)> {
+    let num_quantiles = 10; // TODO: make this configurable
+    let node_infos_clone = self.node_infos.clone();
+    let subgraph = self.subgraph_from_context(context);
+
+    if let Some(poll_votes) = subgraph.poll_store.votes.get(&focus_id).cloned()
+    {
+      // Personalized poll results
+      let personalized_scores: Vec<(NodeId, Weight)> = subgraph
+        .fetch_all_raw_scores(ego_id, 0.0)
+        .into_iter()
+        .filter(|(node_id, _)| {
+          node_kind_from_id(&node_infos_clone, *node_id) == Some(NodeKind::User)
+            && *node_id != ego_id
+        })
+        .collect();
+      let personalized_poll_result =
+        subgraph.poll_store.calculate_poll_results(
+          &poll_votes,
+          &personalized_scores,
+          num_quantiles,
+          true,
+        );
+
+      // Global poll results
+      let global_scores = subgraph.get_users_scores(&node_infos_clone);
+      let global_poll_results = subgraph.poll_store.calculate_poll_results(
+        &poll_votes,
+        &global_scores,
+        num_quantiles,
+        true,
+      );
+
+      // Simple scores count in the personal circle: each user's score is normalized to 1.0
+      let mut pers_unit_scores: Vec<(NodeId, Weight)> = personalized_scores
+        .into_iter()
+        .filter_map(|(user_id, score)| {
+          if score > 0.0 {
+            Some((user_id, 1.0))
+          } else {
+            None
+          }
+        })
+        .collect();
+      // We want to count ego in the total count,
+      // as point of reference for the user
+      pers_unit_scores.insert(0, (ego_id, 1.0));
+      
+      let pers_unit_scores_sum: Weight =
+        pers_unit_scores.iter().map(|(_, w)| *w).sum();
+
+      let pers_unit_poll_results = subgraph.poll_store.calculate_poll_results(
+        &poll_votes,
+        &pers_unit_scores,
+        1,
+        false,
+      );
+
+      let personal_circle_voted_share: Weight =
+        pers_unit_poll_results.values().sum::<Weight>() / pers_unit_scores_sum;
+
+      // Combine results from all result hashmaps
+      let mut results: Vec<_> = global_poll_results
+        .into_iter()
+        .map(|(option_id, global_poll_variant_votes_share)| {
+          let pers_poll_variant_votes_share = personalized_poll_result
+            .get(&option_id)
+            .cloned()
+            .unwrap_or(0.0);
+          let pers_poll_variant_votes_count = pers_unit_poll_results
+            .get(&option_id)
+            .cloned()
+            .unwrap_or(0.0);
+          (
+            focus.to_string(),                              // Poll ID
+            node_name_from_id(&self.node_infos, option_id), // PollVariant ID
+            pers_poll_variant_votes_share,
+            global_poll_variant_votes_share,
+            (personal_circle_voted_share * 100.0).round() as Cluster,
+            pers_poll_variant_votes_count.round() as Cluster,
+          )
+        })
+        .collect();
+
+      results.sort_by(|a, b| a.1.cmp(&b.1));
+      results
+    } else {
+      log_warning!(
+        "No poll result found for ego: {}, focus: {}",
+        node_name_from_id(&self.node_infos, ego_id),
+        node_name_from_id(&self.node_infos, focus_id)
+      );
+      vec![]
+    }
   }
 
   pub fn read_neighbors(
@@ -327,13 +429,7 @@ impl AugMultiGraph {
       count
     );
 
-    let kind = match kind_from_prefix(kind_str) {
-      Ok(x) => x,
-      _ => {
-        log_error!("Invalid node kind string: {:?}", kind_str);
-        return vec![];
-      },
-    };
+    let kind_opt = node_kind_from_prefix(kind_str); // Use new function from nodes.rs
 
     let dir = match neighbor_dir_from(direction) {
       Ok(x) => x,
@@ -348,39 +444,18 @@ impl AugMultiGraph {
 
     // Handling the special case - dirty hack - of returning
     // poll results through the neighbors method.
-    if kind == NodeKind::PollOption
-      && kind_from_name(ego) == NodeKind::User
-      && kind_from_name(focus) == NodeKind::Poll
+
+    if kind_opt == Some(NodeKind::PollVariant)
+      && node_kind_from_prefix(ego) == Some(NodeKind::User)
+      && node_kind_from_prefix(focus) == Some(NodeKind::Poll)
       && direction == NEIGHBORS_INBOUND
     {
-      log_info!("Returning poll results through read_neighbors - ego: {}, focus: {}", ego, focus);
-      return if let Some(poll_result) = self
-        .get_subgraph_from_context(context)
-        .poll_store
-        .get_poll_results(ego_id, focus_id)
-      {
-        poll_result
-          .iter()
-          .map(|(opt, w)| {
-            (
-              focus.to_string(),
-              node_name_from_id(&self.node_infos, *opt),
-              *w,
-              0.0,
-              0,
-              0,
-            )
-          })
-          .collect()
-      } else {
-        log_warning!("No poll result found for ego: {}, focus: {}", ego, focus);
-        vec![]
-      }
+      return self.handle_poll_variant_case(context, ego_id, focus_id, focus);
     }
 
     let mut scores = self.fetch_neighbors(context, ego_id, focus_id, dir);
 
-    if kind == NodeKind::Opinion && direction == NEIGHBORS_INBOUND {
+    if kind_opt == Some(NodeKind::Opinion) && direction == NEIGHBORS_INBOUND { // Use kind_opt
       scores.retain(|&(node_id, _, _)| {
         self.get_object_owner(context, node_id) != Some(focus_id)
       });
@@ -391,7 +466,7 @@ impl AugMultiGraph {
       context,
       ego,
       ego_id,
-      kind,
+      kind_opt, // Pass Option<NodeKind>
       hide_personal,
       score_lt,
       score_lte,
@@ -486,13 +561,12 @@ impl AugMultiGraph {
   ) {
     log_verbose!("Enumerate focus neighbors");
     for (dst_id, focus_dst_weight) in focus_neighbors.iter() {
-      // Iterate over slice
-      let dst_kind = node_kind_from_id(node_infos, *dst_id);
+      let dst_kind_opt = node_kind_from_id(node_infos, *dst_id); // Returns Option<NodeKind>
       if positive_only && *focus_dst_weight <= 0.0 {
         continue;
       }
 
-      if dst_kind == NodeKind::User {
+      if dst_kind_opt == Some(NodeKind::User) {
         add_edge_if_valid(
           im_graph,
           indices,
@@ -501,15 +575,15 @@ impl AugMultiGraph {
           *dst_id,
           *focus_dst_weight,
         );
-      } else if dst_kind == NodeKind::Comment
-        || dst_kind == NodeKind::Beacon
-        || dst_kind == NodeKind::Opinion
+      } else if dst_kind_opt == Some(NodeKind::Comment)
+        || dst_kind_opt == Some(NodeKind::Beacon)
+        || dst_kind_opt == Some(NodeKind::Opinion)
       {
         let dst_neighbors = subgraph.all_outbound_neighbors_normalized(*dst_id);
         for (ngh_id, dst_ngh_weight) in dst_neighbors {
           if (positive_only && dst_ngh_weight <= 0.0)
             || ngh_id == focus_id
-            || node_kind_from_id(node_infos, ngh_id) != NodeKind::User
+            || node_kind_from_id(node_infos, ngh_id) != Some(NodeKind::User)
           {
             continue;
           }
@@ -824,15 +898,13 @@ impl AugMultiGraph {
     v.reserve_exact(ranks.len());
 
     for (node, score_value_of_dst, score_cluster_of_dst) in ranks {
-      let info = match self.node_infos.get(node) {
-        Some(x) => x.clone(),
-        None => NodeInfo {
-          kind:       NodeKind::Unknown,
-          name:       "".to_string(),
-          seen_nodes: Vec::new(),
-        },
-      };
-      if score_value_of_dst > 0.0 && info.kind == NodeKind::User {
+      // Ensure info.kind is Option<NodeKind> and default is None
+      let info = self.node_infos.get(node).cloned().unwrap_or_else(|| NodeInfo {
+        kind: None, // Default to None if node info is missing
+        name: "".to_string(),
+        seen_nodes: Vec::new(),
+      });
+      if score_value_of_dst > 0.0 && info.kind == Some(NodeKind::User) { // Compare with Some(NodeKind::User)
         let (score_value_of_ego, score_cluster_of_ego) =
           match self.get_object_owner(context, node) {
             Some(dst_owner_id) => {
@@ -1015,17 +1087,17 @@ fn add_shortest_path_to_graph(
     // Avoid underflow
     let a = ego_to_focus[k];
     let b = ego_to_focus[k + 1];
-    let a_kind = node_kind_from_id(node_infos, a);
-    let b_kind = node_kind_from_id(node_infos, b);
+    let a_kind_opt = node_kind_from_id(node_infos, a); // Returns Option<NodeKind>
+    let b_kind_opt = node_kind_from_id(node_infos, b); // Returns Option<NodeKind>
     let a_b_weight = subgraph.edge_weight_normalized(a, b);
 
     if k + 2 == ego_to_focus.len() {
-      if a_kind == NodeKind::User {
+      if a_kind_opt == Some(NodeKind::User) {
         edges.push((a, b, a_b_weight));
       } else {
         log_verbose!("Ignore node {}", node_name_from_id(node_infos, a));
       }
-    } else if b_kind != NodeKind::User {
+    } else if b_kind_opt != Some(NodeKind::User) {
       log_verbose!("Ignore node {}", node_name_from_id(node_infos, b));
       if k + 2 < ego_to_focus.len() {
         // Boundary check
@@ -1040,7 +1112,7 @@ fn add_shortest_path_to_graph(
           };
         edges.push((a, c, a_c_weight));
       }
-    } else if a_kind == NodeKind::User {
+    } else if a_kind_opt == Some(NodeKind::User) { // If b_kind was Some(User) or other non-User, and a_kind is User
       edges.push((a, b, a_b_weight));
     } else {
       log_verbose!("Ignore node {}", node_name_from_id(node_infos, a));
