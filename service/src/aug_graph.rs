@@ -12,19 +12,21 @@ pub enum AugGraphOpcode {
   WriteEdge,
 }
 
-
 pub struct AugGraphOp {
-  pub opcode: AugGraphOpcode,
+  pub opcode:  AugGraphOpcode,
   pub ego_str: String,
 }
 
 impl AugGraphOp {
-    pub fn new(opcode: AugGraphOpcode, ego_str: String) -> Self {
-        AugGraphOp {
-            opcode,
-            ego_str,
-        }
+  pub fn new(
+    opcode: AugGraphOpcode,
+    ego_str: String,
+  ) -> Self {
+    AugGraphOp {
+      opcode,
+      ego_str,
     }
+  }
 }
 
 impl AugGraph {

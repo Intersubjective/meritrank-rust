@@ -4,8 +4,8 @@ use meritrank_core::{constants::EPSILON, MeritRank, NodeId, Weight};
 use crate::constants::*;
 use crate::log::*;
 use crate::nodes::*;
-use crate::quantiles::*;
 use crate::poll::PollStore;
+use crate::quantiles::*;
 
 #[derive(Clone)]
 pub struct Subgraph {
@@ -15,8 +15,8 @@ pub struct Subgraph {
   pub cached_walks:          LruCache<NodeId, ()>,
   pub cached_score_clusters: Vec<ScoreClustersByKind>,
   pub omit_neg_edges_scores: bool,
-  pub poll_store: PollStore,
-  pub num_walks: usize,
+  pub poll_store:            PollStore,
+  pub num_walks:             usize,
 }
 
 impl Subgraph {
@@ -288,13 +288,17 @@ impl Subgraph {
     zero_opinion_factor: f64,
     node_ids: &[NodeId],
   ) -> Vec<Weight> {
-    log_trace!("{} {:?} {} {}", ego, kind, self.num_walks, zero_opinion_factor);
+    log_trace!(
+      "{} {:?} {} {}",
+      ego,
+      kind,
+      self.num_walks,
+      zero_opinion_factor
+    );
 
     let scores: Vec<Weight> = node_ids
       .iter()
-      .map(|dst| {
-        self.fetch_raw_score(ego, *dst, zero_opinion_factor)
-      })
+      .map(|dst| self.fetch_raw_score(ego, *dst, zero_opinion_factor))
       .filter(|score| *score >= EPSILON)
       .collect();
 

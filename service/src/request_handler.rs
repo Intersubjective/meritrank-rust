@@ -408,7 +408,9 @@ pub async fn run() -> Result<(), ServiceError> {
     match nng_task(state_cloned, &url, threads) {
       _ => {},
     }
-  }).await {
+  })
+  .await
+  {
     _ => {},
   }
 

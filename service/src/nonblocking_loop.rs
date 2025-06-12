@@ -4,10 +4,10 @@ use std::thread;
 use tokio::sync::mpsc;
 
 pub struct ConcurrentDataProcessor<T, Op> {
-  processing_thread: thread::JoinHandle<()>,
-  pub op_sender: mpsc::Sender<Op>,
+  processing_thread:       thread::JoinHandle<()>,
+  pub op_sender:           mpsc::Sender<Op>,
   pub data_reader_factory: ReadHandleFactory<T>,
-  _phantom: PhantomData<T>, // This is needed because T is not used directly in the struct
+  _phantom:                PhantomData<T>, // This is needed because T is not used directly in the struct
 }
 
 impl<T, Op> ConcurrentDataProcessor<T, Op>
@@ -24,10 +24,10 @@ where
     let (tx, rx) = mpsc::channel::<Op>(queue_len);
     let loop_thread = thread::spawn(move || processing_loop(writer, rx, sleep));
     ConcurrentDataProcessor {
-      processing_thread: loop_thread,
-      op_sender: tx,
+      processing_thread:   loop_thread,
+      op_sender:           tx,
       data_reader_factory: reader.factory(),
-      _phantom: PhantomData,
+      _phantom:            PhantomData,
     }
   }
 

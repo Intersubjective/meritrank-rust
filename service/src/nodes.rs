@@ -13,23 +13,23 @@ pub enum NodeKind {
   Comment,
   Opinion,
   PollVariant, // alt name is "Vote"
-  Poll, 
+  Poll,
 }
 
 // New function
 pub fn node_kind_from_prefix(name: &str) -> Option<NodeKind> {
-    if name.is_empty() {
-        return None;
-    }
-    match name.chars().next() {
-        Some('U') => Some(NodeKind::User),
-        Some('B') => Some(NodeKind::Beacon),
-        Some('C') => Some(NodeKind::Comment),
-        Some('O') => Some(NodeKind::Opinion),
-        Some('V') => Some(NodeKind::PollVariant),
-        Some('P') => Some(NodeKind::Poll),
-        _ => None,
-    }
+  if name.is_empty() {
+    return None;
+  }
+  match name.chars().next() {
+    Some('U') => Some(NodeKind::User),
+    Some('B') => Some(NodeKind::Beacon),
+    Some('C') => Some(NodeKind::Comment),
+    Some('O') => Some(NodeKind::Opinion),
+    Some('V') => Some(NodeKind::PollVariant),
+    Some('P') => Some(NodeKind::Poll),
+    _ => None,
+  }
 }
 
 pub const ALL_NODE_KINDS: [NodeKind; 6] = [
@@ -45,8 +45,8 @@ pub const ALL_NODE_KINDS: [NodeKind; 6] = [
 
 #[derive(PartialEq, Clone, Default)]
 pub struct NodeInfo {
-  pub kind: Option<NodeKind>, // Changed to Option<NodeKind>
-  pub name: String,
+  pub kind:       Option<NodeKind>, // Changed to Option<NodeKind>
+  pub name:       String,
   // Bloom filter of nodes marked as seen by this node in the null context
   pub seen_nodes: Vec<u64>,
 }
@@ -69,12 +69,12 @@ impl Default for ClusterGroupBounds {
 #[derive(PartialEq, Clone, Default)]
 pub struct ScoreClustersByKind {
   // pub unknown:  ClusterGroupBounds, // Field removed
-  pub users:    ClusterGroupBounds,
-  pub beacons:  ClusterGroupBounds,
-  pub comments: ClusterGroupBounds,
-  pub opinions: ClusterGroupBounds,
-  pub poll_options:    ClusterGroupBounds,
-  pub polls:    ClusterGroupBounds,
+  pub users:        ClusterGroupBounds,
+  pub beacons:      ClusterGroupBounds,
+  pub comments:     ClusterGroupBounds,
+  pub opinions:     ClusterGroupBounds,
+  pub poll_options: ClusterGroupBounds,
+  pub polls:        ClusterGroupBounds,
 }
 
 impl Index<NodeKind> for ScoreClustersByKind {
@@ -132,7 +132,8 @@ pub fn node_name_from_id(
 pub fn node_kind_from_id(
   infos: &[NodeInfo],
   id: NodeId,
-) -> Option<NodeKind> { // Return type changed
+) -> Option<NodeKind> {
+  // Return type changed
   match infos.get(id) {
     Some(x) => x.kind, // This is already Option<NodeKind>
     _ => {

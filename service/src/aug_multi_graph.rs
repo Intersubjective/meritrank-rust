@@ -183,7 +183,8 @@ impl AugMultiGraph {
       let all_edges = src.pos_edges.iter().chain(src.neg_edges.iter());
       for (dst_id, weight) in all_edges {
         if node_kind_from_id(&self.node_infos, src_id) == Some(NodeKind::User)
-          && node_kind_from_id(&self.node_infos, *dst_id) == Some(NodeKind::User)
+          && node_kind_from_id(&self.node_infos, *dst_id)
+            == Some(NodeKind::User)
         {
           new_graph_instance.set_edge(src_id, *dst_id, *weight);
         }
@@ -498,7 +499,8 @@ impl AugMultiGraph {
           if x.pos_edges.len() > 1 && node_kind_opt != Some(NodeKind::Opinion) {
             log_error!("Non-user node has too many edges");
           }
-          if x.pos_edges.len() == 2 && node_kind_opt == Some(NodeKind::Opinion) {
+          if x.pos_edges.len() == 2 && node_kind_opt == Some(NodeKind::Opinion)
+          {
             // FIXME! This might produce incorrect results in case the first edge is the edge to the opinion's target
             return Some(x.pos_edges.keys()[0]);
           }
@@ -641,7 +643,7 @@ impl AugMultiGraph {
           || dst_kind == Some(NodeKind::Poll) =>
       {
         log_warning!("Unexpected edge type: {:?} -> {:?} in context {:?}. No action taken.", src_kind_opt, dst_kind_opt, context);
-      }
+      },
       _ => {
         if context.is_empty() {
           log_verbose!("Set edge in \"\": {} -> {} for {}", src, dst, amount);

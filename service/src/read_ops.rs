@@ -349,7 +349,7 @@ impl AugMultiGraph {
       // We want to count ego in the total count,
       // as point of reference for the user
       pers_unit_scores.insert(0, (ego_id, 1.0));
-      
+
       let pers_unit_scores_sum: Weight =
         pers_unit_scores.iter().map(|(_, w)| *w).sum();
 
@@ -455,7 +455,8 @@ impl AugMultiGraph {
 
     let mut scores = self.fetch_neighbors(context, ego_id, focus_id, dir);
 
-    if kind_opt == Some(NodeKind::Opinion) && direction == NEIGHBORS_INBOUND { // Use kind_opt
+    if kind_opt == Some(NodeKind::Opinion) && direction == NEIGHBORS_INBOUND {
+      // Use kind_opt
       scores.retain(|&(node_id, _, _)| {
         self.get_object_owner(context, node_id) != Some(focus_id)
       });
@@ -899,12 +900,18 @@ impl AugMultiGraph {
 
     for (node, score_value_of_dst, score_cluster_of_dst) in ranks {
       // Ensure info.kind is Option<NodeKind> and default is None
-      let info = self.node_infos.get(node).cloned().unwrap_or_else(|| NodeInfo {
-        kind: None, // Default to None if node info is missing
-        name: "".to_string(),
-        seen_nodes: Vec::new(),
-      });
-      if score_value_of_dst > 0.0 && info.kind == Some(NodeKind::User) { // Compare with Some(NodeKind::User)
+      let info =
+        self
+          .node_infos
+          .get(node)
+          .cloned()
+          .unwrap_or_else(|| NodeInfo {
+            kind:       None, // Default to None if node info is missing
+            name:       "".to_string(),
+            seen_nodes: Vec::new(),
+          });
+      if score_value_of_dst > 0.0 && info.kind == Some(NodeKind::User) {
+        // Compare with Some(NodeKind::User)
         let (score_value_of_ego, score_cluster_of_ego) =
           match self.get_object_owner(context, node) {
             Some(dst_owner_id) => {
@@ -1112,7 +1119,8 @@ fn add_shortest_path_to_graph(
           };
         edges.push((a, c, a_c_weight));
       }
-    } else if a_kind_opt == Some(NodeKind::User) { // If b_kind was Some(User) or other non-User, and a_kind is User
+    } else if a_kind_opt == Some(NodeKind::User) {
+      // If b_kind was Some(User) or other non-User, and a_kind is User
       edges.push((a, b, a_b_weight));
     } else {
       log_verbose!("Ignore node {}", node_name_from_id(node_infos, a));

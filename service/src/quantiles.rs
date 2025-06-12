@@ -1,37 +1,40 @@
 pub use meritrank_core::{constants::EPSILON, Weight};
 
 pub fn bounds_are_empty(bounds: &[Weight]) -> bool {
-    bounds.first() == Some(&0.0) && bounds.last() == Some(&0.0)
+  bounds.first() == Some(&0.0) && bounds.last() == Some(&0.0)
 }
-pub fn calculate_quantiles_bounds(mut scores: Vec<Weight>, num_quantiles: usize) -> Vec<Weight> {
-    if scores.is_empty() {
-        return vec![0.0; num_quantiles - 1];
+pub fn calculate_quantiles_bounds(
+  mut scores: Vec<Weight>,
+  num_quantiles: usize,
+) -> Vec<Weight> {
+  if scores.is_empty() {
+    return vec![0.0; num_quantiles - 1];
+  }
+
+  if scores.len() == 1 {
+    let bound = scores[0] - EPSILON;
+    return vec![bound; num_quantiles - 1];
+  }
+
+  scores.sort_by(|a, b| a.total_cmp(b)); // Sort in ascending order
+
+  let mut bounds = Vec::with_capacity(num_quantiles - 1);
+  for i in 1..num_quantiles {
+    let position = i * scores.len() / num_quantiles;
+
+    if position == 0 {
+      bounds.push(scores[0]);
+    } else if position >= scores.len() {
+      bounds.push(scores[scores.len() - 1]);
+    } else {
+      // Linear interpolation between two adjacent values
+      let lower = scores[position - 1];
+      let upper = scores[position];
+      bounds.push((lower + upper) / 2.0);
     }
+  }
 
-    if scores.len() == 1 {
-        let bound = scores[0] - EPSILON;
-        return vec![bound; num_quantiles - 1];
-    }
-
-    scores.sort_by(|a, b| a.total_cmp(b)); // Sort in ascending order
-
-    let mut bounds = Vec::with_capacity(num_quantiles - 1);
-    for i in 1..num_quantiles {
-        let position = i * scores.len() / num_quantiles;
-
-        if position == 0 {
-            bounds.push(scores[0]);
-        } else if position >= scores.len() {
-            bounds.push(scores[scores.len() - 1]);
-        } else {
-            // Linear interpolation between two adjacent values
-            let lower = scores[position - 1];
-            let upper = scores[position];
-            bounds.push((lower + upper) / 2.0);
-        }
-    }
-
-    bounds
+  bounds
 }
 
 /*

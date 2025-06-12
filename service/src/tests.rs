@@ -1,11 +1,9 @@
-use crate::meritrank_service::aug_multi_graph::*;
-use crate::meritrank_service::nodes::*;
-use crate::meritrank_service::protocol::*;
+use crate::aug_multi_graph::*;
+use crate::nodes::*;
+use crate::protocol::*;
 use crate::test_data::*;
-use meritrank_service::poll::{PollStore, UserId, Vote};
-use std::collections::{HashMap, HashSet};
-use std::time::SystemTime;
 use meritrank_core::assert_approx_eq;
+use std::time::SystemTime;
 
 fn default_graph() -> AugMultiGraph {
   AugMultiGraph::new(AugMultiGraphSettings {
@@ -2165,14 +2163,14 @@ fn read_neighbors_poll_results() {
   assert_approx_eq!(results[0].3, 0.15 as Weight, 0.1); //personalized
   assert_eq!(results[0].4, 67); // percentage of personal circle voted in total
   assert_eq!(results[0].5, 1); // just ego's personal vote
-  
+
   assert_eq!(results[1].0, poll);
   assert_eq!(results[1].1, poll_option2);
   assert_eq!(results[1].2, 1.0); //personalized
   assert_approx_eq!(results[1].3, 0.41 as Weight, 0.1); //personalized
   assert_eq!(results[1].4, 67); // percentage of personal circle voted in total
   assert_eq!(results[1].5, 1); // U2's vote
-  
+
   assert_eq!(results[2].0, poll);
   assert_eq!(results[2].1, poll_option3);
   assert_approx_eq!(results[0].2, 0.0 as Weight, 0.1); //personalized
