@@ -16,7 +16,7 @@ pub struct Vote {
 
 #[derive(Debug, Default, Clone)]
 pub struct PollStore {
-  polls:            HashMap<PollId, IndexSet<PollVariantId>>,
+  pub(crate) polls: HashMap<PollId, IndexSet<PollVariantId>>,
   options:          HashMap<PollVariantId, PollId>,
   pub(crate) votes: HashMap<PollId, HashMap<UserId, Vote>>,
 }

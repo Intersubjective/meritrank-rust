@@ -2136,6 +2136,7 @@ fn read_neighbors_poll_results() {
   graph.write_put_edge(context, poll_option1, poll, 1.0, -1);
   graph.write_put_edge(context, poll_option2, poll, 1.0, -1);
   graph.write_put_edge(context, poll_option3, poll, 1.0, -1);
+  graph.write_put_edge(context, "V4", poll, 1.0, -1);
 
   // Create votes by users
   graph.write_put_edge(context, "U1", poll_option1, 1.0, -1);
@@ -2156,7 +2157,9 @@ fn read_neighbors_poll_results() {
     false, 0, 10,
   );
 
-  assert_eq!(results.len(), 3);
+  // even though no one voted for V4, it's included in the results
+  assert_eq!(results.len(), 4);
+
   assert_eq!(results[0].0, poll);
   assert_eq!(results[0].1, poll_option1);
   assert_eq!(results[0].2, 0.0); //personalized
