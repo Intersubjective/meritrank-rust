@@ -2123,7 +2123,13 @@ fn omit_neg_edges_scores_setting() {
 }
 #[test]
 fn read_neighbors_poll_results() {
-  let mut graph = default_graph();
+  let mut graph = AugMultiGraph::new(AugMultiGraphSettings {
+    num_walks: 1000,
+    zero_opinion_num_walks: 100,
+    zero_opinion_factor: 0.0,
+    ..AugMultiGraphSettings::default()
+  });
+
   let context = "test_context";
   let poll = "P1";
   let direction = NEIGHBORS_INBOUND;
