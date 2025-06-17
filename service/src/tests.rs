@@ -557,7 +557,12 @@ fn null_context_invariant() {
 
 #[test]
 fn scores_uncontexted() {
-  let mut graph = default_graph();
+  let mut graph = AugMultiGraph::new(AugMultiGraphSettings {
+    num_walks: 500,
+    zero_opinion_num_walks: 100,
+    zero_opinion_factor: 0.0,
+    ..AugMultiGraphSettings::default()
+  });
 
   graph.write_put_edge("", "U1", "U2", 2.0, -1);
   graph.write_put_edge("", "U1", "U3", 1.0, -1);
@@ -1720,7 +1725,12 @@ fn neighbors_outbound() {
 
 #[test]
 fn neighbors_non_ego_score() {
-  let mut graph = default_graph();
+  let mut graph = AugMultiGraph::new(AugMultiGraphSettings {
+    num_walks: 500,
+    zero_opinion_num_walks: 100,
+    zero_opinion_factor: 0.0,
+    ..AugMultiGraphSettings::default()
+  });
 
   graph.write_put_edge("", "U1", "U2", 1.0, -1);
   graph.write_put_edge("", "U2", "U3", 1.0, -1);
