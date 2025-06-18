@@ -327,9 +327,10 @@ impl AugMultiGraph {
     let personalized_scores: Vec<(NodeId, Weight)> = subgraph
       .fetch_all_raw_scores(ego_id, 0.0)
       .into_iter()
-      .filter(|(node_id, _)| {
+      .filter(|(node_id, score)| {
         node_kind_from_id(&node_infos_clone, *node_id) == Some(NodeKind::User)
           && *node_id != ego_id
+        && *score > 0.0
       })
       .collect();
     let personalized_poll_result = subgraph.poll_store.calculate_poll_results(
@@ -340,7 +341,12 @@ impl AugMultiGraph {
     );
 
     // Global poll results
-    let global_scores = subgraph.get_users_scores(&node_infos_clone);
+    let global_scores = subgraph.get_users_scores(&node_infos_clone)
+      .into_iter()
+      .filter(|(_node_id, score)| {
+          && *score > &&0.0
+      })
+      .collect();
     let global_poll_results = subgraph.poll_store.calculate_poll_results(
       &poll_votes,
       &global_scores,
