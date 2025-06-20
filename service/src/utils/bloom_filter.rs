@@ -1,5 +1,3 @@
-use crate::log::*;
-
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 
@@ -28,31 +26,31 @@ pub fn bloom_filter_bits(
 pub fn bloom_filter_add(
   mask: &mut [u64],
   bits: &[u64],
-) {
+) -> Result<(), ()> {
   if mask.len() != bits.len() {
-    log_error!("Invalid arguments");
-    return;
+    return Err(());
   }
 
   for i in 0..mask.len() {
     mask[i] |= bits[i];
   }
+
+  return Ok(());
 }
 
 pub fn bloom_filter_contains(
   mask: &[u64],
   bits: &[u64],
-) -> bool {
+) -> Result<bool, ()> {
   if mask.len() != bits.len() {
-    log_error!("Invalid arguments");
-    return false;
+    return Err(());
   }
 
   for i in 0..mask.len() {
     if (mask[i] & bits[i]) != bits[i] {
-      return false;
+      return Ok(false);
     }
   }
 
-  true
+  return Ok(true);
 }

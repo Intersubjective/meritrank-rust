@@ -1,6 +1,7 @@
-use left_right::{Absorb, ReadHandleFactory, WriteHandle};
 use std::marker::PhantomData;
 use std::thread;
+
+use left_right::{Absorb, ReadHandleFactory, WriteHandle};
 use tokio::sync::mpsc;
 
 pub struct ConcurrentDataProcessor<T, Op> {

@@ -1,3 +1,5 @@
+//  FIXME: Code duplication, see Request and Response types in state_manager.rs.
+
 use bincode::{Decode, Encode};
 
 #[derive(Debug, Encode, Decode, Eq, PartialEq)]
