@@ -2147,11 +2147,14 @@ fn read_neighbors_poll_results() {
   let poll_option1 = "V1";
   let poll_option2 = "V2";
   let poll_option3 = "V3";
+  let poll_option4 = "V4";
+  
 
   // Create the poll by creating the options
   graph.write_put_edge(context, poll_option1, poll, 1.0, -1);
   graph.write_put_edge(context, poll_option2, poll, 1.0, -1);
   graph.write_put_edge(context, poll_option3, poll, 1.0, -1);
+  graph.write_put_edge(context, poll_option4, poll, 1.0, -1);
 
   // Create votes by users
   graph.write_put_edge(context, "U1", poll_option1, 1.0, -1);
@@ -2166,31 +2169,53 @@ fn read_neighbors_poll_results() {
   graph.write_put_edge(context, "U5", "U4", 1.0, -1);
   graph.write_put_edge(context, "U4", poll_option3, 1.0, -1);
   graph.write_put_edge(context, "U3", poll_option3, 1.0, -1);
+  
+  
+  // Downvote to the sybil should result in negative score from ego
+  // and be ignored in the count of personal circle votes
+  graph.write_put_edge(context, "U1", "U4", -1.0, -1);
 
+  // Conflicting persons destroying each other's reputation should 
+  // be omitted from the results
+  graph.write_put_edge(context, "U7", poll_option4, 1.0, -1);
+  graph.write_put_edge(context, "U8", poll_option4, 1.0, -1);
+  graph.write_put_edge(context, "U7", "U8", -2.0, -1);
+  graph.write_put_edge(context, "U8", "U7", -2.0, -1);
+  
+  
   let results = graph.read_neighbors(
     context, "U1", poll, direction, kind_str, false, 100.0, false, -100.0,
     false, 0, 10,
   );
 
-  assert_eq!(results.len(), 3);
-  assert_eq!(results[0].0, poll);
-  assert_eq!(results[0].1, poll_option1);
-  assert_eq!(results[0].2, 0.0); //personalized
-  assert_approx_eq!(results[0].3, 0.15 as Weight, 0.1); //personalized
-  assert_eq!(results[0].4, 67); // percentage of personal circle voted in total
-  assert_eq!(results[0].5, 1); // just ego's personal vote
+  // even though no one voted for V4, it's included in the results
+  assert_eq!(results.len(), 4);
 
-  assert_eq!(results[1].0, poll);
-  assert_eq!(results[1].1, poll_option2);
-  assert_eq!(results[1].2, 1.0); //personalized
-  assert_approx_eq!(results[1].3, 0.41 as Weight, 0.1); //personalized
-  assert_eq!(results[1].4, 67); // percentage of personal circle voted in total
-  assert_eq!(results[1].5, 1); // U2's vote
+  let res = &results[0];
+  assert_eq!(res.0, poll);
+  assert_eq!(res.1, poll_option1);
+  assert_eq!(res.2, 0.0); //personalized
+  assert_approx_eq!(results[0].3, 0.15 as Weight, 0.1); // global
+  assert_eq!(res.4, 67); // percentage of personal circle voted in total
+  assert_eq!(res.5, 1); // just ego's personal vote
 
-  assert_eq!(results[2].0, poll);
-  assert_eq!(results[2].1, poll_option3);
-  assert_approx_eq!(results[0].2, 0.0 as Weight, 0.1); //personalized
-  assert_approx_eq!(results[0].3, 0.162 as Weight, 0.1); //personalized
-  assert_eq!(results[2].4, 67); // percentage of personal circle voted in total
-  assert_eq!(results[2].5, 0); // no votes from U1's personal circle
+  let res = &results[1];
+  assert_eq!(res.0, poll);
+  assert_eq!(res.1, poll_option2);
+  assert_eq!(res.2, 1.0); //personalized
+  assert_approx_eq!(res.3, 0.41 as Weight, 0.1); // global
+  assert_eq!(res.4, 67); // percentage of personal circle voted in total
+  assert_eq!(res.5, 1); // U2's vote
+
+  let res = &results[2];
+  assert_eq!(res.0, poll);
+  assert_eq!(res.1, poll_option3);
+  assert_approx_eq!(res.2, 0.0 as Weight, 0.1); //personalized
+  assert_approx_eq!(res.3, 0.43 as Weight, 0.1); // global - affected by sybils, which is expected
+  assert_eq!(res.4, 67); // percentage of personal circle voted in total
+  assert_eq!(res.5, 0); // no votes from U1's personal circle
+
+
+  let res = &results[3];
+  assert_approx_eq!(res.3, 0.045 as Weight, 0.2); // warring users diminish each other's vote 
 }
