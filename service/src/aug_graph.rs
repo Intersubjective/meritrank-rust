@@ -1,9 +1,11 @@
+use std::time::Duration;
 use crate::Ordering;
 use crate::{log_warning, log_with_time};
 use bincode::{Decode, Encode};
 use left_right::Absorb;
-use meritrank_core::{MeritRank, NodeId};
 use meritrank_core::constants::EPSILON;
+use meritrank_core::{MeritRank, NodeId};
+use moka::sync::Cache;
 
 #[derive(Debug, Encode, Decode, Eq, PartialEq)]
 pub enum AugGraphOpcode {
@@ -11,7 +13,7 @@ pub enum AugGraphOpcode {
 }
 
 use crate::node_registry::NodeRegistry;
-use crate::nodes::ALL_NODE_KINDS;
+use crate::nodes::{NodeKind, ScoreClustersByKind, ALL_NODE_KINDS};
 use crate::settings::{AugGraphSettings, NUM_SCORE_QUANTILES};
 use crate::utils::quantiles::{bounds_are_empty, calculate_quantiles_bounds};
 use crate::{log_error, log_trace, ERROR, TRACE, WARNING};
@@ -51,7 +53,9 @@ pub struct AugGraph {
   zero_opinion:          Vec<Weight>,
   cached_scores:         LruCache<(NodeId, NodeId), Weight>,
   cached_walks:          LruCache<NodeId, ()>,
-  cached_score_clusters: Vec<ScoreClustersByKind>,
+  // TODO: make a different cache for each node kind, to decrease contention
+  cached_score_clusters: Cache<NodeId, ScoreClustersByKind>,
+
   omit_neg_edges_scores: bool,
   poll_store:            PollStore,
 }
@@ -74,55 +78,48 @@ impl Absorb<AugGraphOp> for AugGraph {
 
 impl AugGraph {
   pub fn new() -> AugGraph {
-    todo!()
+    todo!();
+    let cached_score_clusters = Cache::builder()
+            .max_capacity(1_000_000)  // Adjust as needed
+            .time_to_live(Duration::from_secs(3600))  // Optional: Set TTL
+            .build();
   }
 
-  pub fn apply_score_clustering(
-    &self,
-    ego_id: NodeId,
-    score: NodeScore,
-    kind: NodeKind,
-  ) -> (NodeScore, Cluster) {
-    log_trace!("{:?} {} {}", context, ego_id, score);
+  
+  
+    pub fn apply_score_clustering(
+        &self,
+        ego_id: NodeId,
+        score: NodeScore,
+        kind: NodeKind,
+    ) -> (NodeScore, Cluster) {
+        log_trace!("{} {} {}", ego_id, score, kind);
 
-    if score < EPSILON {
-      //  Clusterize only positive scores.
-      return (score, 0);
+        if score < EPSILON {
+            return (score, 0);
+        }
+
+        if self.nodes.get_kind_by_id(ego_id) != Some(NodeKind::User) {
+            log_warning!("Trying to use non-user as ego {}", ego_id);
+            return (score, 0);
+        }
+
+        let cluster = if let Some(score_cluster) = self.cached_score_clusters.get(&(ego_id, kind)) {
+            let bounds = &score_cluster.bounds;
+            if bounds_are_empty(bounds) {
+                1
+            } else {
+                bounds.iter().take_while(|&bound| score > *bound).count() + 1
+            }
+        } else {
+            // If not in cache, trigger an update and return default cluster
+            self.update_node_score_clustering(ego_id, kind);
+            1
+        };
+
+        (score, cluster)
     }
 
-    // TODO: move this check to higher level
-    if self.nodes.get_kind_by_id(ego_id) != Some(NodeKind::User) {
-      log_warning!("Trying to use non-user as ego {}", ego_id);
-      //  We apply score clustering only for user nodes.
-      return (score, 0);
-    }
-
-    let elapsed_secs = self.time_begin.elapsed().as_secs();
-
-    let updated_sec = self.cached_score_clusters[ego_id][kind].updated_sec;
-
-    if elapsed_secs >= updated_sec + self.settings.score_clusters_timeout {
-      log_verbose!("Recalculate clustering for node {} in {:?}", ego, context);
-      self.update_node_score_clustering(context, ego_id, kind);
-    }
-
-    let bounds = &self.cached_score_clusters[ego_id][kind].bounds;
-
-    if bounds_are_empty(bounds) {
-      return (score, 1); // Return 1 instead of 0 for empty bounds
-    }
-
-    let mut cluster = 1; // Start with cluster 1
-
-    for bound in bounds {
-      if score <= *bound {
-        break;
-      }
-      cluster += 1;
-    }
-
-    (score, cluster)
-  }
 
   fn fetch_all_scores(
     &self,
@@ -266,71 +263,70 @@ impl AugGraph {
         let node_ids = nodes_by_kind(kind, &node_infos);
 
         let k = self.settings.zero_opinion_factor;
-        self.update_node_score_clustering(
+        self._update_node_score_clustering(
           ego, kind, time_secs, node_count, k, &node_ids,
         );
       }
     }
   }
+  
+  
+  
+    pub fn update_node_score_clustering(
+        &self,
+        ego: NodeId,
+        kind: NodeKind,
+    ) {
+        log_trace!("{} {:?}", ego, kind);
 
-  pub fn update_node_score_clustering(
-    &mut self,
-    ego: NodeId,
-    kind: NodeKind,
-  ) {
-    log_trace!("{} {:?}", ego, kind);
+        let k = self.settings.zero_opinion_factor;
+        let node_count = self.node_count;
+        let node_ids = self.nodes_by_kind(kind);
 
-    let k = self.settings.zero_opinion_factor;
-
-    let node_count = self.node_count;
-
-    let time_secs = self.time_begin.elapsed().as_secs();
-
-    let node_ids = nodes_by_kind(kind, &self.node_infos);
-
-    self._update_node_score_clustering(
-      ego, kind, time_secs, node_count, k, &node_ids,
-    )
-  }
-
-  pub fn _update_node_score_clustering(
-    &mut self,
-    ego: NodeId,
-    kind: NodeKind,
-    time_secs: u64,
-    node_count: usize,
-    zero_opinion_factor: f64,
-    node_ids: &[NodeId],
-  ) {
-    log_trace!(
-      "{} {:?} {} {} {} {}",
-      ego,
-      kind,
-      time_secs,
-      node_count,
-      self.settings.num_walks,
-      zero_opinion_factor
-    );
-
-    let bounds = self.calculate_score_clusters_bounds(
-      ego,
-      kind,
-      zero_opinion_factor,
-      node_ids,
-    );
-
-    if ego >= node_count {
-      log_error!("Node does not exist: {}", ego);
-      return;
+        self._update_node_score_clustering(
+            ego, kind, node_count, k, &node_ids,
+        )
+    }
+      fn nodes_by_kind(&self, kind: NodeKind) -> Vec<NodeId> {
+        // Implement this method to return node IDs for a given kind
+        // This replaces the previous use of `nodes_by_kind` function
     }
 
-    let clusters = &mut self.cached_score_clusters;
 
-    clusters.resize(node_count, Default::default());
+      pub fn _update_node_score_clustering(
+        &self,
+        ego: NodeId,
+        kind: NodeKind,
+        node_count: usize,
+        zero_opinion_factor: f64,
+        node_ids: &[NodeId],
+    ) {
+        log_trace!(
+            "{} {:?} {} {} {}",
+            ego,
+            kind,
+            node_count,
+            self.settings.num_walks,
+            zero_opinion_factor
+        );
 
-    clusters[ego][kind].updated_sec = time_secs;
-    clusters[ego][kind].bounds = bounds;
-  }
+        if ego >= node_count {
+            log_error!("Node does not exist: {}", ego);
+            return;
+        }
+
+        let bounds = self.calculate_score_clusters_bounds(
+            ego,
+            kind,
+            zero_opinion_factor,
+            node_ids,
+        );
+
+        let new_cluster = ScoreCluster { bounds };
+
+        self.cached_score_clusters.insert((ego, kind), new_cluster);
+    }
+
 
   fn calculate_score_clusters_bounds(
     &mut self,
