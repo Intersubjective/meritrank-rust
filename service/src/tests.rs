@@ -84,23 +84,57 @@ fn recalculate_zero_graph_all() {
   assert!(n < 5);
 }
 
+
 #[test]
 fn graph_sort_order() {
   let mut graph = default_graph();
 
-  put_testing_edges_0(&mut graph);
+  // Create a longer path and add more neighbors to the focus
+  graph.write_put_edge("", "U0", "U1", 5.0, -1);
+  graph.write_put_edge("", "U1", "U2", 4.0, -1);
+  graph.write_put_edge("", "U2", "U3", 3.0, -1);
+  
+
+  // Add more neighbors to the focus
+  graph.write_put_edge("", "U3", "U4", 2.0, -1);
+  graph.write_put_edge("", "U3", "U5", 4.0, -1);
+  graph.write_put_edge("", "U3", "U6", 8.0, -1);
+  
+  
 
   graph.write_recalculate_zero();
 
+  // Set count to 3 to test pagination
   let res: Vec<_> =
-    graph.read_graph("", "Uadeb43da4abb", "Bfae1726e4e87", false, 0, 10000);
+    graph.read_graph("", "U0", "U3", false, 0, 2);
 
-  assert!(res.len() > 1);
+  // Check that we got 3 results despite the pagination - 
+  // the pagination should only apply to the neighbors section
+  assert_eq!(res.len(), 3);
 
-  for n in 1..res.len() {
-    assert!(res[n - 1].2.abs() >= res[n].2.abs());
+  // Check that the path is included and in the correct order
+  assert_eq!(res[0].0, "U0");
+  assert_eq!(res[0].1, "U1");
+  assert_eq!(res[1].0, "U1");
+  assert_eq!(res[1].1, "U2");
+  assert_eq!(res[2].0, "U2");
+  assert_eq!(res[2].1, "U3");
+
+  // Now, let's test the focus neighbors sorting
+  let res: Vec<_> =
+    graph.read_graph("", "U0", "U3", false, 0, 10);
+
+  // Find the index where the focus neighbors start
+  let focus_index = res.iter().position(|x| x.0 == "U3").unwrap();
+
+  // Check that the focus neighbors are sorted by descending weight
+  for i in focus_index + 1..res.len() - 1 {
+    assert!(res[i].2 >= res[i + 1].2, 
+            "Focus neighbors not sorted correctly: {} -> {} ({}), {} -> {} ({})", 
+            res[i].0, res[i].1, res[i].2, res[i+1].0, res[i+1].1, res[i+1].2);
   }
 }
+
 
 #[test]
 fn recalculate_zero_graph_duplicates() {
