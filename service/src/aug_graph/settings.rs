@@ -93,4 +93,3 @@ impl Default for AugGraphSettings {
   }
 }
 
-pub const NUM_SCORE_QUANTILES: usize = 100;

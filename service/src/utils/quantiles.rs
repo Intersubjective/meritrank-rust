@@ -1,18 +1,17 @@
-pub use meritrank_core::{constants::EPSILON, Weight};
 
-pub fn bounds_are_empty(bounds: &[Weight]) -> bool {
+pub fn bounds_are_empty(bounds: &[f64]) -> bool {
   bounds.first() == Some(&0.0) && bounds.last() == Some(&0.0)
 }
 pub fn calculate_quantiles_bounds(
-  mut scores: Vec<Weight>,
+  mut scores: Vec<f64>,
   num_quantiles: usize,
-) -> Vec<Weight> {
+) -> Vec<f64> {
   if scores.is_empty() {
     return vec![0.0; num_quantiles - 1];
   }
 
   if scores.len() == 1 {
-    let bound = scores[0] - EPSILON;
+    let bound = scores[0] - f64::EPSILON;
     return vec![bound; num_quantiles - 1];
   }
 
