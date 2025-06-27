@@ -1,7 +1,7 @@
 use std::fmt;
 use bincode::{Decode, Encode};
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Encode, Decode)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Encode, Decode, Hash)]
 pub enum NodeKind {
   User,
   Beacon,

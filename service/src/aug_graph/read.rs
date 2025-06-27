@@ -1,6 +1,6 @@
 use crate::aug_graph::clustering::NodeCluster;
 use crate::aug_graph::node_registry::NodeInfo;
-use crate::aug_graph::nodes::{NodeInfo, NodeKind};
+use crate::aug_graph::nodes::{NodeKind};
 use crate::aug_graph::AugGraph;
 use bincode::{Decode, Encode};
 use meritrank_core::NodeId;
@@ -203,38 +203,6 @@ impl AugGraph {
       .collect()
   }
 
-  fn with_zero_opinions(
-    &self,
-    scores: Vec<(NodeId, NodeScore)>,
-    zero_opinion_factor: f64,
-  ) -> Vec<(NodeId, NodeScore)> {
-    log_trace!("{}", zero_opinion_factor);
-
-    let k = zero_opinion_factor;
-
-    let mut res: Vec<(NodeId, NodeScore)> = vec![];
-    res.resize(self.zero_opinion.len(), (0, 0.0));
-
-    for (id, zero_score) in self.zero_opinion.iter().enumerate() {
-      res[id] = (id, zero_score * k);
-    }
-
-    for (id, score) in scores.iter() {
-      if *id >= res.len() {
-        let n = res.len();
-        res.resize(id + 1, (0, 0.0));
-        for id in n..res.len() {
-          res[id].0 = id;
-        }
-      }
-      res[*id].1 += (1.0 - k) * score;
-    }
-
-    res
-      .into_iter()
-      .filter(|(_id, score)| *score != 0.0)
-      .collect::<Vec<_>>()
-  }
 
   pub fn with_zero_opinion(
     &self,
@@ -290,7 +258,7 @@ impl AugGraph {
 
     match self.mr.get_node_score(ego_id, dst_id) {
       Ok(score) => {
-        //self.cache_score_add(ego_id, dst_id, score);
+        self.cached_scores.insert((ego_id, dst_id), score);
         self.with_zero_opinion(dst_id, score)
       },
       Err(e) => {
@@ -314,13 +282,10 @@ impl AugGraph {
 
     match self.mr.get_all_scores(ego_id, None) {
       Ok(scores) => {
-        // TODO: CACHES
-        /*
         for (dst_id, score) in &scores {
-          self.cache_score_add(ego_id, *dst_id, *score);
+          self.cached_scores.insert((ego_id, *dst_id), *score);
         }
-         */
-        let scores = self.with_zero_opinions(scores, zero_opinion_factor);
+        let scores = self.with_zero_opinions(scores);
 
         // Filter out nodes that have a direct negative edge from ego
         if self.settings.omit_neg_edges_scores {

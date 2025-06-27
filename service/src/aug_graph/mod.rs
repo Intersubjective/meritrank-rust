@@ -6,6 +6,8 @@ use left_right::Absorb;
 use meritrank_core::{MeritRank, NodeId, Weight};
 use moka::sync::Cache;
 use std::time::Duration;
+use crate::aug_graph::clustering::ClusterGroupBounds;
+use crate::aug_graph::read::NodeScore;
 
 mod clustering;
 mod node_registry;
@@ -24,10 +26,9 @@ pub struct AugGraph {
   mr:                    MeritRank,
   nodes:                 NodeRegistry,
   settings:              AugGraphSettings,
-  zero_opinion:          Vec<Weight>, // TODO: change to map because of sparseness
-  cached_scores:         Cache<(NodeId, NodeId), Weight>,
-  //cached_walks:          LruCache<NodeId, ()>,
-  cached_score_clusters: Cache<(NodeId, NodeKind), ScoreClustersByKind>,
+  zero_opinion:          Vec<NodeScore>, // TODO: change to map because of sparseness
+  cached_scores:         Cache<(NodeId, NodeId), NodeScore>,
+  cached_score_clusters: Cache<(NodeId, NodeKind), ClusterGroupBounds>,
 
   //poll_store:            PollStore,
 }
