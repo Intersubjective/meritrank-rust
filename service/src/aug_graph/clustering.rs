@@ -1,8 +1,6 @@
-pub const NUM_SCORE_QUANTILES: usize = 100;
-
 pub type NodeCluster = usize;
 
-use crate::aug_graph::nodes::{NodeKind, ALL_NODE_KINDS};
+use crate::aug_graph::nodes::NodeKind;
 use crate::aug_graph::read::NodeScore;
 use crate::aug_graph::AugGraph;
 use crate::log::*;
@@ -43,10 +41,10 @@ impl AugGraph {
       .collect();
 
     if scores.is_empty() {
-      return vec![0.0; NUM_SCORE_QUANTILES - 1];
+      return vec![0.0; self.settings.num_score_quantiles - 1];
     }
 
-    calculate_quantiles_bounds(scores, NUM_SCORE_QUANTILES)
+    calculate_quantiles_bounds(scores, self.settings.num_score_quantiles)
   }
 
   pub fn apply_score_clustering(
@@ -66,7 +64,7 @@ impl AugGraph {
       .cached_score_clusters
       .get(&(ego_id, kind))
       .unwrap_or_else(|| self.update_node_score_clustering(ego_id, kind));
-    
+
     if bounds_are_empty(bounds) {
       return (score, 1); // Return 1 instead of 0 for empty bounds
     }

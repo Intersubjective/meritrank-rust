@@ -1,21 +1,22 @@
 use meritrank_core::{NodeId, Weight};
-use crate::aug_graph::nodes::{node_kind_from_id, NodeKind};
+use crate::aug_graph::nodes::{NodeKind};
 use crate::log::*;
 
-impl AugMultiGraph {
+impl AugGraph {
   pub fn set_edge(
     &mut self,
-    context: &str,
     src: NodeId,
     dst: NodeId,
     amount: Weight,
   ) {
-    log_trace!("{:?} {} {} {}", context, src, dst, amount);
+    log_trace!("{} {} {}", src, dst, amount);
 
     if src == dst {
       log_error!("Self-reference is not allowed.");
       return;
     }
+    
+    let src_kind_opt = &self.node., src);
 
     let src_kind_opt = node_kind_from_id(&self.node_infos, src);
     let dst_kind_opt = node_kind_from_id(&self.node_infos, dst);
