@@ -2,11 +2,16 @@ pub const NUM_SCORE_QUANTILES: usize = 100;
 
 pub type NodeCluster = usize;
 
-use meritrank_core::{NodeId, Weight};
+use crate::aug_graph::nodes::{NodeKind, ALL_NODE_KINDS};
+use crate::aug_graph::read::NodeScore;
 use crate::aug_graph::AugGraph;
-use crate::aug_graph::nodes::{nodes_by_kind, NodeKind, ALL_NODE_KINDS};
 use crate::log::*;
 use crate::utils::quantiles::bounds_are_empty;
+use meritrank_core::{NodeId, Weight};
+
+type ClusterGroupBounds = Vec<NodeScore>;
+
+pub type ScoreCluster = i32;
 
 impl AugGraph {
   fn init_node_score_clustering(
@@ -29,7 +34,7 @@ impl AugGraph {
 
         let k = self.settings.zero_opinion_factor;
         self._update_node_score_clustering(
-          ego, kind, time_secs, node_count, k, &node_ids,
+          ego, kind, time_secs, node_count, &node_ids,
         );
       }
     }
@@ -41,29 +46,15 @@ impl AugGraph {
     kind: NodeKind,
   ) {
     log_trace!("{} {:?}", ego, kind);
-
-    let k = self.settings.zero_opinion_factor;
     let node_count = self.node_count;
     let node_ids = self.nodes_by_kind(kind);
 
-    self._update_node_score_clustering(ego, kind, node_count, k, &node_ids)
-  }
-
-  pub fn _update_node_score_clustering(
-    &self,
-    ego: NodeId,
-    kind: NodeKind,
-    node_count: usize,
-    zero_opinion_factor: f64,
-    node_ids: &[NodeId],
-  ) {
     log_trace!(
-      "{} {:?} {} {} {}",
+      "{} {:?} {} {}",
       ego,
       kind,
       node_count,
-      self.settings.num_walks,
-      zero_opinion_factor
+      self.settings.num_walks
     );
 
     if ego >= node_count {
@@ -71,12 +62,7 @@ impl AugGraph {
       return;
     }
 
-    let bounds = self.calculate_score_clusters_bounds(
-      ego,
-      kind,
-      zero_opinion_factor,
-      node_ids,
-    );
+    let bounds = self.calculate_score_clusters_bounds(ego, kind, node_ids);
 
     let new_cluster = ScoreCluster {
       bounds,
@@ -89,21 +75,14 @@ impl AugGraph {
     &self,
     ego: NodeId,
     kind: NodeKind,
-    zero_opinion_factor: f64,
     node_ids: &[NodeId],
   ) -> Vec<Weight> {
-    log_trace!(
-      "{} {:?} {} {}",
-      ego,
-      kind,
-      self.settings.num_walks,
-      zero_opinion_factor
-    );
+    log_trace!("{} {:?} {}", ego, kind, self.settings.num_walks);
 
     let scores: Vec<Weight> = node_ids
       .iter()
-      .map(|dst| self.fetch_raw_score(ego, *dst, zero_opinion_factor))
-      .filter(|score| *score >= EPSILON)
+      .map(|dst| self.fetch_raw_score(ego, *dst))
+      .filter(|score| *score >= f64::EPSILON)
       .collect();
 
     if scores.is_empty() {
@@ -111,5 +90,51 @@ impl AugGraph {
     }
 
     calculate_quantiles_bounds(scores, NUM_SCORE_QUANTILES)
+  }
+
+  pub fn apply_score_clustering(
+    &self,
+    ego_id: NodeId,
+    score: NodeScore,
+    kind: NodeKind,
+  ) -> (NodeScore, NodeCluster) {
+    log_trace!("{:?} {} {}", context, ego_id, score);
+
+    if score < f64::EPSILON {
+      //  Clusterize only positive scores.
+      return (score, 0);
+    }
+
+    self.init_node_score_clustering(context, ego_id);
+
+    let elapsed_secs = self.time_begin.elapsed().as_secs();
+
+    let clusters = &self.cached_score_clusters;
+
+    let updated_sec = clusters[ego_id][kind].updated_sec;
+
+    if elapsed_secs >= updated_sec + self.settings.score_clusters_timeout {
+      log_verbose!("Recalculate clustering for node {}",ego_id);
+      self.update_node_score_clustering(ego_id, kind);
+    }
+
+    let clusters = &self.cached_score_clusters;
+
+    let bounds = &clusters[ego_id][kind].bounds;
+
+    if bounds_are_empty(bounds) {
+      return (score, 1); // Return 1 instead of 0 for empty bounds
+    }
+
+    let mut cluster = 1; // Start with cluster 1
+
+    for bound in bounds {
+      if score <= *bound {
+        break;
+      }
+      cluster += 1;
+    }
+
+    (score, cluster)
   }
 }

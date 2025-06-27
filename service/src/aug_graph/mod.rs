@@ -1,9 +1,8 @@
 use crate::aug_graph::node_registry::NodeRegistry;
-use crate::aug_graph::nodes::ScoreClustersByKind;
+use crate::aug_graph::nodes::{NodeKind, ScoreClustersByKind};
 use crate::aug_graph::settings::AugGraphSettings;
 use bincode::{Decode, Encode};
 use left_right::Absorb;
-use lru::LruCache;
 use meritrank_core::{MeritRank, NodeId, Weight};
 use moka::sync::Cache;
 use std::time::Duration;
@@ -26,10 +25,9 @@ pub struct AugGraph {
   nodes:                 NodeRegistry,
   settings:              AugGraphSettings,
   zero_opinion:          Vec<Weight>, // TODO: change to map because of sparseness
-  cached_scores:         LruCache<(NodeId, NodeId), Weight>,
+  cached_scores:         Cache<(NodeId, NodeId), Weight>,
   //cached_walks:          LruCache<NodeId, ()>,
-  // TODO: make a different cache for each node kind, to decrease contention
-  cached_score_clusters: Cache<NodeId, ScoreClustersByKind>,
+  cached_score_clusters: Cache<(NodeId, NodeKind), ScoreClustersByKind>,
 
   //poll_store:            PollStore,
 }
