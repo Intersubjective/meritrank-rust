@@ -1,8 +1,7 @@
 use crate::aug_graph::nodes::NodeKind;
-use crate::aug_graph::read::NodeName;
-use crate::log_error;
 use meritrank_core::NodeId;
 use std::collections::HashMap;
+use crate::aug_graph::NodeName;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeInfo {

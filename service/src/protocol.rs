@@ -1,28 +1,26 @@
 use bincode::{Decode, Encode};
+use crate::aug_graph::NodeName;
+use crate::aug_graph::read::FilterOptions;
+use meritrank_core::Weight;
 
-#[derive(Debug, Encode, Decode, Eq, PartialEq)]
-pub enum ServiceRequestOpcode {
-  ReadScores,
-  WriteEdge,
-}
-impl ServiceRequestOpcode {
-  pub fn is_read(&self) -> bool {
-    match self {
-      ServiceRequestOpcode::ReadScores => true,
-      ServiceRequestOpcode::WriteEdge => false,
-    }
-  }
-}
 #[derive(Debug, Encode, Decode)]
 pub struct Response {
-  pub response: u64,
+    pub response: u64,
 }
 
 pub type SubgraphName = String;
+
 #[derive(Debug, Encode, Decode)]
-pub struct Request {
-  pub subgraph_name: SubgraphName,
-  pub opcode:        ServiceRequestOpcode,
-  pub ego:           NodeName,
-  pub score_options: FilteringOptions,
+pub enum Request {
+    ReadScoresReq {
+        subgraph_name: SubgraphName,
+        ego: NodeName,
+        score_options: FilterOptions,
+    },
+    WriteEdgeReq {
+        subgraph_name: SubgraphName,
+        src: NodeName,
+        dst: NodeName,
+        amount: Weight,
+    },
 }

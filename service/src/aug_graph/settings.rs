@@ -1,5 +1,4 @@
 use serde::Deserialize;
-use std::num::NonZeroUsize;
 
 fn _num_walks() -> usize { 10000 }
 fn _zero_opinion_num_walks() -> usize { 1000 }

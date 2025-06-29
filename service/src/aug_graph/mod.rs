@@ -1,7 +1,6 @@
 use crate::aug_graph::clustering::ClusterGroupBounds;
 use crate::aug_graph::node_registry::NodeRegistry;
 use crate::aug_graph::nodes::NodeKind;
-use crate::aug_graph::read::NodeScore;
 use crate::aug_graph::settings::AugGraphSettings;
 use bincode::{Decode, Encode};
 use left_right::Absorb;
@@ -11,15 +10,14 @@ use std::time::Duration;
 
 mod clustering;
 mod node_registry;
-mod nodes;
-mod read;
-mod settings;
+pub mod nodes;
+pub mod read;
+pub mod settings;
 mod write;
 
-#[derive(Debug, Encode, Decode, Eq, PartialEq)]
-pub enum AugGraphOpcode {
-  WriteEdge,
-}
+pub type NodeName = String;
+pub type NodeScore = f64;
+
 
 #[derive(Clone)]
 pub struct AugGraph {
@@ -32,24 +30,26 @@ pub struct AugGraph {
   //poll_store:            PollStore,
 }
 
-pub fn new(settings: AugGraphSettings) -> AugGraph {
-  let cached_scores: Cache<(NodeId, NodeId), NodeScore> = Cache::builder()
-    .max_capacity(settings.scores_cache_size as u64)
-    .time_to_live(Duration::from_secs(settings.scores_cache_timeout))
-    .build();
-
-  let cached_score_clusters: Cache<(NodeId, NodeKind), ClusterGroupBounds> =
-    Cache::builder()
-      .max_capacity(settings.score_clusters_cache_size as u64)
-      .time_to_live(Duration::from_secs(settings.score_clusters_timeout))
+impl AugGraph {
+  pub fn new(settings: AugGraphSettings) -> AugGraph {
+    let cached_scores: Cache<(NodeId, NodeId), NodeScore> = Cache::builder()
+      .max_capacity(settings.scores_cache_size as u64)
+      .time_to_live(Duration::from_secs(settings.scores_cache_timeout))
       .build();
 
-  AugGraph {
-    mr: MeritRank::new(Graph::new()),
-    nodes: NodeRegistry::new(),
-    settings: settings.clone(),
-    zero_opinion: Vec::new(),
-    cached_scores,
-    cached_score_clusters,
+    let cached_score_clusters: Cache<(NodeId, NodeKind), ClusterGroupBounds> =
+      Cache::builder()
+        .max_capacity(settings.score_clusters_cache_size as u64)
+        .time_to_live(Duration::from_secs(settings.score_clusters_timeout))
+        .build();
+
+    AugGraph {
+      mr: MeritRank::new(Graph::new()),
+      nodes: NodeRegistry::new(),
+      settings: settings.clone(),
+      zero_opinion: Vec::new(),
+      cached_scores,
+      cached_score_clusters,
+    }
   }
 }

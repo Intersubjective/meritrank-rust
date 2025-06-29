@@ -1,22 +1,39 @@
-use crate::aug_graph::{AugGraph, AugGraphOpcode};
-use crate::proc_graph::{AugGraphOp, GraphProcessor};
+use crate::aug_graph::nodes::{node_kind_from_prefix, NodeKind};
+use crate::aug_graph::settings::AugGraphSettings;
+use crate::aug_graph::{AugGraph, AugGraphOpcode, NodeName};
 use crate::log::*;
+use crate::proc_graph::{AugGraphOp, AugGraphOpcode, GraphProcessor};
 use crate::protocol::{Request, Response, ServiceRequestOpcode, SubgraphName};
 use crate::Ordering;
 use crate::{log_trace, log_verbose, log_warning};
 use dashmap::DashMap;
+use meritrank_core::Weight;
 use tokio::sync::mpsc;
-const SUBGRAPH_QUEUE_CAPACITY: usize = 1024;
-const SLEEP_DURATION_AFTER_PUBLISH_MS: u64 = 100;
+
+pub struct MultiGraphProcessorSettings {
+  pub sleep_duration_after_publish_ms: u64,
+  pub subgraph_queue_capacity:         usize,
+}
+
+impl Default for MultiGraphProcessorSettings {
+  fn default() -> Self {
+    MultiGraphProcessorSettings {
+      sleep_duration_after_publish_ms: 100,
+      subgraph_queue_capacity:         1024,
+    }
+  }
+}
 
 pub struct MultiGraphProcessor {
   subgraphs_map: DashMap<SubgraphName, GraphProcessor>,
+  settings:      MultiGraphProcessorSettings,
 }
 
 impl MultiGraphProcessor {
-  pub fn new() -> Self {
+  pub fn new(settings: MultiGraphProcessorSettings) -> Self {
     MultiGraphProcessor {
       subgraphs_map: DashMap::new(),
+      settings,
     }
   }
 
@@ -30,9 +47,9 @@ impl MultiGraphProcessor {
         .subgraphs_map
         .entry(subgraph_name.clone())
         .or_insert(GraphProcessor::new(
-          AugGraph::new(),
-          SLEEP_DURATION_AFTER_PUBLISH_MS,
-          SUBGRAPH_QUEUE_CAPACITY,
+          AugGraph::new(AugGraphSettings::from_env().unwrap_or_default()),
+          self.settings.sleep_duration_after_publish_ms,
+          self.settings.subgraph_queue_capacity,
         ))
         .op_sender
         .clone(),
@@ -106,27 +123,116 @@ impl MultiGraphProcessor {
 
     response
   }
-
   pub async fn process_request(
     &self,
     req: &Request,
   ) -> Response {
-    match req.opcode {
-      ServiceRequestOpcode::WriteEdge => {
+    match req {
+      Request::WriteEdgeReq {
+        subgraph_name,
+        src,
+        dst,
+        amount,
+      } => {
+        self
+          .process_write_edge(subgraph_name, src, dst, *amount)
+          .await
+      },
+      Request::ReadScoresReq {
+        subgraph_name,
+        ego,
+        score_options,
+      } => self.process_read(subgraph_name, |aug_graph| {
+        let scores = aug_graph.read_scores(ego, score_options);
+        Response {
+          response: 0,
+        }
+      }),
+    }
+  }
+
+  async fn process_write_edge(
+    &self,
+    subgraph_name: &SubgraphName,
+    src: &NodeName,
+    dst: &NodeName,
+    amount: Weight,
+  ) -> Response {
+    log_trace!("{} {} {}", src, dst, amount);
+
+    if src == dst {
+      log_error!("Self-reference is not allowed.");
+      return Response {
+        response: 0,
+      };
+    }
+
+    let src_kind_opt = node_kind_from_prefix(src);
+    let dst_kind_opt = node_kind_from_prefix(dst);
+
+    match (src_kind_opt, dst_kind_opt) {
+      (Some(NodeKind::User), Some(NodeKind::User)) => {
+        for ref_multi in self.subgraphs_map.iter() {
+          let subgraph = ref_multi.value();
+          subgraph
+            .op_sender
+            .send(AugGraphOp::WriteEdgeOp {
+              src: src.clone(),
+              dst: dst.clone(),
+              amount,
+            })
+            .await
+            .expect("Failed to send WriteEdge operation");
+        }
+        Response {
+          response: 0,
+        }
+      },
+      (Some(NodeKind::User), Some(NodeKind::PollVariant)) => {
         self
           .send_op(
-            &req.subgraph_name,
-            AugGraphOp::new(AugGraphOpcode::WriteEdge, req.ego.clone()),
+            subgraph_name,
+            AugGraphOp::SetUserVoteOp{
+              user_id:    src.clone(),
+              variant_id: dst.clone(),
+              amount,
+            },
           )
           .await
       },
-      ServiceRequestOpcode::ReadScores => {
-        self.process_read(&req.subgraph_name, |aug_graph| {
-          let scores = aug_graph.read_scores(&req.ego, &req.score_options);
-          Response {
-            response: 0,
-          }
-        })
+      (Some(NodeKind::PollVariant), Some(NodeKind::Poll)) => {
+        self
+          .send_op(
+            subgraph_name,
+            AugGraphOp::AddPollVariantOp {
+              poll_id:    dst.clone(),
+              variant_id: src.clone(),
+            },
+          )
+          .await
+      },
+      (Some(src_kind), Some(dst_kind))
+        if src_kind == NodeKind::PollVariant
+          || src_kind == NodeKind::Poll
+          || dst_kind == NodeKind::PollVariant
+          || dst_kind == NodeKind::Poll =>
+      {
+        log_warning!("Unexpected edge type: {:?} -> {:?} in context {:?}. No action taken.", src_kind_opt, dst_kind_opt, subgraph_name);
+        Response {
+          response: 0,
+        }
+      },
+      _ => {
+        self
+          .send_op(
+            subgraph_name,
+            AugGraphOp::WriteEdgeOp {
+              src: src.clone(),
+              dst: dst.clone(),
+              amount,
+            },
+          )
+          .await
       },
     }
   }

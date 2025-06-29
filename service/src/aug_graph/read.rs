@@ -1,12 +1,10 @@
 use crate::aug_graph::clustering::NodeCluster;
 use crate::aug_graph::node_registry::NodeInfo;
-use crate::aug_graph::nodes::{NodeKind};
-use crate::aug_graph::AugGraph;
+use crate::aug_graph::nodes::NodeKind;
+use crate::aug_graph::{AugGraph, NodeName, NodeScore};
 use bincode::{Decode, Encode};
 use meritrank_core::NodeId;
 
-pub type NodeName = String;
-pub type NodeScore = f64;
 use crate::log::*;
 use crate::utils::quantiles::bounds_are_empty;
 
@@ -174,8 +172,11 @@ impl AugGraph {
       Some(score) => self.with_zero_opinion(dst_id, score),
       None => self.fetch_raw_score(ego_id, dst_id),
     };
-    
-    let kind_opt = self.nodes.get_by_id(dst_id).and_then(|node_info| Some(node_info.kind));
+
+    let kind_opt = self
+      .nodes
+      .get_by_id(dst_id)
+      .and_then(|node_info| Some(node_info.kind));
 
     if let Some(kind) = kind_opt {
       self.apply_score_clustering(ego_id, score, kind)
@@ -202,7 +203,6 @@ impl AugGraph {
       })
       .collect()
   }
-
 
   pub fn with_zero_opinion(
     &self,

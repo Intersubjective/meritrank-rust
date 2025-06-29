@@ -1,9 +1,9 @@
 pub mod aug_graph;
 mod constants;
-mod proc_graph;
 pub mod log;
-mod proc_multigraph;
 pub mod nonblocking_loop;
+mod proc_graph;
+mod proc_multigraph;
 pub mod protocol;
 pub mod utils;
 
@@ -11,7 +11,9 @@ use std::error::Error;
 use std::sync::Arc;
 
 use crate::log::*;
-use crate::proc_multigraph::MultiGraphProcessor;
+use crate::proc_multigraph::{
+  MultiGraphProcessor, MultiGraphProcessorSettings,
+};
 use crate::protocol::{Request, Response};
 use bincode::{config::standard, decode_from_slice, encode_to_vec};
 use tokio::{
@@ -26,7 +28,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
   let listener = TcpListener::bind(SERVER_ADDRESS).await?;
   println!("Server running on {}", SERVER_ADDRESS);
 
-  let multi_graph_processor = Arc::new(MultiGraphProcessor::new());
+  let multi_graph_processor = Arc::new(MultiGraphProcessor::new(
+    MultiGraphProcessorSettings::default(),
+  ));
 
   loop {
     let (mut socket, _) = listener.accept().await?;

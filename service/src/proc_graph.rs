@@ -1,31 +1,55 @@
-use crate::aug_graph::{AugGraph, AugGraphOpcode};
+use crate::aug_graph::{AugGraph, NodeName};
 use crate::nonblocking_loop::ConcurrentDataProcessor;
+use bincode::{Decode, Encode};
 use left_right::Absorb;
+use meritrank_core::Weight;
 
-pub struct AugGraphOp {
-  pub opcode:  AugGraphOpcode,
-  pub ego_str: String,
-}
-
-impl AugGraphOp {
-  pub fn new(
-    opcode: AugGraphOpcode,
-    ego_str: String,
-  ) -> Self {
-    AugGraphOp {
-      opcode,
-      ego_str,
-    }
-  }
+#[derive(Debug, Encode, Decode, Clone)]
+pub enum AugGraphOp {
+  WriteEdgeOp {
+    src:    NodeName,
+    dst:    NodeName,
+    amount: Weight,
+  },
+  AddPollVariantOp {
+    poll_id:    NodeName,
+    variant_id: NodeName,
+  },
+  SetUserVoteOp {
+    user_id:    NodeName,
+    variant_id: NodeName,
+    amount: Weight,
+  },
 }
 
 impl Absorb<AugGraphOp> for AugGraph {
   fn absorb_first(
     &mut self,
-    _operation: &mut AugGraphOp,
+    op: &mut AugGraphOp,
     _: &Self,
   ) {
-    todo!()
+    match op {
+      AugGraphOp::WriteEdgeOp {
+        src,
+        dst,
+        amount,
+      } => {
+        self.set_edge(src.clone(), dst.clone(), *amount);
+      },
+      AugGraphOp::AddPollVariantOp {
+        poll_id,
+        variant_id,
+      } => {
+        todo!()
+      },
+      AugGraphOp::SetUserVoteOp {
+        user_id,
+        variant_id,
+        amount,
+      } => {
+        todo!()
+      },
+    }
   }
 
   fn sync_with(
