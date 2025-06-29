@@ -1,14 +1,15 @@
 use crate::aug_graph::nodes::{node_kind_from_prefix, NodeKind};
 use crate::aug_graph::settings::AugGraphSettings;
-use crate::aug_graph::{AugGraph, AugGraphOpcode, NodeName};
+use crate::aug_graph::{AugGraph, NodeName};
 use crate::log::*;
-use crate::proc_graph::{AugGraphOp, AugGraphOpcode, GraphProcessor};
-use crate::protocol::{Request, Response, ServiceRequestOpcode, SubgraphName};
+use crate::proc_graph::{AugGraphOp, GraphProcessor};
+use crate::protocol::{Request, Response, SubgraphName};
 use crate::Ordering;
 use crate::{log_trace, log_verbose, log_warning};
 use dashmap::DashMap;
 use meritrank_core::Weight;
 use tokio::sync::mpsc;
+use tokio::task::JoinSet;
 
 pub struct MultiGraphProcessorSettings {
   pub sleep_duration_after_publish_ms: u64,
@@ -172,28 +173,15 @@ impl MultiGraphProcessor {
 
     match (src_kind_opt, dst_kind_opt) {
       (Some(NodeKind::User), Some(NodeKind::User)) => {
-        for ref_multi in self.subgraphs_map.iter() {
-          let subgraph = ref_multi.value();
-          subgraph
-            .op_sender
-            .send(AugGraphOp::WriteEdgeOp {
-              src: src.clone(),
-              dst: dst.clone(),
-              amount,
-            })
-            .await
-            .expect("Failed to send WriteEdge operation");
-        }
-        Response {
-          response: 0,
-        }
+        self.process_user_to_user_edge(src, dst, amount).await
       },
+
       (Some(NodeKind::User), Some(NodeKind::PollVariant)) => {
         self
           .send_op(
             subgraph_name,
-            AugGraphOp::SetUserVoteOp{
-              user_id:    src.clone(),
+            AugGraphOp::SetUserVoteOp {
+              user_id: src.clone(),
               variant_id: dst.clone(),
               amount,
             },
@@ -234,6 +222,46 @@ impl MultiGraphProcessor {
           )
           .await
       },
+    }
+  }
+  async fn process_user_to_user_edge(
+    &self,
+    src: &NodeName,
+    dst: &NodeName,
+    amount: Weight,
+  ) -> Response {
+    let mut join_set = JoinSet::new();
+
+    for ref_multi in self.subgraphs_map.iter() {
+      let subgraph = ref_multi.value();
+      let op_sender = subgraph.op_sender.clone();
+      let src = src.clone();
+      let dst = dst.clone();
+
+      join_set.spawn(async move {
+        op_sender
+          .send(AugGraphOp::WriteEdgeOp {
+            src,
+            dst,
+            amount,
+          })
+          .await
+      });
+    }
+
+    let mut all_successful = true;
+    while let Some(result) = join_set.join_next().await {
+      match result {
+        Ok(Ok(())) => {},
+        _ => {
+          log_error!("Failed to send WriteEdge operation to a subgraph");
+          all_successful = false;
+        },
+      }
+    }
+
+    Response {
+      response: if all_successful { 1 } else { 0 },
     }
   }
 }
