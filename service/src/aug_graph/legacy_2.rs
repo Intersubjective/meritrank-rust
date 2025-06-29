@@ -18,21 +18,6 @@ use std::{
 
 pub type Cluster = i32;
 
-#[derive(Clone)]
-pub struct AugMultiGraphSettings {
-  pub num_walks:              usize,
-  pub zero_opinion_num_walks: usize,
-  pub top_nodes_limit:        usize,
-  pub zero_opinion_factor:    f64,
-  pub score_clusters_timeout: u64,
-  pub scores_cache_size:      NonZeroUsize,
-  pub walks_cache_size:       NonZeroUsize,
-  pub filter_num_hashes:      usize,
-  pub filter_max_size:        usize,
-  pub filter_min_size:        usize,
-  pub omit_neg_edges_scores:  bool,
-  pub force_read_graph_conn:  bool,
-}
 
 #[derive(Clone)]
 pub struct AugMultiGraph {
@@ -45,24 +30,6 @@ pub struct AugMultiGraph {
   pub vsids:      VSIDSManager,
 }
 
-impl Default for AugMultiGraphSettings {
-  fn default() -> AugMultiGraphSettings {
-    AugMultiGraphSettings {
-      scores_cache_size:      DEFAULT_SCORES_CACHE_SIZE,
-      walks_cache_size:       DEFAULT_WALKS_CACHE_SIZE,
-      zero_opinion_factor:    DEFAULT_ZERO_OPINION_FACTOR,
-      num_walks:              DEFAULT_NUM_WALKS,
-      zero_opinion_num_walks: DEFAULT_ZERO_OPINION_NUM_WALKS,
-      score_clusters_timeout: DEFAULT_SCORE_CLUSTERS_TIMEOUT,
-      filter_num_hashes:      DEFAULT_FILTER_NUM_HASHES,
-      filter_max_size:        DEFAULT_FILTER_MAX_SIZE,
-      filter_min_size:        DEFAULT_FILTER_MIN_SIZE,
-      top_nodes_limit:        DEFAULT_TOP_NODES_LIMIT,
-      omit_neg_edges_scores:  DEFAULT_OMIT_NEG_EDGES_SCORES,
-      force_read_graph_conn:  DEFAULT_FORCE_READ_GRAPH_CONN,
-    }
-  }
-}
 
 impl Default for AugMultiGraph {
   fn default() -> AugMultiGraph {
@@ -184,7 +151,7 @@ impl AugMultiGraph {
       for (dst_id, weight) in all_edges {
         if node_kind_from_id(&self.node_infos, src_id) == Some(NodeKind::User)
           && node_kind_from_id(&self.node_infos, *dst_id)
-            == Some(NodeKind::User)
+          == Some(NodeKind::User)
         {
           new_graph_instance.set_edge(src_id, *dst_id, *weight);
         }
@@ -553,130 +520,4 @@ impl AugMultiGraph {
     node_id
   }
 
-  pub fn set_edge(
-    &mut self,
-    context: &str,
-    src: NodeId,
-    dst: NodeId,
-    amount: f64,
-  ) {
-    log_trace!("{:?} {} {} {}", context, src, dst, amount);
-
-    if src == dst {
-      log_error!("Self-reference is not allowed.");
-      return;
-    }
-
-    let src_kind_opt = node_kind_from_id(&self.node_infos, src);
-    let dst_kind_opt = node_kind_from_id(&self.node_infos, dst);
-
-    match (src_kind_opt, dst_kind_opt) {
-      (Some(NodeKind::User), Some(NodeKind::User)) => {
-        self.subgraph_from_context(context);
-
-        for (enum_context, subgraph) in &mut self.subgraphs {
-          log_verbose!(
-            "Set user edge in {:?}: {} -> {} for {}",
-            enum_context,
-            src,
-            dst,
-            amount
-          );
-          subgraph.meritrank_data.set_edge(src, dst, amount);
-        }
-      },
-      (Some(NodeKind::User), Some(NodeKind::PollVariant)) => {
-        match self
-          .subgraph_from_context(context)
-          .poll_store
-          .add_user_vote(src, dst, amount)
-        {
-          Ok(_) => {
-            log_verbose!(
-              "Set User -> PollOption edge in {:?}: {} -> {} for {}",
-              context,
-              src,
-              dst,
-              amount
-            );
-          },
-          Err(e) => {
-            log_error!(
-            "Failed to add user vote: User {} -> PollOption {} with amount {}. Error: {}",
-            src,
-            dst,
-            amount,
-            e
-        );
-          },
-        }
-      },
-      (Some(NodeKind::PollVariant), Some(NodeKind::Poll)) => {
-        match self
-          .subgraph_from_context(context)
-          .poll_store
-          .add_poll_option(src, dst)
-        {
-          Ok(_) => {
-            log_verbose!(
-              "Set PollOption -> Poll edge in {:?}: {} -> {} for {}",
-              context,
-              src,
-              dst,
-              amount
-            );
-          },
-          Err(e) => {
-            log_error!(
-              "Failed to add poll option: PollOption {} -> Poll {}. Error: {}",
-              src,
-              dst,
-              e
-            );
-          },
-        }
-      },
-      (src_kind, dst_kind)
-        if src_kind == Some(NodeKind::PollVariant)
-          || src_kind == Some(NodeKind::Poll)
-          || dst_kind == Some(NodeKind::PollVariant)
-          || dst_kind == Some(NodeKind::Poll) =>
-      {
-        log_warning!("Unexpected edge type: {:?} -> {:?} in context {:?}. No action taken.", src_kind_opt, dst_kind_opt, context);
-      },
-      _ => {
-        if context.is_empty() {
-          log_verbose!("Set edge in \"\": {} -> {} for {}", src, dst, amount);
-          self
-            .subgraph_from_context(context)
-            .meritrank_data
-            .set_edge(src, dst, amount);
-        } else {
-          let null_weight =
-            self.subgraph_from_context("").edge_weight(src, dst);
-          let old_weight =
-            self.subgraph_from_context(context).edge_weight(src, dst);
-          let delta = null_weight + amount - old_weight;
-
-          log_verbose!("Set edge in \"\": {} -> {} for {}", src, dst, delta);
-          self
-            .subgraph_from_context("")
-            .meritrank_data
-            .set_edge(src, dst, delta);
-
-          log_verbose!(
-            "Set edge in {:?}: {} -> {} for {}",
-            context,
-            src,
-            dst,
-            amount
-          );
-          self
-            .subgraph_from_context(context)
-            .meritrank_data
-            .set_edge(src, dst, amount);
-        }
-      },
-    }
-  }
 }

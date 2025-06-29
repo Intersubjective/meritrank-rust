@@ -451,6 +451,9 @@ impl AugMultiGraph {
         return vec![];
       },
     };
+    let ego_id = self.node_ids.get(ego).cloned().unwrap_or(
+      {}
+    );
 
     let ego_id = self.find_or_add_node_by_name(ego);
     let focus_id = self.find_or_add_node_by_name(focus);
