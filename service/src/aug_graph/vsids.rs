@@ -46,28 +46,14 @@ use std::env;
 // ensuring the newer edges retain more relevance.      //
 //////////////////////////////////////////////////////////
 
-#[derive(Debug)]
-pub enum GraphOp {
-  SetEdge {
-    context: String,
-    src_id:  NodeId,
-    dst_id:  NodeId,
-    weight:  Weight,
-  },
-  RemoveEdge {
-    context: String,
-    src_id:  NodeId,
-    dst_id:  NodeId,
-  },
-}
-
 #[derive(Clone, Debug)]
 pub struct VSIDSManager {
-  pub(crate) min_max_weights: HashMap<(String, NodeId), (Weight, Weight, u32)>,
-  pub bump_factor:              Weight,
-  pub(crate) rescale_threshold: Weight,
+  pub(crate) min_max_weights:   HashMap<NodeId, (Weight, Weight, Magnitude)>,
+  bump_factor:       Weight,
+  rescale_threshold: Weight,
   pub(crate) deletion_ratio:    Weight,
 }
+pub type Magnitude = u32;
 
 impl Default for VSIDSManager {
   fn default() -> Self {
@@ -91,21 +77,18 @@ impl VSIDSManager {
 
   pub fn scale_weight(
     &self,
-    context: &str,
     src_id: NodeId,
     new_weight: Weight,
-    new_magnitude: u32,
-  ) -> (Weight, Weight, Weight, u32, f64) {
-    let src_key = (context.to_string(), src_id);
+    new_magnitude: Magnitude,
+  ) -> (Weight, Weight, Weight, Magnitude, f64) {
     let (current_min, current_max, current_mag_scale) = self
       .min_max_weights
-      .get(&src_key)
+      .get(&src_id)
       .copied()
       .unwrap_or((f64::MAX, 0.0, 0));
 
-    let new_scale_factor = self
-      .bump_factor
-      .powi(new_magnitude as i32 - current_mag_scale as i32);
+    let new_scale_factor =
+      self.bump_factor.powi((new_magnitude - current_mag_scale) as i32);
     let mut scaled_weight = new_weight * new_scale_factor;
     let scaled_weight_abs = scaled_weight.abs();
 
@@ -147,7 +130,7 @@ mod tests {
   #[test]
   fn test_basic_weight_update() {
     let vsids = setup_vsids();
-    let (weight, min, max, _, _) = vsids.scale_weight("test", 1, 1.0, 1);
+    let (weight, min, max, _, _) = vsids.scale_weight(1, 1.0, 1);
 
     assert!((weight - 1.111_111).abs() < 1e-6);
     assert_eq!(min, weight.abs());
@@ -158,11 +141,10 @@ mod tests {
   fn test_deletion_of_small_edges() {
     let vsids = setup_vsids();
 
-    let (_, _, _, _, _) = vsids.scale_weight("test", 1, 1.0, 0);
+    let (_, _, _, _, _) = vsids.scale_weight(1, 1.0, 0);
 
     let small_weight = vsids.deletion_ratio / 2.0;
-    let (weight, min, max, _, _) =
-      vsids.scale_weight("test", 1, small_weight, 0);
+    let (weight, min, max, _, _) = vsids.scale_weight(1, small_weight, 0);
 
     assert!(weight.abs() < vsids.deletion_ratio);
     assert!(min <= small_weight);
