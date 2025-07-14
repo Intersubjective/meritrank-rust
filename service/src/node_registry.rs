@@ -1,5 +1,5 @@
-use crate::nodes::NodeKind;
 use crate::aug_graph::NodeName;
+use crate::nodes::NodeKind;
 use crate::utils::log::*;
 
 use meritrank_core::{MeritRank, NodeId};
@@ -153,7 +153,8 @@ mod tests {
 
     let mut registry = NodeRegistry::new();
 
-    let user_id = registry.register(&mut mr, "Alice".to_string(), NodeKind::User);
+    let user_id =
+      registry.register(&mut mr, "Alice".to_string(), NodeKind::User);
     assert_eq!(user_id, 0);
 
     let comment_id = registry.register_with_owner(
@@ -177,7 +178,8 @@ mod tests {
     assert_eq!(info.owner, Some(user_id));
 
     // Test registering an existing name
-    let existing_id = registry.register(&mut mr, "Alice".to_string(), NodeKind::User);
+    let existing_id =
+      registry.register(&mut mr, "Alice".to_string(), NodeKind::User);
     assert_eq!(existing_id, 0);
 
     // Test update_owner

@@ -1,22 +1,22 @@
 mod aug_graph;
-mod nonblocking_loop;
-mod proc_graph;
-mod proc_multigraph;
-mod request_response;
 mod clustering;
 mod node_registry;
 mod nodes;
+mod nonblocking_loop;
+mod proc_graph;
+mod proc_multigraph;
 mod read;
+mod request_response;
 mod settings;
+mod utils;
 mod vsids;
 mod write;
-mod utils;
 
-use crate::utils::log::*;
 use crate::proc_multigraph::{
   MultiGraphProcessor, MultiGraphProcessorSettings,
 };
 use crate::request_response::{Request, Response};
+use crate::utils::log::*;
 
 use std::error::Error;
 use std::sync::Arc;
@@ -187,6 +187,12 @@ mod tests {
     net::TcpSocket,
     time::{sleep, timeout, Duration},
   };
+
+  //  Failing test until everything is done.
+  #[test]
+  fn work_in_progress() {
+    assert!(false);
+  }
 
   //  TODO: Server end-to-end tests.
 

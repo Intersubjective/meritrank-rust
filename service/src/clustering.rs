@@ -1,5 +1,5 @@
-use crate::nodes::NodeKind;
 use crate::aug_graph::{AugGraph, NodeScore};
+use crate::nodes::NodeKind;
 use crate::utils::log::*;
 use crate::utils::quantiles::{bounds_are_empty, calculate_quantiles_bounds};
 

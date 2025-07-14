@@ -18,7 +18,7 @@ pub struct AugGraph {
   pub zero_opinion:          Vec<NodeScore>, // FIXME: change to map because of sparseness
   pub cached_scores:         Cache<(NodeId, NodeId), NodeScore>,
   pub cached_score_clusters: Cache<(NodeId, NodeKind), ClusterGroupBounds>,
- // pub poll_store:            PollStore,
+  // pub poll_store:            PollStore,
   pub vsids:                 VSIDSManager,
 }
 

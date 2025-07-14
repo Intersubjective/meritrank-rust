@@ -1,7 +1,7 @@
+use crate::aug_graph::NodeName;
 use crate::read::FilterOptions;
 use crate::read::ScoreResult;
 use crate::vsids::Magnitude;
-use crate::aug_graph::NodeName;
 
 use meritrank_core::Weight;
 

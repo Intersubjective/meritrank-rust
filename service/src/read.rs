@@ -1,7 +1,7 @@
+use crate::aug_graph::{AugGraph, NodeName, NodeScore};
 use crate::clustering::NodeCluster;
 use crate::node_registry::NodeInfo;
 use crate::nodes::NodeKind;
-use crate::aug_graph::{AugGraph, NodeName, NodeScore};
 use crate::utils::log::*;
 
 use meritrank_core::NodeId;

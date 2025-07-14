@@ -62,7 +62,6 @@ pub struct AugGraphSettings {
 
   // #[serde(default = "_top_nodes_limit")]
   // pub top_nodes_limit: usize,
-
   #[serde(default = "_zero_opinion_factor")]
   pub zero_opinion_factor: f64,
 
@@ -89,16 +88,13 @@ pub struct AugGraphSettings {
 
   // #[serde(default = "_filter_min_size")]
   // pub filter_min_size: usize,
-
   #[serde(default = "_omit_neg_edges_scores")]
   pub omit_neg_edges_scores: bool,
 
   // #[serde(default = "_force_read_graph_conn")]
   // pub force_read_graph_conn: bool,
-
   #[serde(default = "_num_score_quantiles")]
   pub num_score_quantiles: usize,
-
   // #[serde(default = "_cache_capacity")]
   // pub cache_capacity: u64,
 

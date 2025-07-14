@@ -1,7 +1,7 @@
-use crate::vsids::Magnitude;
 use crate::aug_graph::{AugGraph, NodeName};
 use crate::nonblocking_loop::ConcurrentDataProcessor;
 use crate::utils::log::*;
+use crate::vsids::Magnitude;
 
 use bincode::{Decode, Encode};
 use left_right::Absorb;

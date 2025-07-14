@@ -1,7 +1,7 @@
-use crate::nodes::{node_kind_from_prefix, NodeKind};
-use crate::vsids::Magnitude;
 use crate::aug_graph::{AugGraph, NodeName};
+use crate::nodes::{node_kind_from_prefix, NodeKind};
 use crate::utils::log::*;
+use crate::vsids::Magnitude;
 use meritrank_core::{NodeId, Weight};
 
 #[derive(Debug)]
@@ -34,39 +34,39 @@ impl AugGraph {
 
     //  FIXME: This condition doesn't allow to create new edges at all.
     // if can_delete_at_least_one_edge || must_rescale {
-      new_min_weight = self._apply_edge_rescales_and_deletions(
+    new_min_weight = self._apply_edge_rescales_and_deletions(
+      src_id,
+      new_min_weight, // Pass current new_min_weight
+      edge_deletion_threshold,
+      rescale_factor,
+      must_rescale,
+    );
+
+    self.mr.set_edge(src_id, dst_id, amount);
+
+    //  FIXME: Ad hok fix!!!
+    log_verbose!("RECALCULATE");
+    let _ = self.mr.calculate(src_id, self.settings.num_walks);
+
+    if must_rescale {
+      log_verbose!(
+        "Rescale performed: src={}, dst={}, normalized_new_weight={}",
         src_id,
-        new_min_weight, // Pass current new_min_weight
-        edge_deletion_threshold,
-        rescale_factor,
-        must_rescale,
+        dst_id,
+        new_weight_scaled
       );
-
-      self.mr.set_edge(src_id, dst_id, amount);
-
-      //  FIXME: Ad hok fix!!!
-      log_verbose!("RECALCULATE");
-      let _ = self.mr.calculate(src_id, self.settings.num_walks);
-
-      if must_rescale {
-        log_verbose!(
-          "Rescale performed: src={}, dst={}, normalized_new_weight={}",
-          src_id,
-          dst_id,
-          new_weight_scaled
-        );
-      } else {
-        log_verbose!(
-          "Edge updated without rescale: src={}, dst={}, new_weight_scaled={}",
-          src_id,
-          dst_id,
-          new_weight_scaled
-        );
-      }
-      self
-        .vsids
-        .min_max_weights
-        .insert(src_id, (new_min_weight, new_max_weight, new_mag_scale));
+    } else {
+      log_verbose!(
+        "Edge updated without rescale: src={}, dst={}, new_weight_scaled={}",
+        src_id,
+        dst_id,
+        new_weight_scaled
+      );
+    }
+    self
+      .vsids
+      .min_max_weights
+      .insert(src_id, (new_min_weight, new_max_weight, new_mag_scale));
     // }
   }
 
@@ -78,10 +78,7 @@ impl AugGraph {
     rescale_factor: f64,
     must_rescale: bool,
   ) -> Weight {
-    let node_data = match self
-      .mr
-      .graph
-      .get_node_data(src_id) {
+    let node_data = match self.mr.graph.get_node_data(src_id) {
       Some(x) => x,
       None => {
         log_error!("Unable to get node data.");
@@ -89,10 +86,8 @@ impl AugGraph {
       },
     };
 
-    let (edges_to_modify, new_min_weight_from_scan) = 
-      node_data
-      .get_outgoing_edges()
-      .fold(
+    let (edges_to_modify, new_min_weight_from_scan) =
+      node_data.get_outgoing_edges().fold(
         (Vec::new(), current_min_weight), // Use passed current_min_weight
         |(mut to_modify, min), (dest, weight)| {
           let abs_weight = if must_rescale {
@@ -170,7 +165,10 @@ impl AugGraph {
       },
       (Some(src_kind), Some(NodeKind::User)) => {
         let src_id = self.nodes.register(&mut self.mr, src, NodeKind::User);
-        let dst_id = self.nodes.register_with_owner(&mut self.mr, dst, src_kind, src_id);
+        let dst_id =
+          self
+            .nodes
+            .register_with_owner(&mut self.mr, dst, src_kind, src_id);
         Ok((src_id, dst_id))
       },
       _ => Err(AugGraphError::IncorrectNodeKinds(src, dst)),
