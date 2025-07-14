@@ -1,16 +1,16 @@
-use crate::aug_graph::nodes::{node_kind_from_prefix, NodeKind};
-use crate::aug_graph::settings::AugGraphSettings;
+use crate::nodes::{node_kind_from_prefix, NodeKind};
+use crate::settings::AugGraphSettings;
+use crate::vsids::Magnitude;
 use crate::aug_graph::{AugGraph, NodeName};
-use crate::log::*;
+use crate::utils::log::*;
 use crate::proc_graph::{AugGraphOp, GraphProcessor};
-use crate::protocol::{Request, Response, SubgraphName};
+use crate::request_response::*;
 use crate::Ordering;
 use crate::{log_trace, log_verbose, log_warning};
 use dashmap::DashMap;
 use meritrank_core::Weight;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
-use crate::aug_graph::vsids::Magnitude;
 
 pub struct MultiGraphProcessorSettings {
   pub sleep_duration_after_publish_ms: u64,
@@ -43,16 +43,21 @@ impl MultiGraphProcessor {
     &self,
     subgraph_name: &SubgraphName,
   ) -> mpsc::Sender<AugGraphOp> {
+    log_trace!();
+
     match self.subgraphs_map.get(subgraph_name) {
       Some(subgraph) => subgraph.op_sender.clone(),
       None => self
         .subgraphs_map
         .entry(subgraph_name.clone())
-        .or_insert(GraphProcessor::new(
-          AugGraph::new(AugGraphSettings::from_env().unwrap_or_default()),
-          self.settings.sleep_duration_after_publish_ms,
-          self.settings.subgraph_queue_capacity,
-        ))
+        .or_insert((|| {
+          log_trace!("Create subgraph");
+          GraphProcessor::new(
+            AugGraph::new(AugGraphSettings::from_env().unwrap_or_default()),
+            self.settings.sleep_duration_after_publish_ms,
+            self.settings.subgraph_queue_capacity,
+          )
+        })())
         .op_sender
         .clone(),
     }
@@ -63,14 +68,12 @@ impl MultiGraphProcessor {
     subgraph_name: &SubgraphName,
     op: AugGraphOp,
   ) -> Response {
+    log_trace!();
+
     if self.get_tx_channel(subgraph_name).send(op).await.is_ok() {
-      Response {
-        response: 2,
-      }
+      Response::Ok
     } else {
-      Response {
-        response: 0,
-      }
+      Response::Fail
     }
   }
 
@@ -89,9 +92,7 @@ impl MultiGraphProcessor {
       },
       None => {
         log_warning!("Subgraph not found for name: {:?}", subgraph_name);
-        return Response {
-          response: 0,
-        };
+        return Response::Fail;
       },
     };
 
@@ -108,9 +109,7 @@ impl MultiGraphProcessor {
       },
       None => {
         log_warning!("Failed to enter reader handle for subgraph: {:?}. WriteHandle might have been dropped.", subgraph_name);
-        return Response {
-          response: 0,
-        };
+        return Response::Fail;
       },
     };
 
@@ -125,58 +124,54 @@ impl MultiGraphProcessor {
 
     response
   }
+
   pub async fn process_request(
     &self,
     req: &Request,
   ) -> Response {
-    match req {
-      Request::WriteEdgeReq {
-        subgraph_name,
-        src,
-        dst,
-        amount,
-        magnitude,
-      } => {
-        self
-          .process_write_edge(subgraph_name, src, dst, *amount, *magnitude)
-          .await
+    //  FIXME: No need to clone here, but borrow checker!!!
+    let data = req.data.clone();
+
+    match data {
+      ReqData::WriteEdge(data) => {
+        self.process_write_edge(&req.subgraph, &data).await
       },
-      Request::ReadScoresReq {
-        subgraph_name,
-        ego,
-        score_options,
-      } => self.process_read(subgraph_name, |aug_graph| {
-        let scores = aug_graph.read_scores(ego, score_options);
-        Response {
-          response: 0,
-        }
-      }),
+      ReqData::ReadScores(data) => {
+        self.process_read(&req.subgraph, |aug_graph| {
+          Response::Scores(ResScores {
+            data: aug_graph.read_scores(&data.ego, &data.score_options),
+          })
+        })
+      },
     }
   }
 
   async fn process_write_edge(
     &self,
     subgraph_name: &SubgraphName,
-    src: &NodeName,
-    dst: &NodeName,
-    amount: Weight,
-    magnitude: Magnitude
+    data: &ReqWriteEdge,
   ) -> Response {
-    log_trace!("{} {} {}", src, dst, amount);
+    log_trace!("{:?} {:?}", subgraph_name, data);
 
-    if src == dst {
+    if data.src == data.dst {
       log_error!("Self-reference is not allowed.");
-      return Response {
-        response: 0,
-      };
+      return Response::Fail;
     }
 
-    let src_kind_opt = node_kind_from_prefix(src);
-    let dst_kind_opt = node_kind_from_prefix(dst);
+    let src_kind_opt = node_kind_from_prefix(&data.src);
+    let dst_kind_opt = node_kind_from_prefix(&data.dst);
 
     match (src_kind_opt, dst_kind_opt) {
       (Some(NodeKind::User), Some(NodeKind::User)) => {
-        self.process_user_to_user_edge(src, dst, amount, magnitude).await
+        self
+          .process_user_to_user_edge(
+            subgraph_name,
+            &data.src,
+            &data.dst,
+            data.amount,
+            data.magnitude,
+          )
+          .await
       },
 
       (Some(NodeKind::User), Some(NodeKind::PollVariant)) => {
@@ -184,9 +179,9 @@ impl MultiGraphProcessor {
           .send_op(
             subgraph_name,
             AugGraphOp::SetUserVoteOp {
-              user_id: src.clone(),
-              variant_id: dst.clone(),
-              amount,
+              user_id:    data.src.clone(),
+              variant_id: data.dst.clone(),
+              amount:     data.amount,
             },
           )
           .await
@@ -196,8 +191,8 @@ impl MultiGraphProcessor {
           .send_op(
             subgraph_name,
             AugGraphOp::AddPollVariantOp {
-              poll_id:    dst.clone(),
-              variant_id: src.clone(),
+              poll_id:    data.dst.clone(),
+              variant_id: data.src.clone(),
             },
           )
           .await
@@ -208,33 +203,57 @@ impl MultiGraphProcessor {
           || dst_kind == NodeKind::PollVariant
           || dst_kind == NodeKind::Poll =>
       {
-        log_warning!("Unexpected edge type: {:?} -> {:?} in context {:?}. No action taken.", src_kind_opt, dst_kind_opt, subgraph_name);
-        Response {
-          response: 0,
-        }
+        log_error!("Unexpected edge type: {:?} -> {:?} in context {:?}. No action taken.", src_kind_opt, dst_kind_opt, subgraph_name);
+        Response::Fail
       },
       _ => {
         self
           .send_op(
             subgraph_name,
             AugGraphOp::WriteEdgeOp {
-              src: src.clone(),
-              dst: dst.clone(),
-              amount,
-              magnitude,
+              src:       data.src.clone(),
+              dst:       data.dst.clone(),
+              amount:    data.amount,
+              magnitude: data.magnitude,
             },
           )
           .await
       },
     }
   }
+
+  fn insert_subgraph_if_does_not_exist(
+    &self,
+    subgraph_name: &SubgraphName,
+  ) {
+    log_trace!();
+
+    //  FIXME: Cleanup! Code duplication here, but generic types are tricky.
+    self
+      .subgraphs_map
+      .entry(subgraph_name.clone())
+      .or_insert((|| {
+        log_trace!("Create subgraph");
+        GraphProcessor::new(
+          AugGraph::new(AugGraphSettings::from_env().unwrap_or_default()),
+          self.settings.sleep_duration_after_publish_ms,
+          self.settings.subgraph_queue_capacity,
+        )
+      })());
+  }
+
   async fn process_user_to_user_edge(
     &self,
+    subgraph_name: &SubgraphName,
     src: &NodeName,
     dst: &NodeName,
     amount: Weight,
     magnitude: Magnitude,
   ) -> Response {
+    log_trace!();
+
+    self.insert_subgraph_if_does_not_exist(subgraph_name);
+
     let mut join_set = JoinSet::new();
 
     for ref_multi in self.subgraphs_map.iter() {
@@ -249,7 +268,7 @@ impl MultiGraphProcessor {
             src,
             dst,
             amount,
-            magnitude
+            magnitude,
           })
           .await
       });
@@ -266,8 +285,10 @@ impl MultiGraphProcessor {
       }
     }
 
-    Response {
-      response: if all_successful { 1 } else { 0 },
+    if all_successful {
+      Response::Ok
+    } else {
+      Response::Fail
     }
   }
 }

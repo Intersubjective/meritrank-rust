@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+// use std::marker::PhantomData;
 use std::thread;
 
 use left_right::{Absorb, ReadHandleFactory, WriteHandle};
@@ -8,7 +8,7 @@ pub struct ConcurrentDataProcessor<T, Op> {
   processing_thread:       thread::JoinHandle<()>,
   pub op_sender:           mpsc::Sender<Op>,
   pub data_reader_factory: ReadHandleFactory<T>,
-  _phantom:                PhantomData<T>, // This is needed because T is not used directly in the struct
+  // _phantom:                PhantomData<T>, // This is needed because T is not used directly in the struct
 }
 
 impl<T, Op> ConcurrentDataProcessor<T, Op>
@@ -28,7 +28,7 @@ where
       processing_thread:   loop_thread,
       op_sender:           tx,
       data_reader_factory: reader.factory(),
-      _phantom:            PhantomData,
+      // _phantom:            PhantomData,
     }
   }
 

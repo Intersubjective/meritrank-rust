@@ -1,9 +1,11 @@
 pub use crate::log_command;
 pub use crate::log_error;
-pub use crate::log_info;
 pub use crate::log_trace;
 pub use crate::log_verbose;
 pub use crate::log_warning;
+
+#[allow(unused_imports)]
+pub use crate::log_info;
 
 pub use std::sync::atomic::Ordering;
 use std::{sync::atomic::AtomicBool, sync::Mutex, thread};
@@ -11,8 +13,10 @@ use std::{sync::atomic::AtomicBool, sync::Mutex, thread};
 pub static ERROR: AtomicBool = AtomicBool::new(true);
 pub static WARNING: AtomicBool = AtomicBool::new(true);
 pub static INFO: AtomicBool = AtomicBool::new(true);
-pub static VERBOSE: AtomicBool = AtomicBool::new(false);
-pub static TRACE: AtomicBool = AtomicBool::new(false);
+
+// FIXME: Set to false after testing is done.
+pub static VERBOSE: AtomicBool = AtomicBool::new(true);
+pub static TRACE: AtomicBool = AtomicBool::new(true);
 
 static LOG_MUTEX: Mutex<()> = Mutex::new(());
 
@@ -51,7 +55,13 @@ macro_rules! log_func_name {
     fn type_name_of<T>(_: T) -> &'static str {
       std::any::type_name::<T>()
     }
-    let full_name = type_name_of(f).strip_suffix("::f").unwrap_or("");
+    let mut full_name = type_name_of(f).strip_suffix("::f").unwrap_or("");
+    loop {
+      match full_name.strip_suffix("::{{closure}}") {
+        Some(s) => full_name = s,
+        None => break,
+      }
+    }
     let name: String = full_name
       .chars()
       .skip(full_name.rfind("::").unwrap_or(0) + 2)

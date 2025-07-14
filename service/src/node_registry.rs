@@ -1,7 +1,10 @@
-use crate::aug_graph::nodes::NodeKind;
-use meritrank_core::NodeId;
-use std::collections::HashMap;
+use crate::nodes::NodeKind;
 use crate::aug_graph::NodeName;
+use crate::utils::log::*;
+
+use meritrank_core::{MeritRank, NodeId};
+
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeInfo {
@@ -29,6 +32,7 @@ impl NodeRegistry {
 
   pub fn register(
     &mut self,
+    mr: &mut MeritRank,
     name: NodeName,
     kind: NodeKind,
   ) -> NodeId {
@@ -38,6 +42,10 @@ impl NodeRegistry {
 
     let id = self.next_id;
     self.next_id += 1;
+
+    if id != mr.get_new_nodeid() {
+      log_error!("Got unexpected node id.");
+    }
 
     let info = NodeInfo {
       id,
@@ -53,6 +61,7 @@ impl NodeRegistry {
 
   pub fn register_with_owner(
     &mut self,
+    mr: &mut MeritRank,
     name: NodeName,
     kind: NodeKind,
     owner: NodeId,
@@ -63,6 +72,10 @@ impl NodeRegistry {
 
     let id = self.next_id;
     self.next_id += 1;
+
+    if id != mr.get_new_nodeid() {
+      log_error!("Got unexpected node id.");
+    }
 
     let info = NodeInfo {
       id,
@@ -132,14 +145,19 @@ impl NodeRegistry {
 mod tests {
   use super::*;
 
+  use meritrank_core::Graph;
+
   #[test]
   fn test_node_registry() {
+    let mut mr = MeritRank::new(Graph::new());
+
     let mut registry = NodeRegistry::new();
 
-    let user_id = registry.register("Alice".to_string(), NodeKind::User);
+    let user_id = registry.register(&mut mr, "Alice".to_string(), NodeKind::User);
     assert_eq!(user_id, 0);
 
     let comment_id = registry.register_with_owner(
+      &mut mr,
       "Comment1".to_string(),
       NodeKind::Comment,
       user_id,
@@ -159,7 +177,7 @@ mod tests {
     assert_eq!(info.owner, Some(user_id));
 
     // Test registering an existing name
-    let existing_id = registry.register("Alice".to_string(), NodeKind::User);
+    let existing_id = registry.register(&mut mr, "Alice".to_string(), NodeKind::User);
     assert_eq!(existing_id, 0);
 
     // Test update_owner

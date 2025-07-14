@@ -1,5 +1,5 @@
-use std::fmt;
 use bincode::{Decode, Encode};
+use std::fmt;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Encode, Decode, Hash)]
 pub enum NodeKind {
@@ -12,16 +12,19 @@ pub enum NodeKind {
 }
 
 impl fmt::Display for NodeKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            NodeKind::User => write!(f, "User"),
-            NodeKind::Beacon => write!(f, "Beacon"),
-            NodeKind::Comment => write!(f, "Comment"),
-            NodeKind::Opinion => write!(f, "Opinion"),
-            NodeKind::PollVariant => write!(f, "PollVariant"),
-            NodeKind::Poll => write!(f, "Poll"),
-        }
+  fn fmt(
+    &self,
+    f: &mut fmt::Formatter<'_>,
+  ) -> fmt::Result {
+    match self {
+      NodeKind::User => write!(f, "User"),
+      NodeKind::Beacon => write!(f, "Beacon"),
+      NodeKind::Comment => write!(f, "Comment"),
+      NodeKind::Opinion => write!(f, "Opinion"),
+      NodeKind::PollVariant => write!(f, "PollVariant"),
+      NodeKind::Poll => write!(f, "Poll"),
     }
+  }
 }
 
 pub fn node_kind_from_prefix(name: &str) -> Option<NodeKind> {
@@ -39,13 +42,11 @@ pub fn node_kind_from_prefix(name: &str) -> Option<NodeKind> {
   }
 }
 
-pub const ALL_NODE_KINDS: [NodeKind; 6] = [
-  NodeKind::User,
-  NodeKind::Beacon,
-  NodeKind::Comment,
-  NodeKind::Opinion,
-  NodeKind::PollVariant,
-  NodeKind::Poll,
-];
-
-
+// pub const ALL_NODE_KINDS: [NodeKind; 6] = [
+//   NodeKind::User,
+//   NodeKind::Beacon,
+//   NodeKind::Comment,
+//   NodeKind::Opinion,
+//   NodeKind::PollVariant,
+//   NodeKind::Poll,
+// ];

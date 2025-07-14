@@ -1,35 +1,25 @@
-use crate::aug_graph::clustering::ClusterGroupBounds;
-use crate::aug_graph::node_registry::NodeRegistry;
-use crate::aug_graph::nodes::NodeKind;
-use crate::aug_graph::settings::AugGraphSettings;
-use bincode::{Decode, Encode};
+use crate::clustering::ClusterGroupBounds;
+use crate::node_registry::NodeRegistry;
+use crate::nodes::NodeKind;
+use crate::settings::AugGraphSettings;
+use crate::vsids::VSIDSManager;
 use meritrank_core::{Graph, MeritRank, NodeId};
 use moka::sync::Cache;
 use std::time::Duration;
-use crate::aug_graph::vsids::VSIDSManager;
-
-mod clustering;
-mod node_registry;
-pub mod nodes;
-pub mod read;
-pub mod settings;
-pub mod vsids;
-mod write;
 
 pub type NodeName = String;
 pub type NodeScore = f64;
 
-
 #[derive(Clone)]
 pub struct AugGraph {
-  mr:                    MeritRank,
-  nodes:                 NodeRegistry,
-  settings:              AugGraphSettings,
-  zero_opinion:          Vec<NodeScore>, // TODO: change to map because of sparseness
-  cached_scores:         Cache<(NodeId, NodeId), NodeScore>,
-  cached_score_clusters: Cache<(NodeId, NodeKind), ClusterGroupBounds>,
-  //poll_store:            PollStore,
-  vsids:      VSIDSManager,
+  pub mr:                    MeritRank,
+  pub nodes:                 NodeRegistry,
+  pub settings:              AugGraphSettings,
+  pub zero_opinion:          Vec<NodeScore>, // FIXME: change to map because of sparseness
+  pub cached_scores:         Cache<(NodeId, NodeId), NodeScore>,
+  pub cached_score_clusters: Cache<(NodeId, NodeKind), ClusterGroupBounds>,
+ // pub poll_store:            PollStore,
+  pub vsids:                 VSIDSManager,
 }
 
 impl AugGraph {
@@ -52,7 +42,7 @@ impl AugGraph {
       zero_opinion: Vec::new(),
       cached_scores,
       cached_score_clusters,
-      vsids:      VSIDSManager::new(),
+      vsids: VSIDSManager::new(),
     }
   }
 }

@@ -1,10 +1,11 @@
-pub type NodeCluster = usize;
-
-use crate::aug_graph::nodes::NodeKind;
+use crate::nodes::NodeKind;
 use crate::aug_graph::{AugGraph, NodeScore};
-use crate::log::*;
+use crate::utils::log::*;
 use crate::utils::quantiles::{bounds_are_empty, calculate_quantiles_bounds};
-use meritrank_core::{NodeId, Weight};
+
+use meritrank_core::NodeId;
+
+pub type NodeCluster = usize;
 
 pub type ClusterGroupBounds = Vec<NodeScore>;
 

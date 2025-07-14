@@ -1,13 +1,14 @@
-use crate::aug_graph::clustering::NodeCluster;
-use crate::aug_graph::node_registry::NodeInfo;
-use crate::aug_graph::nodes::NodeKind;
+use crate::clustering::NodeCluster;
+use crate::node_registry::NodeInfo;
+use crate::nodes::NodeKind;
 use crate::aug_graph::{AugGraph, NodeName, NodeScore};
+use crate::utils::log::*;
+
+use meritrank_core::NodeId;
+
 use bincode::{Decode, Encode};
-use meritrank_core::{NodeId, Weight};
 
-use crate::log::*;
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Encode, Decode)]
 pub struct ScoreResult {
   pub ego:             NodeName,
   pub target:          NodeName,
@@ -17,23 +18,23 @@ pub struct ScoreResult {
   pub reverse_cluster: NodeCluster,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum NeighborDirection {
-  All,
-  Outbound,
-  Inbound,
-}
+// #[derive(Debug, Clone, Copy, PartialEq)]
+// pub enum NeighborDirection {
+//   All,
+//   Outbound,
+//   Inbound,
+// }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct FilterOptions {
-  node_kind:     Option<NodeKind>,
-  hide_personal: bool,
-  score_lt:      f64,
-  score_lte:     bool,
-  score_gt:      f64,
-  score_gte:     bool,
-  index:         u32,
-  count:         u32,
+  pub node_kind:     Option<NodeKind>,
+  pub hide_personal: bool,
+  pub score_lt:      f64,
+  pub score_lte:     bool,
+  pub score_gt:      f64,
+  pub score_gte:     bool,
+  pub index:         u32,
+  pub count:         u32,
 }
 
 impl Default for FilterOptions {
@@ -58,6 +59,7 @@ impl AugGraph {
     filter_options: &FilterOptions,
   ) -> Vec<ScoreResult> {
     log_command!("{:?} {:?}", ego, filter_options);
+
     if let Some(ego_info) = self.nodes.get_by_name(ego) {
       if ego_info.kind != NodeKind::User {
         log_warning!("Trying to use non-user as ego {}", ego);
@@ -316,33 +318,38 @@ impl AugGraph {
     }
   }
 
-    pub fn fetch_neighbors(
-        &self,
-        ego_id: NodeId,
-        focus_id: NodeId,
-        dir: NeighborDirection,
-    ) -> Vec<(NodeId, Weight, NodeCluster)> {
-        log_trace!("{} {} {:?}", ego_id, focus_id, dir);
+  // pub fn fetch_neighbors(
+  //   &self,
+  //   ego_id: NodeId,
+  //   focus_id: NodeId,
+  //   dir: NeighborDirection,
+  // ) -> Vec<(NodeId, Weight, NodeCluster)> {
+  //   log_trace!("{} {} {:?}", ego_id, focus_id, dir);
 
-        let node_data = match self.mr.graph.get_node_data(focus_id) {
-            Some(data) => data,
-            None => {
-                log_warning!("Node not found: {}", focus_id);
-                return vec![];
-            }
-        };
+  //   let node_data = match self.mr.graph.get_node_data(focus_id) {
+  //     Some(data) => data,
+  //     None => {
+  //       log_warning!("Node not found: {}", focus_id);
+  //       return vec![];
+  //     },
+  //   };
 
-        let edges: Vec<_> = match dir {
-            NeighborDirection::Outbound => node_data.pos_edges.iter().collect(),
-            NeighborDirection::Inbound => node_data.neg_edges.iter().collect(),
-            NeighborDirection::All => node_data.pos_edges.iter().chain(node_data.neg_edges.iter()).collect(),
-        };
+  //   let edges: Vec<_> = match dir {
+  //     NeighborDirection::Outbound => node_data.pos_edges.iter().collect(),
+  //     NeighborDirection::Inbound => node_data.neg_edges.iter().collect(),
+  //     NeighborDirection::All => node_data
+  //       .pos_edges
+  //       .iter()
+  //       .chain(node_data.neg_edges.iter())
+  //       .collect(),
+  //   };
 
-        edges.into_iter()
-            .map(|(dst_id, &weight)| {
-                let (_score, cluster) = self.fetch_score_cached(ego_id, *dst_id);
-                (*dst_id, weight, cluster)
-            })
-            .collect()
-    }
+  //   edges
+  //     .into_iter()
+  //     .map(|(dst_id, &weight)| {
+  //       let (_score, cluster) = self.fetch_score_cached(ego_id, *dst_id);
+  //       (*dst_id, weight, cluster)
+  //     })
+  //     .collect()
+  // }
 }

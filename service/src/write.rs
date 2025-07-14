@@ -1,7 +1,7 @@
-use crate::aug_graph::nodes::{node_kind_from_prefix, NodeKind};
-use crate::aug_graph::vsids::Magnitude;
+use crate::nodes::{node_kind_from_prefix, NodeKind};
+use crate::vsids::Magnitude;
 use crate::aug_graph::{AugGraph, NodeName};
-use crate::log::*;
+use crate::utils::log::*;
 use meritrank_core::{NodeId, Weight};
 
 #[derive(Debug)]
@@ -18,6 +18,8 @@ impl AugGraph {
     amount: Weight,
     magnitude: Magnitude,
   ) {
+    log_trace!();
+
     let (
       new_weight_scaled,
       mut new_min_weight, // This will be potentially updated by the helper
@@ -27,11 +29,11 @@ impl AugGraph {
     ) = self.vsids.scale_weight(src_id, amount, magnitude);
 
     let edge_deletion_threshold = new_max_weight * self.vsids.deletion_ratio;
-    let can_delete_at_least_one_edge =
-      new_min_weight <= edge_deletion_threshold;
+    // let can_delete_at_least_one_edge = new_min_weight <= edge_deletion_threshold;
     let must_rescale = rescale_factor > 1.0;
 
-    if can_delete_at_least_one_edge || must_rescale {
+    //  FIXME: This condition doesn't allow to create new edges at all.
+    // if can_delete_at_least_one_edge || must_rescale {
       new_min_weight = self._apply_edge_rescales_and_deletions(
         src_id,
         new_min_weight, // Pass current new_min_weight
@@ -41,6 +43,10 @@ impl AugGraph {
       );
 
       self.mr.set_edge(src_id, dst_id, amount);
+
+      //  FIXME: Ad hok fix!!!
+      log_verbose!("RECALCULATE");
+      let _ = self.mr.calculate(src_id, self.settings.num_walks);
 
       if must_rescale {
         log_verbose!(
@@ -61,7 +67,7 @@ impl AugGraph {
         .vsids
         .min_max_weights
         .insert(src_id, (new_min_weight, new_max_weight, new_mag_scale));
-    }
+    // }
   }
 
   fn _apply_edge_rescales_and_deletions(
@@ -72,11 +78,19 @@ impl AugGraph {
     rescale_factor: f64,
     must_rescale: bool,
   ) -> Weight {
-    let (edges_to_modify, new_min_weight_from_scan) = self
+    let node_data = match self
       .mr
       .graph
-      .get_node_data(src_id)
-      .unwrap() // Kept as per original, might panic
+      .get_node_data(src_id) {
+      Some(x) => x,
+      None => {
+        log_error!("Unable to get node data.");
+        return 0.0;
+      },
+    };
+
+    let (edges_to_modify, new_min_weight_from_scan) = 
+      node_data
       .get_outgoing_edges()
       .fold(
         (Vec::new(), current_min_weight), // Use passed current_min_weight
@@ -113,6 +127,7 @@ impl AugGraph {
     }
     new_min_weight_from_scan // Return the updated min_weight
   }
+
   pub fn set_edge(
     &mut self,
     src: NodeName,
@@ -120,7 +135,7 @@ impl AugGraph {
     amount: Weight,
     magnitude: Magnitude,
   ) {
-    log_trace!("{} {} {}", src, dst, amount);
+    log_trace!("{:?} {:?} {}", src, dst, amount);
 
     match self.reg_owner_and_get_ids(src, dst) {
       Ok((src_id, dst_id)) => {
@@ -149,13 +164,13 @@ impl AugGraph {
     let (src, dst) = (src.clone(), dst.clone());
     match (node_kind_from_prefix(&src), node_kind_from_prefix(&dst)) {
       (Some(NodeKind::User), Some(NodeKind::User)) => {
-        let src_id = self.nodes.register(src, NodeKind::User);
-        let dst_id = self.nodes.register(dst, NodeKind::User);
+        let src_id = self.nodes.register(&mut self.mr, src, NodeKind::User);
+        let dst_id = self.nodes.register(&mut self.mr, dst, NodeKind::User);
         Ok((src_id, dst_id))
       },
       (Some(src_kind), Some(NodeKind::User)) => {
-        let src_id = self.nodes.register(src, NodeKind::User);
-        let dst_id = self.nodes.register_with_owner(dst, src_kind, src_id);
+        let src_id = self.nodes.register(&mut self.mr, src, NodeKind::User);
+        let dst_id = self.nodes.register_with_owner(&mut self.mr, dst, src_kind, src_id);
         Ok((src_id, dst_id))
       },
       _ => Err(AugGraphError::IncorrectNodeKinds(src, dst)),
