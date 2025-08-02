@@ -1,4 +1,5 @@
 use crate::data::*;
+use crate::settings::*;
 use crate::state_manager::MultiGraphProcessor;
 use crate::utils::log::*;
 
@@ -10,10 +11,6 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use std::{error::Error, sync::Arc};
-
-pub struct ServerSettings {
-  pub url: String,
-}
 
 #[allow(unused)]
 pub async fn write_request(
@@ -84,15 +81,17 @@ pub async fn read_response(
 }
 
 pub async fn run_server(
-  settings: ServerSettings,
+  settings: Settings,
   processor: Arc<MultiGraphProcessor>,
   running: CancellationToken,
 ) -> Result<(), Box<dyn Error>> {
   log_trace!();
 
-  let listener = TcpListener::bind(&settings.url).await?;
+  let url = format!("{}:{}", settings.server_address, settings.server_port);
 
-  log_verbose!("Server running on {}", settings.url);
+  let listener = TcpListener::bind(&url).await?;
+
+  log_verbose!("Server running on {}", url);
 
   loop {
     let mut stream;
@@ -145,14 +144,10 @@ pub async fn run_server(
 mod tests {
   use super::*;
 
-  use crate::state_manager::MultiGraphProcessorSettings;
-
   use tokio::{
     net::TcpSocket,
     time::{sleep, timeout, Duration},
   };
-
-  //  TODO: Server end-to-end tests.
 
   #[tokio::test]
   async fn cancel() {
@@ -160,15 +155,16 @@ mod tests {
 
     let running_clonned = running.clone();
 
+    let settings = Settings {
+      server_port: 8081,
+      sleep_duration_after_publish_ms: 0,
+      ..Settings::default()
+    };
+
     let mut server_task = tokio::spawn(async move {
       let _ = run_server(
-        ServerSettings {
-          url: "127.0.0.1:8081".into(),
-        },
-        Arc::new(MultiGraphProcessor::new(MultiGraphProcessorSettings {
-          sleep_duration_after_publish_ms: 0,
-          ..MultiGraphProcessorSettings::default()
-        })),
+        settings.clone(),
+        Arc::new(MultiGraphProcessor::new(settings)),
         running_clonned,
       )
       .await
@@ -187,15 +183,16 @@ mod tests {
 
     let running_clonned = running.clone();
 
+    let settings = Settings {
+      server_port: 8082,
+      sleep_duration_after_publish_ms: 0,
+      ..Settings::default()
+    };
+
     let mut server_task = tokio::spawn(async move {
       let _ = run_server(
-        ServerSettings {
-          url: "127.0.0.1:8082".into(),
-        },
-        Arc::new(MultiGraphProcessor::new(MultiGraphProcessorSettings {
-          sleep_duration_after_publish_ms: 0,
-          ..MultiGraphProcessorSettings::default()
-        })),
+        settings.clone(),
+        Arc::new(MultiGraphProcessor::new(settings)),
         running_clonned,
       )
       .await
@@ -282,15 +279,16 @@ mod tests {
 
     let running_clonned = running.clone();
 
+    let settings = Settings {
+      server_port: 8083,
+      sleep_duration_after_publish_ms: 0,
+      ..Settings::default()
+    };
+
     let mut server_task = tokio::spawn(async move {
       let _ = run_server(
-        ServerSettings {
-          url: "127.0.0.1:8083".into(),
-        },
-        Arc::new(MultiGraphProcessor::new(MultiGraphProcessorSettings {
-          sleep_duration_after_publish_ms: 0,
-          ..MultiGraphProcessorSettings::default()
-        })),
+        settings.clone(),
+        Arc::new(MultiGraphProcessor::new(settings)),
         running_clonned,
       )
       .await

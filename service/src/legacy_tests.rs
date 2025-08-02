@@ -1,48 +1,68 @@
-use crate::state_manager::{MultiGraphProcessor, MultiGraphProcessorSettings};
-use crate::legacy_protocol::*;
 use crate::data::*;
+use crate::legacy_protocol::*;
+use crate::settings::*;
+use crate::state_manager::MultiGraphProcessor;
 // use crate::utils::log::*;
 
 use tokio::time::{sleep, Duration};
 
-async fn write_edge(processor: &MultiGraphProcessor, subgraph: &str, src: &str, dst: &str, amount: f64, magnitude: u32) {
-  let _ = processor.process_request(&Request {
-    subgraph: subgraph.into(),
-    data: ReqData::WriteEdge(OpWriteEdge {
-      src: src.into(),
-      dst: dst.into(),
-      amount,
-      magnitude,
+async fn write_edge(
+  processor: &MultiGraphProcessor,
+  subgraph: &str,
+  src: &str,
+  dst: &str,
+  amount: f64,
+  magnitude: u32,
+) {
+  let _ = processor
+    .process_request(&Request {
+      subgraph: subgraph.into(),
+      data:     ReqData::WriteEdge(OpWriteEdge {
+        src: src.into(),
+        dst: dst.into(),
+        amount,
+        magnitude,
+      }),
     })
-  }).await;
+    .await;
 }
 
-async fn write_zero_opinion(processor: &MultiGraphProcessor, node: &str, score: f64) {
-  let _ = processor.process_request(&Request {
-    subgraph: "".into(),
-    data: ReqData::WriteZeroOpinion(OpWriteZeroOpinion {
-      node: node.into(),
-      score,
+async fn write_zero_opinion(
+  processor: &MultiGraphProcessor,
+  node: &str,
+  score: f64,
+) {
+  let _ = processor
+    .process_request(&Request {
+      subgraph: "".into(),
+      data:     ReqData::WriteZeroOpinion(OpWriteZeroOpinion {
+        node: node.into(),
+        score,
+      }),
     })
-  }).await;
+    .await;
 }
 
-async fn write_calculate(processor: &MultiGraphProcessor, ego: &str) {
-  let _ = processor.process_request(&Request {
-    subgraph: "".into(),
-    data: ReqData::WriteCalculate(OpWriteCalculate {
-      ego: ego.into(),
+async fn write_calculate(
+  processor: &MultiGraphProcessor,
+  ego: &str,
+) {
+  let _ = processor
+    .process_request(&Request {
+      subgraph: "".into(),
+      data:     ReqData::WriteCalculate(OpWriteCalculate {
+        ego: ego.into(),
+      }),
     })
-  }).await;
+    .await;
 }
 
 #[tokio::test]
 async fn node_score_uncontexted() {
-  let proc =
-    MultiGraphProcessor::new(MultiGraphProcessorSettings {
-      sleep_duration_after_publish_ms: 0,
-      ..MultiGraphProcessorSettings::default()
-    });
+  let proc = MultiGraphProcessor::new(Settings {
+    sleep_duration_after_publish_ms: 0,
+    ..Settings::default()
+  });
 
   write_edge(&proc, "", "U1", "U2", 2.0, 1).await;
   write_edge(&proc, "", "U1", "U3", 1.0, 1).await;
@@ -52,13 +72,15 @@ async fn node_score_uncontexted() {
 
   sleep(Duration::from_millis(100)).await;
 
-  let res = proc.process_request(&Request {
-    subgraph: "".into(),
-    data: ReqData::ReadNodeScore(OpReadNodeScore {
-      ego: "U1".into(),
-      target: "U2".into(),
-    }),
-  }).await;
+  let res = proc
+    .process_request(&Request {
+      subgraph: "".into(),
+      data:     ReqData::ReadNodeScore(OpReadNodeScore {
+        ego:    "U1".into(),
+        target: "U2".into(),
+      }),
+    })
+    .await;
 
   match res {
     Response::Scores(v) => {
@@ -75,11 +97,10 @@ async fn node_score_uncontexted() {
 
 #[tokio::test]
 async fn graph_uncontexted() {
-  let proc =
-    MultiGraphProcessor::new(MultiGraphProcessorSettings {
-      sleep_duration_after_publish_ms: 0,
-      ..MultiGraphProcessorSettings::default()
-    });
+  let proc = MultiGraphProcessor::new(Settings {
+    sleep_duration_after_publish_ms: 0,
+    ..Settings::default()
+  });
 
   write_edge(&proc, "", "U1", "U2", 2.0, 1).await;
   write_edge(&proc, "", "U1", "U3", 1.0, 1).await;
@@ -91,16 +112,18 @@ async fn graph_uncontexted() {
 
   sleep(Duration::from_millis(100)).await;
 
-  let res = proc.process_request(&Request {
-    subgraph: "".into(),
-    data: ReqData::ReadGraph(OpReadGraph {
-      ego: "U1".into(),
-      focus: "U2".into(),
-      positive_only: false,
-      index: 0,
-      count: 10000,
-    }),
-  }).await;
+  let res = proc
+    .process_request(&Request {
+      subgraph: "".into(),
+      data:     ReqData::ReadGraph(OpReadGraph {
+        ego:           "U1".into(),
+        focus:         "U2".into(),
+        positive_only: false,
+        index:         0,
+        count:         10000,
+      }),
+    })
+    .await;
 
   match res {
     Response::Graph(v) => {
@@ -139,11 +162,10 @@ async fn graph_uncontexted() {
 
 #[tokio::test]
 async fn neighbors_all() {
-  let proc =
-    MultiGraphProcessor::new(MultiGraphProcessorSettings {
-      sleep_duration_after_publish_ms: 0,
-      ..MultiGraphProcessorSettings::default()
-    });
+  let proc = MultiGraphProcessor::new(Settings {
+    sleep_duration_after_publish_ms: 0,
+    ..Settings::default()
+  });
 
   write_edge(&proc, "", "U1", "U2", 1.0, 1).await;
   write_edge(&proc, "", "U2", "U3", 2.0, 1).await;
@@ -155,22 +177,24 @@ async fn neighbors_all() {
 
   sleep(Duration::from_millis(100)).await;
 
-  let res = proc.process_request(&Request {
-    subgraph: "".into(),
-    data: ReqData::ReadNeighbors(OpReadNeighbors {
-      ego: "U1".into(),
-      focus: "U2".into(),
-      direction: NEIGHBORS_ALL,
-      kind: None,
-      hide_personal: false,
-      lt: 100.0,
-      lte: false,
-      gt: -100.0,
-      gte: false,
-      index: 0,
-      count: 0,
-    }),
-  }).await;
+  let res = proc
+    .process_request(&Request {
+      subgraph: "".into(),
+      data:     ReqData::ReadNeighbors(OpReadNeighbors {
+        ego:           "U1".into(),
+        focus:         "U2".into(),
+        direction:     NEIGHBORS_ALL,
+        kind:          None,
+        hide_personal: false,
+        lt:            100.0,
+        lte:           false,
+        gt:            -100.0,
+        gte:           false,
+        index:         0,
+        count:         0,
+      }),
+    })
+    .await;
 
   match res {
     Response::Scores(_) => {
@@ -187,11 +211,10 @@ async fn neighbors_all() {
 
 #[tokio::test]
 async fn node_list_uncontexted() {
-  let proc =
-    MultiGraphProcessor::new(MultiGraphProcessorSettings {
-      sleep_duration_after_publish_ms: 0,
-      ..MultiGraphProcessorSettings::default()
-    });
+  let proc = MultiGraphProcessor::new(Settings {
+    sleep_duration_after_publish_ms: 0,
+    ..Settings::default()
+  });
 
   write_edge(&proc, "", "U1", "U2", 2.0, 1).await;
   write_edge(&proc, "", "U1", "U3", 1.0, 1).await;
@@ -199,10 +222,12 @@ async fn node_list_uncontexted() {
 
   sleep(Duration::from_millis(100)).await;
 
-  let res = proc.process_request(&Request {
-    subgraph: "".into(),
-    data: ReqData::ReadNodeList,
-  }).await;
+  let res = proc
+    .process_request(&Request {
+      subgraph: "".into(),
+      data:     ReqData::ReadNodeList,
+    })
+    .await;
 
   match res {
     Response::NodeList(v) => {
@@ -230,20 +255,21 @@ async fn node_list_uncontexted() {
 
 #[tokio::test]
 async fn edge_uncontexted() {
-  let proc =
-    MultiGraphProcessor::new(MultiGraphProcessorSettings {
-      sleep_duration_after_publish_ms: 0,
-      ..MultiGraphProcessorSettings::default()
-    });
+  let proc = MultiGraphProcessor::new(Settings {
+    sleep_duration_after_publish_ms: 0,
+    ..Settings::default()
+  });
 
   write_edge(&proc, "", "U1", "U2", 1.5, 1).await;
 
   sleep(Duration::from_millis(100)).await;
 
-  let res = proc.process_request(&Request {
-    subgraph: "".into(),
-    data: ReqData::ReadEdges,
-  }).await;
+  let res = proc
+    .process_request(&Request {
+      subgraph: "".into(),
+      data:     ReqData::ReadEdges,
+    })
+    .await;
 
   match res {
     Response::Edges(v) => {
@@ -256,25 +282,25 @@ async fn edge_uncontexted() {
   };
 }
 
-
 #[tokio::test]
 async fn connected() {
-  let proc =
-    MultiGraphProcessor::new(MultiGraphProcessorSettings {
-      sleep_duration_after_publish_ms: 0,
-      ..MultiGraphProcessorSettings::default()
-    });
+  let proc = MultiGraphProcessor::new(Settings {
+    sleep_duration_after_publish_ms: 0,
+    ..Settings::default()
+  });
 
   write_edge(&proc, "", "U1", "U2", 1.5, 1).await;
 
   sleep(Duration::from_millis(100)).await;
 
-  let res = proc.process_request(&Request {
-    subgraph: "".into(),
-    data: ReqData::ReadConnected(OpReadConnected {
-      node: "U1".into(),
-    }),
-  }).await;
+  let res = proc
+    .process_request(&Request {
+      subgraph: "".into(),
+      data:     ReqData::ReadConnected(OpReadConnected {
+        node: "U1".into(),
+      }),
+    })
+    .await;
 
   match res {
     Response::Connections(v) => {
@@ -289,11 +315,10 @@ async fn connected() {
 
 #[tokio::test]
 async fn mutual_scores_uncontexted() {
-  let proc =
-    MultiGraphProcessor::new(MultiGraphProcessorSettings {
-      sleep_duration_after_publish_ms: 0,
-      ..MultiGraphProcessorSettings::default()
-    });
+  let proc = MultiGraphProcessor::new(Settings {
+    sleep_duration_after_publish_ms: 0,
+    ..Settings::default()
+  });
 
   write_edge(&proc, "", "U1", "U2", 3.0, 1).await;
   write_edge(&proc, "", "U1", "U3", 1.0, 1).await;
@@ -308,12 +333,14 @@ async fn mutual_scores_uncontexted() {
 
   sleep(Duration::from_millis(300)).await;
 
-  let res = proc.process_request(&Request {
-    subgraph: "".into(),
-    data: ReqData::ReadMutualScores(OpReadMutualScores {
-      ego: "U1".into(),
-    }),
-  }).await;
+  let res = proc
+    .process_request(&Request {
+      subgraph: "".into(),
+      data:     ReqData::ReadMutualScores(OpReadMutualScores {
+        ego: "U1".into(),
+      }),
+    })
+    .await;
 
   println!("{:?}", res);
 
@@ -369,24 +396,26 @@ async fn mutual_scores_uncontexted() {
 
 #[tokio::test]
 async fn set_zero_opinion_uncontexted() {
-  let proc =
-    MultiGraphProcessor::new(MultiGraphProcessorSettings {
-      sleep_duration_after_publish_ms: 0,
-      ..MultiGraphProcessorSettings::default()
-    });
+  let proc = MultiGraphProcessor::new(Settings {
+    sleep_duration_after_publish_ms: 0,
+    ..Settings::default()
+  });
 
   write_edge(&proc, "", "U1", "U2", -5.0, 1).await;
   write_calculate(&proc, "U1").await;
 
   sleep(Duration::from_millis(100)).await;
 
-  let s0 = match proc.process_request(&Request {
-    subgraph: "".into(),
-    data: ReqData::ReadNodeScore(OpReadNodeScore {
-      ego: "U1".into(),
-      target: "U2".into(),
-    }),
-  }).await {
+  let s0 = match proc
+    .process_request(&Request {
+      subgraph: "".into(),
+      data:     ReqData::ReadNodeScore(OpReadNodeScore {
+        ego:    "U1".into(),
+        target: "U2".into(),
+      }),
+    })
+    .await
+  {
     Response::Scores(v) => {
       assert_eq!(v.scores.len(), 1);
       v.scores[0].score
@@ -401,13 +430,16 @@ async fn set_zero_opinion_uncontexted() {
 
   sleep(Duration::from_millis(100)).await;
 
-  let s1 = match proc.process_request(&Request {
-    subgraph: "".into(),
-    data: ReqData::ReadNodeScore(OpReadNodeScore {
-      ego: "U1".into(),
-      target: "U2".into(),
-    }),
-  }).await {
+  let s1 = match proc
+    .process_request(&Request {
+      subgraph: "".into(),
+      data:     ReqData::ReadNodeScore(OpReadNodeScore {
+        ego:    "U1".into(),
+        target: "U2".into(),
+      }),
+    })
+    .await
+  {
     Response::Scores(v) => {
       assert_eq!(v.scores.len(), 1);
       v.scores[0].score
@@ -424,11 +456,10 @@ async fn set_zero_opinion_uncontexted() {
 
 #[tokio::test]
 async fn reset() {
-  let proc =
-    MultiGraphProcessor::new(MultiGraphProcessorSettings {
-      sleep_duration_after_publish_ms: 0,
-      ..MultiGraphProcessorSettings::default()
-    });
+  let proc = MultiGraphProcessor::new(Settings {
+    sleep_duration_after_publish_ms: 0,
+    ..Settings::default()
+  });
 
   write_edge(&proc, "", "U1", "U2", 3.0, 1).await;
   write_edge(&proc, "", "U1", "U3", 1.0, 1).await;
@@ -441,17 +472,21 @@ async fn reset() {
   write_calculate(&proc, "U2").await;
   write_calculate(&proc, "U3").await;
 
-  let _ = proc.process_request(&Request {
-    subgraph: "".into(),
-    data: ReqData::WriteReset
-  }).await;
+  let _ = proc
+    .process_request(&Request {
+      subgraph: "".into(),
+      data:     ReqData::WriteReset,
+    })
+    .await;
 
   sleep(Duration::from_millis(100)).await;
 
-  let res = proc.process_request(&Request {
-    subgraph: "".into(),
-    data: ReqData::ReadEdges,
-  }).await;
+  let res = proc
+    .process_request(&Request {
+      subgraph: "".into(),
+      data:     ReqData::ReadEdges,
+    })
+    .await;
 
   match res {
     Response::Fail => {},
@@ -499,40 +534,44 @@ async fn put_testing_edges(
 ) {
   for edge in read_csv_from_tar_gz("src/edges.tar.gz", file_name) {
     let _ = edge.magnitude;
-    write_edge(&proc, &edge.context, &edge.src, &edge.dst, edge.weight, 1).await;
+    write_edge(&proc, &edge.context, &edge.src, &edge.dst, edge.weight, 1)
+      .await;
   }
 }
 
 #[tokio::test]
 async fn recalculate_zero_graph_all() {
-  let proc =
-    MultiGraphProcessor::new(MultiGraphProcessorSettings {
-      sleep_duration_after_publish_ms: 0,
-      num_walks: 500,
-      zero_opinion_num_walks: 100,
-      legacy_connections_mode: true,
-      ..MultiGraphProcessorSettings::default()
-    });
+  let proc = MultiGraphProcessor::new(Settings {
+    sleep_duration_after_publish_ms: 0,
+    num_walks: 500,
+    zero_opinion_num_walks: 100,
+    legacy_connections_mode: true,
+    ..Settings::default()
+  });
 
   put_testing_edges(&proc, "edges0.csv").await;
 
-  let _ = proc.process_request(&Request {
-    subgraph: "".into(),
-    data: ReqData::WriteRecalculateZero
-  }).await;
+  let _ = proc
+    .process_request(&Request {
+      subgraph: "".into(),
+      data:     ReqData::WriteRecalculateZero,
+    })
+    .await;
 
   sleep(Duration::from_millis(300)).await;
 
-  let res = proc.process_request(&Request {
-    subgraph: "".into(),
-    data: ReqData::ReadGraph(OpReadGraph {
-      ego: "Uadeb43da4abb".into(),
-      focus: "B7f628ad203b5".into(),
-      positive_only: false,
-      index: 0,
-      count: 10000,
-    }),
-  }).await;
+  let res = proc
+    .process_request(&Request {
+      subgraph: "".into(),
+      data:     ReqData::ReadGraph(OpReadGraph {
+        ego:           "Uadeb43da4abb".into(),
+        focus:         "B7f628ad203b5".into(),
+        positive_only: false,
+        index:         0,
+        count:         10000,
+      }),
+    })
+    .await;
 
   match res {
     Response::Graph(v) => {
@@ -547,4 +586,3 @@ async fn recalculate_zero_graph_all() {
     _ => assert!(false),
   };
 }
-

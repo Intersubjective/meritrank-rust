@@ -807,8 +807,8 @@ mod tests {
   use super::testing::*;
   use meritrank_service::legacy_protocol::*;
   use pgrx::prelude::*;
-  use std::time::{SystemTime, Duration};
   use std::thread::sleep;
+  use std::time::{Duration, SystemTime};
 
   // #[pg_test]
   // fn sync_deadlock() {
@@ -1571,9 +1571,9 @@ mod tests {
         .unwrap();
 
     let _n = crate::mr_fetch_new_edges(Some("U1"), Some("B"))
-        .unwrap()
-        .count();
-      
+      .unwrap()
+      .count();
+
     // assert_eq!(n, 0);
 
     let _ =
@@ -1611,9 +1611,9 @@ mod tests {
         .unwrap();
 
     let _n = crate::mr_fetch_new_edges(Some("U1"), Some("B"))
-        .unwrap()
-        .count();
-      
+      .unwrap()
+      .count();
+
     // assert_eq!(n, 0);
 
     let _ =

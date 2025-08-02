@@ -3,14 +3,15 @@
 
 use crate::data::*;
 use crate::legacy_protocol::*;
+use crate::settings::*;
 use crate::state_manager::MultiGraphProcessor;
 use crate::utils::log::*;
 
 use nng::{Aio, AioResult, Context, Protocol, Socket};
 use std::{
+  collections::HashSet,
   string::ToString,
   sync::{atomic::Ordering, Arc},
-  collections::HashSet,
 };
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
@@ -383,23 +384,27 @@ async fn decode_and_handle_request(
       //  FIXME: Refactor code duplication.
 
       if !node_names.contains(&src) {
-        let _ = state.process_request(&Request {
-          subgraph: subgraph.clone(),
-          data: ReqData::WriteCalculate (OpWriteCalculate {
-            ego: src.clone(),
-          }),
-        }).await;
+        let _ = state
+          .process_request(&Request {
+            subgraph: subgraph.clone(),
+            data:     ReqData::WriteCalculate(OpWriteCalculate {
+              ego: src.clone(),
+            }),
+          })
+          .await;
 
         node_names.insert(src);
       }
 
       if !node_names.contains(&dst) {
-        let _ = state.process_request(&Request {
-          subgraph,
-          data: ReqData::WriteCalculate (OpWriteCalculate {
-            ego: dst.clone(),
-          }),
-        }).await;
+        let _ = state
+          .process_request(&Request {
+            subgraph,
+            data: ReqData::WriteCalculate(OpWriteCalculate {
+              ego: dst.clone(),
+            }),
+          })
+          .await;
 
         node_names.insert(dst);
       }
@@ -431,16 +436,17 @@ async fn worker_callback(
 
     AioResult::Recv(Ok(req)) => {
       let mut node_names_ref = node_names.lock().await;
-      
-      let msg: Vec<u8> = decode_and_handle_request(state, req.as_slice(), &mut node_names_ref)
-        .await
-        .unwrap_or_else(|_| {
-          encode_response(&"Internal error, see server logs".to_string())
-            .unwrap_or_else(|error| {
-              log_error!("Unable to serialize error: {:?}", error);
-              vec![]
-            })
-        });
+
+      let msg: Vec<u8> =
+        decode_and_handle_request(state, req.as_slice(), &mut node_names_ref)
+          .await
+          .unwrap_or_else(|_| {
+            encode_response(&"Internal error, see server logs".to_string())
+              .unwrap_or_else(|error| {
+                log_error!("Unable to serialize error: {:?}", error);
+                vec![]
+              })
+          });
 
       match ctx.send(&aio, msg.as_slice()) {
         Ok(_) => {},
@@ -471,7 +477,7 @@ async fn nng_task(
 ) -> Result<(), ServiceError> {
   log_trace!();
 
-  log_verbose!("Starting {} NNG workers.", num_workers);
+  log_verbose!("Starting {} NNG workers on {}", num_workers, url);
 
   // Request/Reply NNG protocol.
   let nng_socket = Socket::new(Protocol::Rep0)?;
@@ -491,7 +497,14 @@ async fn nng_task(
         let node_names_cloned2 = node_names_cloned.clone();
         let runtime = tokio::runtime::Runtime::new().unwrap();
         runtime.block_on(async move {
-          worker_callback(state_cloned2, node_names_cloned2, aio, &ctx_cloned2, res).await;
+          worker_callback(
+            state_cloned2,
+            node_names_cloned2,
+            aio,
+            &ctx_cloned2,
+            res,
+          )
+          .await;
         });
       })?;
       Ok((aio, ctx))
@@ -508,11 +521,6 @@ async fn nng_task(
   Ok(())
 }
 
-pub struct Settings {
-  pub url:         String,
-  pub num_threads: usize,
-}
-
 pub async fn run(
   settings: Settings,
   state: Arc<MultiGraphProcessor>,
@@ -524,12 +532,17 @@ pub async fn run(
 
   let node_names = Arc::new(Mutex::new(HashSet::<String>::new()));
 
+  let url = format!(
+    "tcp://{}:{}",
+    settings.server_address, settings.legacy_server_port
+  );
+
   tokio::select! {
     _ = running.cancelled() => {
       log_verbose!("Legacy Server stopped.");
     },
     _ = tokio::spawn(async move {
-      match nng_task(state, node_names, &settings.url, settings.num_threads, running_cloned).await {
+      match nng_task(state, node_names, &url, settings.legacy_server_num_threads, running_cloned).await {
         _ => {},
       }
     }) => {},
@@ -541,7 +554,6 @@ pub async fn run(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::state_manager::MultiGraphProcessorSettings;
   use nng::options::Options;
   use tokio::time::{sleep, timeout, Duration};
 
@@ -551,16 +563,16 @@ mod tests {
 
     let running_clonned = running.clone();
 
+    let settings = Settings {
+      legacy_server_port: 8041,
+      sleep_duration_after_publish_ms: 0,
+      ..Settings::default()
+    };
+
     let mut server_task = tokio::spawn(async move {
       let _ = run(
-        Settings {
-          url:         "tcp://127.0.0.1:8041".into(),
-          num_threads: 4,
-        },
-        Arc::new(MultiGraphProcessor::new(MultiGraphProcessorSettings {
-          sleep_duration_after_publish_ms: 0,
-          ..MultiGraphProcessorSettings::default()
-        })),
+        settings.clone(),
+        Arc::new(MultiGraphProcessor::new(settings)),
         running_clonned,
       )
       .await
@@ -579,16 +591,16 @@ mod tests {
 
     let running_clonned = running.clone();
 
+    let settings = Settings {
+      legacy_server_port: 8042,
+      sleep_duration_after_publish_ms: 0,
+      ..Settings::default()
+    };
+
     let mut server_task = tokio::spawn(async move {
       let _ = run(
-        Settings {
-          url:         "tcp://127.0.0.1:8042".into(),
-          num_threads: 4,
-        },
-        Arc::new(MultiGraphProcessor::new(MultiGraphProcessorSettings {
-          sleep_duration_after_publish_ms: 0,
-          ..MultiGraphProcessorSettings::default()
-        })),
+        settings.clone(),
+        Arc::new(MultiGraphProcessor::new(settings)),
         running_clonned,
       )
       .await

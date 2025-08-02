@@ -35,7 +35,7 @@ pub struct FilterOptions {
 
 impl Default for FilterOptions {
   fn default() -> Self {
-    FilterOptions {
+    Self {
       node_kind:     None,
       hide_personal: false,
       score_lt:      f64::MAX,
