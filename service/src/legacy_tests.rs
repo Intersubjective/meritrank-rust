@@ -306,7 +306,7 @@ async fn mutual_scores_uncontexted() {
   write_calculate(&proc, "U2").await;
   write_calculate(&proc, "U3").await;
 
-  sleep(Duration::from_millis(200)).await;
+  sleep(Duration::from_millis(300)).await;
 
   let res = proc.process_request(&Request {
     subgraph: "".into(),
@@ -521,7 +521,7 @@ async fn recalculate_zero_graph_all() {
     data: ReqData::WriteRecalculateZero
   }).await;
 
-  sleep(Duration::from_millis(100)).await;
+  sleep(Duration::from_millis(300)).await;
 
   let res = proc.process_request(&Request {
     subgraph: "".into(),
