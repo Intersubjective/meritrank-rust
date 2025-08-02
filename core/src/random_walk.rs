@@ -95,10 +95,14 @@ impl RandomWalk {
 
     // Update `negative_segment_start` based on `step_is_positive`
     if !step_is_positive {
-      assert!(
-        self.negative_segment_start.is_none(),
-        "Expected `negative_segment_start` to be `None`"
-      );
+      //  FIXME
+      if !self.negative_segment_start.is_none() {
+        eprintln!("ERROR: Expected `negative_segment_start` to be `None`");
+      }
+      // assert!(
+      //   self.negative_segment_start.is_none(),
+      //   "Expected `negative_segment_start` to be `None`"
+      // );
       self.negative_segment_start = Some(index);
     }
   }

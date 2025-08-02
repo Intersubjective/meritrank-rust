@@ -48,10 +48,10 @@ use std::env;
 
 #[derive(Clone, Debug)]
 pub struct VSIDSManager {
-  pub(crate) min_max_weights:   HashMap<NodeId, (Weight, Weight, Magnitude)>,
-  bump_factor:       Weight,
-  rescale_threshold: Weight,
-  pub(crate) deletion_ratio:    Weight,
+  pub(crate) min_max_weights: HashMap<NodeId, (Weight, Weight, Magnitude)>,
+  bump_factor:                Weight,
+  rescale_threshold:          Weight,
+  pub(crate) deletion_ratio:  Weight,
 }
 pub type Magnitude = u32;
 
@@ -87,8 +87,9 @@ impl VSIDSManager {
       .copied()
       .unwrap_or((f64::MAX, 0.0, 0));
 
-    let new_scale_factor =
-      self.bump_factor.powi((new_magnitude - current_mag_scale) as i32);
+    let new_scale_factor = self
+      .bump_factor
+      .powi((new_magnitude - current_mag_scale) as i32);
     let mut scaled_weight = new_weight * new_scale_factor;
     let scaled_weight_abs = scaled_weight.abs();
 

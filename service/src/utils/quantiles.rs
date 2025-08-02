@@ -1,4 +1,3 @@
-
 pub fn bounds_are_empty(bounds: &[f64]) -> bool {
   bounds.first() == Some(&0.0) && bounds.last() == Some(&0.0)
 }

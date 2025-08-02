@@ -21,7 +21,7 @@ jobs:
     - uses: actions/checkout@v4
     - name: Run tests
       run: |
-        export MERITRANK_NUM_WALK=50
+        export MERITRANK_NUM_WALKS=50
         cargo test
   test_psql_connector:
     runs-on: ubuntu-latest
@@ -38,7 +38,7 @@ jobs:
         sudo apt-get install -y postgresql-17 postgresql-server-dev-17
     - name: Prepare env
       run: |
-        sudo su - root -c "echo \"export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10444\" >> /etc/environment"
+        sudo su - root -c "echo \"export MERITRANK_SERVICE_URL=tcp://127.0.0.1:8040\" >> /etc/environment"
     - name: Build the connector
       run: |
         cargo install --locked cargo-pgrx --version 0.12.8
@@ -48,8 +48,8 @@ jobs:
       working-directory: ./service
       run: |
         cargo build --release
-        export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10444
-        export MERITRANK_NUM_WALK=500
+        export MERITRANK_SERVICE_URL=tcp://127.0.0.1:8040
+        export MERITRANK_NUM_WALKS=500
         cargo run --release --bin meritrank_service >/dev/null 2>&1 &
     - name: Do the tests
       run: |
