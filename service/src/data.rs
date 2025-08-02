@@ -126,7 +126,7 @@ pub struct OpReadNewEdgesFilter {
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-pub struct OpWriteSetZeroOpinion {
+pub struct OpWriteZeroOpinion {
   pub node:  NodeName,
   pub score: Weight,
 }
@@ -160,6 +160,10 @@ pub struct OpWriteFetchNewEdges {
 pub enum AugGraphOp {
   WriteEdge(OpWriteEdge),
   WriteCalculate(OpWriteCalculate),
+  WriteZeroOpinion(OpWriteZeroOpinion),
+  WriteReset,
+  WriteRecalculateZero,
+  WriteRecalculateClustering,
   AddPollVariant(OpAddPollVariant),
   SetUserVote(OpSetUserVote),
 }
@@ -214,7 +218,7 @@ pub struct ResScores {
 
 #[derive(Debug, Encode, Decode, Serialize, Deserialize)]
 pub struct ResNodeList {
-  pub nodes: Vec<NodeName>,
+  pub nodes: Vec<(NodeName,)>,
 }
 
 #[derive(Debug, Encode, Decode, Serialize, Deserialize)]
@@ -259,7 +263,7 @@ pub enum ReqData {
   ReadNeighbors(OpReadNeighbors),
   WriteReset,
   WriteRecalculateZero,
-  WriteSetZeroOpinion(OpWriteSetZeroOpinion),
+  WriteZeroOpinion(OpWriteZeroOpinion),
   WriteRecalculateClustering,
   WriteDeleteEdge(OpWriteDeleteEdge),
   WriteDeleteNode(OpWriteDeleteNode),
@@ -268,7 +272,7 @@ pub enum ReqData {
   WriteFetchNewEdges(OpWriteFetchNewEdges),
 }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct Request {
   //  NOTE: Subgraph name is ignored for some requests.
   pub subgraph: SubgraphName,

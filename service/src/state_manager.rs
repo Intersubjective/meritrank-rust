@@ -1,131 +1,56 @@
 use crate::data::*;
-use crate::utils::{log::*, quantiles::*};
+use crate::utils::{log::*, quantiles::*, astar::*};
 use crate::vsids::{Magnitude, VSIDSManager};
+use crate::legacy_protocol::*;
 
 use dashmap::DashMap;
 use left_right::{Absorb, ReadHandleFactory, WriteHandle};
-use meritrank_core::{Graph, MeritRank, NodeId, Weight};
+use meritrank_core::{Graph, MeritRank, NodeId, Weight, constants::EPSILON};
 use moka::sync::Cache;
-use serde::Deserialize;
 use tokio::{sync::mpsc, task::JoinSet};
+use petgraph::{graph::{DiGraph, NodeIndex}, visit::EdgeRef};
+use simple_pagerank::Pagerank;
 
 use std::{collections::HashMap, fmt, thread, time::Duration};
 
-fn _num_walks() -> usize {
-  10000
-}
-fn _zero_opinion_num_walks() -> usize {
-  1000
-}
-fn _top_nodes_limit() -> usize {
-  100
-}
-fn _zero_opinion_factor() -> f64 {
-  0.20
-}
-fn _score_clusters_cache_size() -> usize {
-  1024 * 10
-}
-fn _score_clusters_timeout() -> u64 {
-  21600
-} // 60 * 60 * 6 (6 hours)
-fn _scores_cache_size() -> usize {
-  1024 * 10
-} // 1024 * 10
-fn _scores_cache_timeout() -> u64 {
-  3600
-} // 60 * 60 (1 hour)
-fn _walks_cache_size() -> usize {
-  1024
-}
-fn _filter_num_hashes() -> usize {
-  10
-}
-fn _filter_max_size() -> usize {
-  8192
-}
-fn _filter_min_size() -> usize {
-  32
-}
-fn _omit_neg_edges_scores() -> bool {
-  false
-}
-fn _force_read_graph_conn() -> bool {
-  false
-}
-fn _num_score_quantiles() -> usize {
-  100
-}
-fn _cache_capacity() -> u64 {
-  1_000_000
-}
-fn _cache_ttl() -> u64 {
-  3600
-}
-
-#[derive(Clone, Deserialize)]
+#[derive(Clone)]
 pub struct AugGraphSettings {
-  #[serde(default = "_num_walks")]
   pub num_walks: usize,
-
-  // #[serde(default = "_zero_opinion_num_walks")]
-  // pub zero_opinion_num_walks: usize,
-
-  // #[serde(default = "_top_nodes_limit")]
-  // pub top_nodes_limit: usize,
-  #[serde(default = "_zero_opinion_factor")]
+  pub zero_opinion_num_walks: usize,
+  pub top_nodes_limit: usize,
   pub zero_opinion_factor: f64,
-
-  #[serde(default = "_score_clusters_cache_size")]
   pub score_clusters_cache_size: usize,
-
-  #[serde(default = "_score_clusters_timeout")]
   pub score_clusters_timeout: u64,
-
-  #[serde(default = "_scores_cache_size")]
   pub scores_cache_size: usize,
-
-  #[serde(default = "_scores_cache_timeout")]
   pub scores_cache_timeout: u64,
-
-  // #[serde(default = "_walks_cache_size")]
   // pub walks_cache_size: usize,
-
-  // #[serde(default = "_filter_num_hashes")]
   // pub filter_num_hashes: usize,
-
-  // #[serde(default = "_filter_max_size")]
   // pub filter_max_size: usize,
-
-  // #[serde(default = "_filter_min_size")]
   // pub filter_min_size: usize,
-  #[serde(default = "_omit_neg_edges_scores")]
   pub omit_neg_edges_scores: bool,
-
-  // #[serde(default = "_force_read_graph_conn")]
-  // pub force_read_graph_conn: bool,
-  #[serde(default = "_num_score_quantiles")]
+  pub force_read_graph_conn: bool,
   pub num_score_quantiles: usize,
-  // #[serde(default = "_cache_capacity")]
   // pub cache_capacity: u64,
-
-  // #[serde(default = "_cache_ttl")]
   // pub cache_ttl: u64,
-}
-
-impl AugGraphSettings {
-  pub fn from_env() -> Result<Self, envy::Error> {
-    envy::from_env::<AugGraphSettings>()
-  }
+  pub legacy_connections_mode: bool,
 }
 
 impl Default for AugGraphSettings {
   fn default() -> Self {
-    // FIXME: Panic is not necessary here!
-    envy::from_iter::<_, AugGraphSettings>(
-      std::iter::empty::<(String, String)>(),
-    )
-    .expect("Failed to create default settings")
+    AugGraphSettings {
+      num_walks: 10000,
+      zero_opinion_num_walks: 1000,
+      top_nodes_limit: 100,
+      zero_opinion_factor: 0.2,
+      score_clusters_cache_size: 1024 * 10,
+      score_clusters_timeout: 60 * 60 * 6,
+      scores_cache_size: 1024 * 10,
+      scores_cache_timeout: 60 * 60,
+      omit_neg_edges_scores: false,
+      force_read_graph_conn: false,
+      num_score_quantiles: 100,      
+      legacy_connections_mode: true,
+    }
   }
 }
 
@@ -190,6 +115,26 @@ impl Absorb<AugGraphOp> for AugGraph {
       }) => {
         self.calculate(ego.clone());
       },
+      AugGraphOp::WriteZeroOpinion(OpWriteZeroOpinion {
+        node,
+        score,
+      }) => {
+        let id = match self.nodes.get_by_name(node) {
+          Some(x) => x.id,
+          None => {
+            log_error!("Node not found: {:?}", node);
+            return;
+          },
+        };
+
+        if id >= self.zero_opinion.len() {
+          self.zero_opinion.resize(id + 1, 0.0);
+        }
+        self.zero_opinion[id] = *score;
+      },
+      AugGraphOp::WriteRecalculateZero =>
+        self.recalculate_zero(),
+      AugGraphOp::WriteRecalculateClustering => log_warning!("Recalculate clustering is ignored!"),
       _ => {
         log_error!("Not implemented.");
       },
@@ -287,9 +232,9 @@ pub struct NodeInfo {
 
 #[derive(Clone)]
 pub struct NodeRegistry {
-  name_to_id: HashMap<NodeName, NodeId>,
-  id_to_info: Vec<NodeInfo>,
-  next_id:    NodeId,
+  pub name_to_id: HashMap<NodeName, NodeId>,
+  pub id_to_info: Vec<NodeInfo>,
+  pub next_id:    NodeId,
 }
 
 impl NodeRegistry {
@@ -515,13 +460,19 @@ fn processing_loop<T, Op>(
 pub struct MultiGraphProcessorSettings {
   pub sleep_duration_after_publish_ms: u64,
   pub subgraph_queue_capacity:         usize,
+  pub num_walks: usize,
+  pub zero_opinion_num_walks: usize,
+  pub legacy_connections_mode: bool,
 }
 
 impl Default for MultiGraphProcessorSettings {
   fn default() -> Self {
     MultiGraphProcessorSettings {
-      sleep_duration_after_publish_ms: 100,
+      sleep_duration_after_publish_ms: 10,
       subgraph_queue_capacity:         1024,
+      num_walks:                       10000,
+      zero_opinion_num_walks:          1000,
+      legacy_connections_mode:         true,
     }
   }
 }
@@ -553,7 +504,12 @@ impl MultiGraphProcessor {
         .or_insert((|| {
           log_trace!("Create subgraph");
           GraphProcessor::new(
-            AugGraph::new(AugGraphSettings::from_env().unwrap_or_default()),
+            AugGraph::new(AugGraphSettings {
+              num_walks: self.settings.num_walks,
+              zero_opinion_num_walks: self.settings.zero_opinion_num_walks,
+              legacy_connections_mode: self.settings.legacy_connections_mode,
+              ..AugGraphSettings::default()
+            }),
             self.settings.sleep_duration_after_publish_ms,
             self.settings.subgraph_queue_capacity,
           )
@@ -633,41 +589,149 @@ impl MultiGraphProcessor {
     let data = req.data.clone();
 
     match data {
-      ReqData::WriteEdge(data) => {
-        self.process_write_edge(&req.subgraph, &data).await
+      ReqData::WriteEdge(data) => self.process_write_edge(&req.subgraph, &data).await,
+      ReqData::WriteCalculate(data) => self
+        .send_op(
+          &req.subgraph,
+          AugGraphOp::WriteCalculate(OpWriteCalculate {
+            ego: data.ego.clone(),
+          }),
+        )
+        .await,
+      ReqData::WriteCreateContext => {
+        self.insert_subgraph_if_does_not_exist(&req.subgraph);
+        Response::Ok
       },
-      ReqData::WriteCalculate(data) => {
-        self.process_write_calculate(&req.subgraph, &data).await
+      ReqData::WriteDeleteEdge(data) => self.process_write_edge(&req.subgraph, &OpWriteEdge {
+        src: data.src,
+        dst: data.dst,
+        amount: 0.0,
+        magnitude: data.index as u32,
+      }).await,
+      ReqData::WriteDeleteNode(_) => {
+        log_warning!("Delete node request ignored!");
+        Response::Ok
       },
-      ReqData::ReadScores(data) => {
+      ReqData::WriteZeroOpinion(data) => self
+        .send_op(
+          &req.subgraph,
+          AugGraphOp::WriteZeroOpinion(data.clone()),
+        )
+        .await,
+      ReqData::WriteReset => {
+        self.subgraphs_map.clear();
+        Response::Ok
+      },
+      ReqData::WriteRecalculateZero => self
+        .send_op(
+          &req.subgraph,
+          AugGraphOp::WriteRecalculateZero,
+        )
+        .await,
+      ReqData::WriteRecalculateClustering => self
+        .send_op(
+          &req.subgraph,
+          AugGraphOp::WriteRecalculateClustering,
+        )
+        .await,
+      ReqData::WriteFetchNewEdges(_) => self.process_read(&req.subgraph, |_| {
+        log_warning!("Fetch new edges request ignored!");
+        Response::NewEdges(ResNewEdges { new_edges: vec![] })
+      }),
+      ReqData::WriteNewEdgesFilter(_) => self.process_read(&req.subgraph, |_| {
+        log_warning!("New edges filter request ignored!");
+        Response::Ok
+      }),
+      ReqData::ReadNewEdgesFilter(_) => self.process_read(&req.subgraph, |_| {
+        log_warning!("New edges filter request ignored!");
+        Response::NewEdgesFilter(ResNewEdgesFilter { bytes: vec![] })
+      }),
+      ReqData::ReadScores(data) => self.process_read(&req.subgraph, |aug_graph| {
+          Response::Scores(ResScores {
+            scores: aug_graph.read_scores(data),
+          })
+        }),
+      ReqData::ReadNodeScore(data) => self.process_read(&req.subgraph, |aug_graph| {
+          Response::Scores(ResScores {
+            scores: aug_graph.read_node_score(data),
+          })
+        }),
+      ReqData::ReadGraph(data) => self.process_read(&req.subgraph, |aug_graph| {
+          Response::Graph(ResGraph {
+            graph: aug_graph.read_graph(data),
+          })
+        }),
+      ReqData::ReadNeighbors(data) =>
         self.process_read(&req.subgraph, |aug_graph| {
           Response::Scores(ResScores {
-            scores: aug_graph.read_scores(&data.ego, &data.score_options),
+            scores: aug_graph.read_neighbors(data),
           })
         })
-      },
-      _ => {
-        log_error!("Request not implemented: {:?}", data);
-        Response::Fail
-      },
-    }
-  }
+      ,
+      ReqData::ReadNodeList => self.process_read(&req.subgraph, |aug_graph| {
+          Response::NodeList(ResNodeList {
+             nodes: aug_graph.nodes.id_to_info
+               .iter()
+               .map(|info| (info.name.clone(),))
+               .collect(),
+          })
+        })
+      ,
+      ReqData::ReadEdges =>
+        self.process_read(&req.subgraph, |aug_graph| {
+          let mut edges = vec![];
+          edges.reserve(aug_graph.nodes.id_to_info.len() * 2);
 
-  async fn process_write_calculate(
-    &self,
-    subgraph_name: &SubgraphName,
-    data: &OpWriteCalculate,
-  ) -> Response {
-    log_trace!("{:?} {:?}", subgraph_name, data);
+          for (src_id, info) in aug_graph.nodes.id_to_info.iter().enumerate() {
+            if let Some(data) = aug_graph
+              .mr
+              .graph
+              .get_node_data(src_id)
+            {
+              let src_name = &info.name;
 
-    self
-      .send_op(
-        subgraph_name,
-        AugGraphOp::WriteCalculate(OpWriteCalculate {
-          ego: data.ego.clone(),
+              for (dst_id, weight) in data.get_outgoing_edges() {
+                match aug_graph.nodes.get_by_id(dst_id) {
+                  Some(x) => edges.push(EdgeResult { src: src_name.to_string(), dst: x.name.clone(), weight }),
+                  None => log_error!("Node does not exist: {}", dst_id),
+                }
+              }
+            };
+          }
+
+          Response::Edges(ResEdges { edges })
+        })
+      ,
+      ReqData::ReadConnected(data) => self.process_read(&req.subgraph, |aug_graph| {
+          match aug_graph.nodes.get_by_name(&data.node) {
+            Some(src) =>
+              Response::Connections(ResConnections {
+                 connections: aug_graph
+                   .mr
+                  .graph
+                  .get_node_data(src.id)
+                  .unwrap()
+                  .get_outgoing_edges()
+                  .map(|(dst_id, _)| {
+                    ConnectionResult {
+                      src: data.node.clone(),
+                      dst: aug_graph.nodes.get_by_id(dst_id).unwrap().name.clone(),
+                    }
+                  })
+                  .collect(),
+              }),
+            None => {
+              log_error!("Node not found: {:?}", data.node);
+              Response::Fail
+            },
+          }
         }),
-      )
-      .await
+      ReqData::ReadMutualScores(data) => self.process_read(&req.subgraph, |aug_graph| {
+        Response::Scores(ResScores {
+          scores: aug_graph.read_mutual_scores(data),
+        })
+      }),
+    }
   }
 
   async fn process_write_edge(
@@ -759,7 +823,12 @@ impl MultiGraphProcessor {
       .or_insert((|| {
         log_trace!("Create subgraph");
         GraphProcessor::new(
-          AugGraph::new(AugGraphSettings::from_env().unwrap_or_default()),
+          AugGraph::new(AugGraphSettings {
+              num_walks: self.settings.num_walks,
+              zero_opinion_num_walks: self.settings.zero_opinion_num_walks,
+              legacy_connections_mode: self.settings.legacy_connections_mode,
+              ..AugGraphSettings::default()
+            }),
           self.settings.sleep_duration_after_publish_ms,
           self.settings.subgraph_queue_capacity,
         )
@@ -827,22 +896,754 @@ impl MultiGraphProcessor {
 impl AugGraph {
   pub fn read_scores(
     &self,
-    ego: &str,
-    filter_options: &FilterOptions,
+    data: OpReadScores,
   ) -> Vec<ScoreResult> {
-    log_command!("{:?} {:?}", ego, filter_options);
+    log_command!("{:?}", data);
 
-    if let Some(ego_info) = self.nodes.get_by_name(ego) {
+    let ego = data.ego;
+    let filter_options = data.score_options;
+
+    if let Some(ego_info) = self.nodes.get_by_name(&ego) {
       if ego_info.kind != NodeKind::User {
         log_warning!("Trying to use non-user as ego {}", ego);
         return vec![];
       }
       let scores = self.fetch_all_scores(ego_info);
-      self.apply_filters_and_pagination(scores, ego_info, filter_options, false)
+      self.apply_filters_and_pagination(scores, ego_info, &filter_options, false)
     } else {
-      log_warning!("Ego not found: {:?}", ego);
+      log_error!("Ego not found: {:?}", ego);
       vec![]
     }
+  }
+
+  pub fn read_node_score(&self, data: OpReadNodeScore) -> Vec<ScoreResult> {
+    log_command!("{:?}", data);
+
+    let ego = data.ego;
+    let dst = data.target;
+
+    let ego_info = match self.nodes.get_by_name(&ego) {
+      Some(x) => x,
+      None => {
+        log_error!("Node not found: {:?}", ego);
+        return vec![];
+      },
+    };
+
+    let dst_id = match self.nodes.get_by_name(&dst) {
+      Some(x) => x.id,
+      None => {
+        log_error!("Node not found: {:?}", dst);
+        return vec![];
+      },
+    };
+
+    let (score, cluster) = self.apply_score_clustering(ego_info.id, self.fetch_raw_score(ego_info.id, dst_id), ego_info.kind);
+    let (reverse_score, reverse_cluster) = self.fetch_score_cached(dst_id, ego_info.id);
+
+    vec![ScoreResult {
+      ego: ego.into(),
+      target: dst.into(),
+      score,
+      reverse_score,
+      cluster,
+      reverse_cluster,
+    }]
+  }
+
+  fn validate_read_graph_params_and_setup(
+    &self,
+    ego_str: &str,
+    focus_str: &str,
+  ) -> Result<
+    (
+      NodeId,
+      NodeId,
+      DiGraph<NodeId, Weight>,
+      HashMap<NodeId, NodeIndex>,
+      HashMap<NodeIndex, NodeId>,
+    ),
+    String,
+  > {
+    let ego_id = match self.nodes.get_by_name(ego_str) {
+      Some(x) => x.id,
+      None => {
+        return Err(format!("Node not found: {:?}", ego_str));
+      },
+    };
+
+    let focus_id = match self.nodes.get_by_name(focus_str) {
+      Some(x) => x.id,
+      None => {
+        return Err(format!("Node not found: {:?}", focus_str));
+      },
+    };
+
+    let mut indices = HashMap::<NodeId, NodeIndex>::new();
+    let mut ids = HashMap::<NodeIndex, NodeId>::new();
+    let mut im_graph = DiGraph::<NodeId, Weight>::new();
+
+    // Add the focus node to the graph as the starting point
+    let focus_node_index = im_graph.add_node(focus_id);
+    indices.insert(focus_id, focus_node_index);
+    ids.insert(focus_node_index, focus_id);
+
+    Ok((ego_id, focus_id, im_graph, indices, ids))
+  }
+
+  fn perform_astar_search(
+    &self,
+    graph: &Graph,
+    ego_id: NodeId,
+    focus_id: NodeId,
+  ) -> Result<Vec<NodeId>, ()> {
+    log_trace!();
+
+    let mut open: Vec<Node<NodeId, Weight>> = vec![];
+    let mut closed: Vec<Node<NodeId, Weight>> = vec![];
+
+    open.resize(1024, Node::default());
+    closed.resize(1024, Node::default());
+
+    let mut astar_state = init(&mut open, ego_id, focus_id, 0.0);
+    let mut steps = 0;
+    let mut neighbor = None;
+    let mut status = Status::PROGRESS;
+
+    for _ in 0..10000 {
+      // Max 10000 iterations
+      steps += 1;
+      status =
+        iteration(&mut open, &mut closed, &mut astar_state, neighbor.clone());
+
+      match status.clone() {
+        Status::NEIGHBOR(request) => match graph.get_node_data(request.node) {
+          None => neighbor = None,
+          Some(data) => {
+            let kv: Vec<_> =
+              data.pos_edges.iter().skip(request.index).take(1).collect();
+            if kv.is_empty() {
+              neighbor = None;
+            } else {
+              let n = kv[0].0;
+              let mut w = *kv[0].1;
+              if data.pos_sum > EPSILON {
+                w /= data.pos_sum;
+              }
+              neighbor = Some(Link::<NodeId, Weight> {
+                neighbor:       *n,
+                exact_distance: if w.abs() < EPSILON {
+                  1_000_000.0
+                } else {
+                  1.0 / w
+                },
+                estimate:       0.0,
+              });
+            }
+          },
+        },
+        Status::OUT_OF_MEMORY => {
+          open.resize(open.len() * 2, Node::default());
+          closed.resize(closed.len() * 2, Node::default());
+        },
+        Status::SUCCESS | Status::FAIL => break,
+        Status::PROGRESS => {},
+      };
+    }
+
+    log_verbose!("Did {} A* iterations", steps);
+
+    if status == Status::SUCCESS {
+      log_verbose!("Path found");
+      let mut ego_to_focus: Vec<NodeId> = vec![0; astar_state.num_closed];
+      let n = path(&closed, &astar_state, &mut ego_to_focus);
+      ego_to_focus.resize(n, 0);
+      Ok(ego_to_focus)
+    } else if status == Status::FAIL {
+      log_error!("Path not found.");
+      Err(())
+    } else {
+      log_error!("Too many iterations.");
+      Err(())
+    }
+  }
+
+  pub fn edge_weight_normalized(
+    &self,
+    src: NodeId,
+    dst: NodeId,
+  ) -> Weight {
+    log_trace!("{} {}", src, dst);
+
+    let pos_sum = match self.mr.graph.get_node_data(src) {
+      Some(x) => {
+        if x.pos_sum < EPSILON {
+          log_warning!(
+            "Unable to normalize node weight, positive sum is zero."
+          );
+          1.0
+        } else {
+          x.pos_sum
+        }
+      },
+
+      None => 1.0,
+    };
+
+    self
+      .mr
+      .graph
+      .edge_weight(src, dst)
+      .unwrap_or(None)
+      .unwrap_or(0.0)
+      / pos_sum
+  }
+
+  fn add_shortest_path_to_graph(
+    &self,
+    node_infos: &Vec<NodeInfo>,
+    ego_id: NodeId,
+    focus_id: NodeId,
+    indices: &mut HashMap<NodeId, NodeIndex>,
+    ids: &mut HashMap<NodeIndex, NodeId>,
+    im_graph: &mut DiGraph<NodeId, Weight>,
+  ) {
+    log_trace!();
+
+    let ego_to_focus = match self.perform_astar_search(
+      &self.mr.graph,
+      ego_id,
+      focus_id,
+    ) {
+      Ok(path) => path,
+      Err(_) => return,
+    };
+
+    let mut edges = Vec::<(NodeId, NodeId, Weight)>::new();
+    edges.reserve_exact(ego_to_focus.len().saturating_sub(1));
+
+    log_verbose!("Process shortest path.");
+
+    for k in 0..ego_to_focus.len().saturating_sub(1) {
+      let a = ego_to_focus[k];
+      let b = ego_to_focus[k + 1];
+      let a_info_opt = node_infos.get(a);
+      let b_info_opt = node_infos.get(b);
+      let a_b_weight = self.edge_weight_normalized(a, b);
+
+      let a_kind_opt = match a_info_opt {
+        Some(info) => Some(info.kind),
+        None => None,
+      };
+
+      let b_kind_opt = match b_info_opt {
+        Some(info) => Some(info.kind),
+        None => None,
+      };
+
+      if k + 2 == ego_to_focus.len() {
+        if a_kind_opt == Some(NodeKind::User) {
+          edges.push((a, b, a_b_weight));
+        } else {
+          log_verbose!("Ignore node: {:?}", node_infos[a].name);
+        }
+      } else if b_kind_opt != Some(NodeKind::User) {
+        log_verbose!("Ignore node: {:?}", node_infos[b].name);
+        if k + 2 < ego_to_focus.len() {
+          let c = ego_to_focus[k + 2];
+          let b_c_weight = self.edge_weight_normalized(b, c);
+          let a_c_weight = a_b_weight
+            * b_c_weight
+            * if a_b_weight < 0.0 && b_c_weight < 0.0 {
+              -1.0
+            } else {
+              1.0
+            };
+          edges.push((a, c, a_c_weight));
+        }
+      } else if a_kind_opt == Some(NodeKind::User) {
+        edges.push((a, b, a_b_weight));
+      } else {
+        log_verbose!("Ignore node: {:?}", node_infos[a].name);
+      }
+    }
+
+    log_verbose!("Add path to the graph.");
+
+    for (src, dst, weight) in edges {
+      if let std::collections::hash_map::Entry::Vacant(e) = indices.entry(src) {
+        let index = im_graph.add_node(src);
+        e.insert(index);
+        ids.insert(index, src);
+      }
+      self.add_edge_if_valid(im_graph, indices, ids, src, dst, weight);
+    }
+  }
+
+  fn add_edge_if_valid(
+    &self,
+    im_graph: &mut DiGraph<NodeId, Weight>,
+    indices: &mut HashMap<NodeId, NodeIndex>,
+    ids: &mut HashMap<NodeIndex, NodeId>,
+    src_id: NodeId,
+    dst_id: NodeId,
+    focus_dst_weight: Weight,
+  ) {
+    if let std::collections::hash_map::Entry::Vacant(e) = indices.entry(src_id) {
+      let index = im_graph.add_node(src_id);
+      e.insert(index);
+      ids.insert(index, src_id);
+    }
+    if let std::collections::hash_map::Entry::Vacant(e) = indices.entry(dst_id) {
+      let index = im_graph.add_node(dst_id);
+      e.insert(index);
+      ids.insert(index, dst_id);
+    }
+    if let (Some(focus_idx), Some(dst_idx)) =
+      (indices.get(&src_id), indices.get(&dst_id))
+    {
+      im_graph.add_edge(*focus_idx, *dst_idx, focus_dst_weight);
+    } else {
+      log_error!("Got invalid node id");
+    }
+  }
+
+  pub fn all_outbound_neighbors_normalized(
+    &self,
+    node: NodeId,
+  ) -> Vec<(NodeId, Weight)> {
+    log_trace!("{}", node);
+
+    let mut v = vec![];
+
+    match self.mr.graph.get_node_data(node) {
+      None => {},
+      Some(data) => {
+        v.reserve_exact(data.pos_edges.len() + data.neg_edges.len());
+
+        let abs_sum = if data.pos_sum < EPSILON {
+          log_warning!(
+            "Unable to normalize node weight, positive sum is zero."
+          );
+          1.0
+        } else {
+          data.abs_sum()
+        };
+
+        for x in &data.pos_edges {
+          v.push((*x.0, *x.1 / abs_sum));
+        }
+
+        for x in &data.neg_edges {
+          v.push((*x.0, -*x.1 / abs_sum));
+        }
+      },
+    }
+    v
+  }
+
+  fn add_focus_neighbor_connections(
+    &self,
+    focus_id: NodeId,
+    im_graph: &mut DiGraph<NodeId, Weight>,
+    indices: &mut HashMap<NodeId, NodeIndex>,
+    ids: &mut HashMap<NodeIndex, NodeId>,
+    node_infos: &Vec<NodeInfo>,
+    positive_only: bool,
+    focus_neighbors: &[(NodeId, Weight)],
+  ) {
+    log_trace!();
+
+    for (dst_id, focus_dst_weight) in focus_neighbors.iter() {
+      let dst_kind_opt = match node_infos.get(*dst_id) {
+        Some(x) => Some(x.kind),
+        None => None,
+      };
+
+      if positive_only && *focus_dst_weight <= 0.0 {
+        continue;
+      }
+
+      if dst_kind_opt == Some(NodeKind::User) {
+        self.add_edge_if_valid(
+          im_graph,
+          indices,
+          ids,
+          focus_id,
+          *dst_id,
+          *focus_dst_weight,
+        );
+      } else if dst_kind_opt == Some(NodeKind::Comment)
+        || dst_kind_opt == Some(NodeKind::Beacon)
+        || dst_kind_opt == Some(NodeKind::Opinion)
+      {
+        let dst_neighbors = self.all_outbound_neighbors_normalized(*dst_id);
+        for (ngh_id, dst_ngh_weight) in dst_neighbors {
+          if (positive_only && dst_ngh_weight <= 0.0)
+            || ngh_id == focus_id
+            || match node_infos.get(ngh_id) {
+              Some(x) => Some(x.kind),
+              None => None,
+            } != Some(NodeKind::User)
+          {
+            continue;
+          }
+          let focus_ngh_weight = (*focus_dst_weight)
+            * dst_ngh_weight
+            * if *focus_dst_weight < 0.0 && dst_ngh_weight < 0.0 {
+              -1.0
+            } else {
+              1.0
+            };
+          self.add_edge_if_valid(
+            im_graph,
+            indices,
+            ids,
+            focus_id,
+            ngh_id,
+            focus_ngh_weight,
+          );
+        }
+      }
+    }
+  }
+
+  fn remove_self_references_from_im_graph(
+    &self,
+    im_graph: &mut DiGraph<NodeId, Weight>,
+    indices: &HashMap<NodeId, NodeIndex>,
+  ) {
+    log_trace!();
+
+    for (_, src_index) in indices.iter() {
+      let mut edges_to_remove = Vec::new();
+      for edge in im_graph.edges(*src_index) {
+        if edge.target() == *src_index {
+          edges_to_remove.push(edge.id());
+        }
+      }
+      for edge_id in edges_to_remove {
+        im_graph.remove_edge(edge_id);
+      }
+    }
+  }
+
+  fn extract_unique_edges_from_graph_data(
+    &self,
+    indices: &HashMap<NodeId, NodeIndex>,
+    ids: &HashMap<NodeIndex, NodeId>,
+    im_graph: &DiGraph<NodeId, Weight>,
+  ) -> Vec<(NodeId, NodeId, Weight)> {
+    log_trace!();
+
+    let mut edge_ids = Vec::<(NodeId, NodeId, Weight)>::new();
+    // Pre-allocate with a reasonable guess, though actual number of unique edges can vary.
+    edge_ids.reserve_exact(indices.len() * 2);
+
+    for src_index in indices.values() {
+      for edge in im_graph.edges(*src_index) {
+        if let (Some(&src_id), Some(&dst_id)) = // Dereference here
+          (ids.get(src_index), ids.get(&edge.target()))
+        {
+          let w = *edge.weight();
+          if w > -EPSILON && w < EPSILON {
+            // Check for zero weight
+            log_error!(
+              "Got zero edge weight: {} -> {}",
+              src_id,
+              dst_id
+            );
+          } else {
+            // Check for duplicate edges before pushing
+            let mut found = false;
+            for (x, y, _) in edge_ids.iter() {
+              if src_id == *x && dst_id == *y {
+                found = true;
+                break;
+              }
+            }
+            if !found {
+              edge_ids.push((src_id, dst_id, w));
+            }
+          }
+        } else {
+          log_error!("Got invalid node index during edge extraction");
+        }
+      }
+    }
+    edge_ids
+  }
+
+  fn fetch_score(&self, ego: NodeId, dst: NodeId) -> (NodeScore, NodeCluster) {
+    self.apply_score_clustering(
+      ego,
+      self.fetch_raw_score(ego, dst),
+      self.nodes.id_to_info[ego].kind
+    )
+  }
+
+  fn get_object_owner(&self, node: NodeId) -> Option<NodeId> {
+    Some(node) // FIXME: Somehow this function was broken...
+  }
+
+  fn sort_paginate_and_format_graph_edges(
+    &self,
+    mut edge_ids: Vec<(NodeId, NodeId, Weight)>,
+    ego_id: NodeId,
+    index: u32,
+    count: u32,
+  ) -> Vec<GraphResult> {
+    edge_ids.sort_by(|(_, _, a), (_, _, b)| b.abs().total_cmp(&a.abs()));
+
+    edge_ids
+      .into_iter()
+      .skip(index as usize)
+      .take(count as usize)
+      .map(|(src_id, dst_id, weight_of_dst)| {
+        let (score_value_of_dst, score_cluster_of_dst) =
+          self.fetch_score(ego_id, dst_id);
+        let (score_value_of_ego, score_cluster_of_ego) =
+          match self.get_object_owner(dst_id) {
+            Some(dst_owner_id) => {
+              self.fetch_score_cached(dst_owner_id, ego_id)
+            },
+            None => (0.0, 0),
+          };
+
+        GraphResult {
+          src: self.nodes.id_to_info[src_id].name.clone(),
+          dst: self.nodes.id_to_info[dst_id].name.clone(),
+          weight: weight_of_dst,
+          score: score_value_of_dst,
+          reverse_score: score_value_of_ego,
+          cluster: score_cluster_of_dst,
+          reverse_cluster: score_cluster_of_ego,
+        }
+      })
+      .collect()
+  }
+
+  fn collect_all_edges(
+    &self,
+    indices: &HashMap<NodeId, NodeIndex>,
+    ids: &HashMap<NodeIndex, NodeId>,
+    im_graph: &DiGraph<NodeId, Weight>,
+    ego_id: NodeId,
+    index: u32,
+    count: u32,
+  ) -> Vec<GraphResult> {
+    let unique_edges =
+      self.extract_unique_edges_from_graph_data(indices, ids, im_graph);
+    self.sort_paginate_and_format_graph_edges(
+      unique_edges,
+      ego_id,
+      index,
+      count,
+    )
+  }
+
+  pub fn read_graph(&self, data: OpReadGraph) -> Vec<GraphResult> {
+    log_command!("{:?}", data);
+
+    let ego_str = &data.ego;
+    let focus_str = &data.focus;
+    let positive_only = data.positive_only;
+    let index = data.index;
+    let count = data.count;
+
+    let (ego_id, focus_id, mut im_graph, mut indices, mut ids) = match self
+      .validate_read_graph_params_and_setup(ego_str, focus_str)
+    {
+      Ok(data) => data,
+      Err(msg) => {
+        log_error!("{}", msg);
+        return vec![];
+      },
+    };
+
+    let node_infos = self.nodes.id_to_info.clone();
+    let force_read_graph_conn = self.settings.force_read_graph_conn;
+
+    if ego_id == focus_id {
+      log_verbose!("Ego is same as focus");
+    } else {
+      self.add_shortest_path_to_graph(
+        &node_infos, ego_id, focus_id, &mut indices, &mut ids, &mut im_graph,
+      );
+    }
+
+    if force_read_graph_conn && !indices.contains_key(&ego_id) {
+      self.add_edge_if_valid(&mut im_graph, &mut indices, &mut ids, ego_id, focus_id, 1.0);
+    }
+
+    let focus_neighbors = self.all_outbound_neighbors_normalized(focus_id);
+
+    self.add_focus_neighbor_connections(
+      focus_id,
+      &mut im_graph,
+      &mut indices,
+      &mut ids,
+      &node_infos,
+      positive_only,
+      &focus_neighbors,
+    );
+
+    self.remove_self_references_from_im_graph(&mut im_graph, &indices);
+
+    let edges = self.collect_all_edges(
+      &indices,
+      &ids,
+      &im_graph,
+      ego_id,
+      index as u32,
+      count as u32,
+    );
+
+    edges
+  }
+
+  pub fn fetch_neighbors(
+      &self,
+      ego_id: NodeId,
+      focus_id: NodeId,
+      dir: i64,
+  ) -> Vec<(NodeInfo, Weight, NodeCluster)> {
+      log_trace!("{} {} {:?}", ego_id, focus_id, dir);
+
+      let node_data = match self.mr.graph.get_node_data(focus_id) {
+          Some(data) => data,
+          None => {
+              log_warning!("Node not found: {}", focus_id);
+              return vec![];
+          }
+      };
+
+      let edges: Vec<_> = match dir {
+          NEIGHBORS_OUTBOUND => node_data.pos_edges.iter().collect(),
+          NEIGHBORS_INBOUND => node_data.neg_edges.iter().collect(),
+          NEIGHBORS_ALL => node_data.pos_edges.iter().chain(node_data.neg_edges.iter()).collect(),
+          _ => {
+            log_error!("Invalid direction: {}", dir);
+            return vec![];
+          },
+      };
+
+      edges.into_iter()
+          .map(|(dst_id, &weight)| {
+              let (_score, cluster) = self.fetch_score_cached(ego_id, *dst_id);
+              (self.nodes.get_by_id(*dst_id).unwrap().clone(), weight, cluster)
+          })
+          .collect()
+  }
+
+  pub fn read_neighbors(&self, data: OpReadNeighbors) -> Vec<ScoreResult> {
+    log_command!("{:?}", data);
+
+    let kind_opt = data.kind;
+
+    let dir = data.direction;
+
+    if dir != NEIGHBORS_INBOUND && dir != NEIGHBORS_OUTBOUND && dir != NEIGHBORS_ALL {
+      log_error!("Invalid direction: {}", dir);
+      return vec![];
+    }
+
+    let ego = &data.ego;
+    let focus = &data.focus;
+
+    let ego_info = match self.nodes.get_by_name(ego) {
+      Some(x) => x,
+      _ => {
+        log_error!("Node not found: {:?}", ego);
+        return vec![];
+      },
+    };
+
+    let ego_id = ego_info.id;
+
+    let focus_id = match self.nodes.get_by_name(focus) {
+      Some(x) => x.id,
+      _ => {
+        log_error!("Node not found: {:?}", focus);
+        return vec![];
+      },
+    };
+
+    // Handling the special case - dirty hack - of returning
+    // poll results through the neighbors method.
+
+    if kind_opt == Some(NodeKind::PollVariant)
+      && node_kind_from_prefix(ego) == Some(NodeKind::User)
+      && node_kind_from_prefix(focus) == Some(NodeKind::Poll)
+      && dir == NEIGHBORS_INBOUND
+    {
+      log_error!("Poll variant not implemented.");
+      return vec![];
+    }
+
+    let mut scores = self.fetch_neighbors(ego_id, focus_id, dir);
+
+    if kind_opt == Some(NodeKind::Opinion) && dir == NEIGHBORS_INBOUND {
+      scores.retain(|(node_info, _, _)| {
+        self.get_object_owner(node_info.id) != Some(focus_id)
+      });
+    }
+
+    self.apply_filters_and_pagination(
+      scores,
+      ego_info,
+      &FilterOptions {
+        node_kind: None,
+        hide_personal: data.hide_personal,
+        score_lt: data.lt,
+        score_lte: data.lte,
+        score_gt: data.gt,
+        score_gte: data.gte,
+        index: data.index,
+        count: data.count,
+      },
+      true,
+    )
+  }
+
+  pub fn read_mutual_scores(&self, data: OpReadMutualScores) -> Vec<ScoreResult> {
+    log_command!("{:?}", data);
+
+    let ego_info = match self.nodes.get_by_name(&data.ego) {
+      Some(x) => x,
+      None => {
+        log_error!("Node not found: {:?}", data.ego);
+        return vec![];
+      },
+    };
+
+    let ego_id = ego_info.id;
+
+    let ranks = self.fetch_all_scores(&ego_info);
+    let mut v =
+      Vec::<ScoreResult>::new();
+    v.reserve_exact(ranks.len());
+
+    for (node, score_value_of_dst, score_cluster_of_dst) in ranks {
+      if score_value_of_dst > 0.0 && node.kind == NodeKind::User {
+        let (score_value_of_ego, score_cluster_of_ego) =
+          match self.get_object_owner(node.id) {
+            Some(dst_owner_id) => {
+              self.fetch_score_cached(dst_owner_id, ego_id)
+            },
+            None => (0.0, 0),
+          };
+        v.push(ScoreResult {
+          ego: data.ego.clone(),
+          target: node.name,
+          score: score_value_of_dst,
+          reverse_score: score_value_of_ego,
+          cluster: score_cluster_of_dst,
+          reverse_cluster: score_cluster_of_ego,
+        });
+      }
+    }
+    v
   }
 
   fn apply_filters_and_pagination(
@@ -853,13 +1654,13 @@ impl AugGraph {
     prioritize_ego_owned_nodes: bool,
   ) -> Vec<ScoreResult> {
     let mut filtered_sorted_scores =
-      self._filter_and_sort_scores(scores, ego_info, filter_options);
+      self.filter_and_sort_scores(scores, ego_info, filter_options);
 
     if prioritize_ego_owned_nodes {
-      self._prioritize_ego_owned_items(&mut filtered_sorted_scores, ego_info);
+      self.prioritize_ego_owned_items(&mut filtered_sorted_scores, ego_info);
     }
 
-    self._paginate_and_format_items(
+    self.paginate_and_format_items(
       filtered_sorted_scores,
       ego_info,
       filter_options.index,
@@ -867,7 +1668,7 @@ impl AugGraph {
     )
   }
 
-  fn _filter_and_sort_scores(
+  fn filter_and_sort_scores(
     &self,
     scores: Vec<(NodeInfo, NodeScore, NodeCluster)>,
     ego_info: &NodeInfo,
@@ -898,7 +1699,7 @@ impl AugGraph {
     filtered_scores
   }
 
-  fn _prioritize_ego_owned_items(
+  fn prioritize_ego_owned_items(
     &self,
     items: &mut Vec<(NodeInfo, NodeScore, NodeCluster)>,
     ego_info: &NodeInfo,
@@ -914,7 +1715,7 @@ impl AugGraph {
     }
   }
 
-  fn _paginate_and_format_items(
+  fn paginate_and_format_items(
     &self,
     items: Vec<(NodeInfo, NodeScore, NodeCluster)>,
     ego_info: &NodeInfo,
@@ -1089,41 +1890,6 @@ impl AugGraph {
       },
     }
   }
-
-  // pub fn fetch_neighbors(
-  //   &self,
-  //   ego_id: NodeId,
-  //   focus_id: NodeId,
-  //   dir: NeighborDirection,
-  // ) -> Vec<(NodeId, Weight, NodeCluster)> {
-  //   log_trace!("{} {} {:?}", ego_id, focus_id, dir);
-
-  //   let node_data = match self.mr.graph.get_node_data(focus_id) {
-  //     Some(data) => data,
-  //     None => {
-  //       log_warning!("Node not found: {}", focus_id);
-  //       return vec![];
-  //     },
-  //   };
-
-  //   let edges: Vec<_> = match dir {
-  //     NeighborDirection::Outbound => node_data.pos_edges.iter().collect(),
-  //     NeighborDirection::Inbound => node_data.neg_edges.iter().collect(),
-  //     NeighborDirection::All => node_data
-  //       .pos_edges
-  //       .iter()
-  //       .chain(node_data.neg_edges.iter())
-  //       .collect(),
-  //   };
-
-  //   edges
-  //     .into_iter()
-  //     .map(|(dst_id, &weight)| {
-  //       let (_score, cluster) = self.fetch_score_cached(ego_id, *dst_id);
-  //       (*dst_id, weight, cluster)
-  //     })
-  //     .collect()
-  // }
 }
 
 #[derive(Debug)]
@@ -1287,6 +2053,189 @@ impl AugGraph {
     };
   }
 
+  pub fn reduced_graph(
+    &mut self,
+    infos: &[NodeInfo],
+    num_walks: usize,
+  ) -> Vec<(NodeId, NodeId, Weight)> {
+    log_trace!();
+
+    let mut all_edges = vec![];
+
+    for src in 0..infos.len() {
+      if let Some(data) = self.mr.graph.get_node_data(src) {
+        for (dst, _) in &data.pos_edges {
+          all_edges.push((src, *dst));
+        }
+
+        for (dst, _) in &data.neg_edges {
+          all_edges.push((src, *dst));
+        }
+      }
+    }
+
+    let users: Vec<NodeId> = infos
+      .iter()
+      .enumerate()
+      .filter(|(_id, info)| info.kind == NodeKind::User)
+      .filter(|(id, _info)| {
+        for (src, dst) in &all_edges {
+          if *id == *src || *id == *dst {
+            return true;
+          }
+        }
+        false
+      })
+      .map(|(id, _info)| id)
+      .collect();
+
+    if users.is_empty() {
+      return vec![];
+    }
+
+    for id in users.iter() {
+      match self.mr.calculate(*id, num_walks) {
+        Ok(_) => {},
+        Err(e) => log_error!("{}", e),
+      };
+    }
+
+    let edges: Vec<(NodeId, NodeId, Weight)> = users
+      .into_iter()
+      .flat_map(|id| -> Vec<(NodeId, NodeId, Weight)> {
+        self
+          .fetch_all_raw_scores(id, 0.0)
+          .into_iter()
+          .map(|(node_id, score)| (id, node_id, score))
+          .filter(|(ego_id, node_id, score)| {
+            let kind = infos[*node_id].kind;
+
+            (kind == NodeKind::User || kind == NodeKind::Beacon)
+              && *score > EPSILON
+              && ego_id != node_id
+          })
+          .collect()
+      })
+      .collect();
+
+    let result: Vec<(NodeId, NodeId, Weight)> = edges
+      .into_iter()
+      .map(|(ego_id, dst_id, weight)| {
+        let ego_kind = infos[ego_id].kind;
+        let dst_kind = infos[dst_id].kind;
+        (ego_id, ego_kind, dst_id, dst_kind, weight)
+      })
+      .filter(|(ego_id, ego_kind_opt, dst_id, dst_kind_opt, _)| {
+        ego_id != dst_id
+          && *ego_kind_opt == NodeKind::User
+          && (*dst_kind_opt == NodeKind::User || *dst_kind_opt == NodeKind::Beacon)
+      })
+      .map(|(ego_id, _, dst_id, _, weight)| (ego_id, dst_id, weight))
+      .collect();
+
+    result
+  }
+
+  pub fn top_nodes(
+    &mut self,
+    infos: &[NodeInfo],
+    top_nodes_limit: usize,
+    num_walks: usize,
+  ) -> Vec<(NodeId, f64)> {
+    log_trace!();
+
+    let reduced = self.reduced_graph(infos, num_walks);
+
+    if reduced.is_empty() {
+      log_error!("Reduced graph is empty");
+      return vec![];
+    }
+
+    // TODO: remove PageRank in favor of direct sum of scores
+    // Actually, instead of calculating page rank it is
+    // possible to just sum all the scores by each user for each other.
+    // The result should be the same after normalization.
+    let mut pr = Pagerank::<NodeId>::new();
+
+    reduced
+      .iter()
+      .filter(|(_src, _dst, weight)| !(*weight > -EPSILON && *weight < EPSILON))
+      .for_each(|(src, dst, _weight)| {
+        pr.add_edge(*src, *dst);
+      });
+
+    log_verbose!("Calculate page rank");
+    pr.calculate();
+
+    let (nodes, scores): (Vec<NodeId>, Vec<f64>) = pr
+        .nodes()  // already sorted by score
+        .into_iter()
+        .take(top_nodes_limit)
+        .unzip();
+
+    let res = nodes.into_iter().zip(scores).collect::<Vec<_>>();
+
+    if res.is_empty() {
+      log_error!("No top nodes");
+    }
+
+    res
+  }
+
+  pub fn recalculate_all_users(
+    &mut self,
+    infos: &[NodeInfo],
+    num_walk: usize,
+  ) {
+    log_trace!("{}", num_walk);
+
+    for id in 0..infos.len() {
+      if (id % 100) == 90 {
+        log_verbose!("{}%", (id * 100) / infos.len());
+      }
+      if infos[id].kind == NodeKind::User {
+        match self.mr.calculate(id, num_walk) {
+          Ok(_) => {},
+          Err(e) => log_error!("{}", e),
+        };
+      }
+    }
+  }
+
+  fn recalculate_zero(&mut self) {
+    log_command!();
+
+    let infos = self.nodes.id_to_info.clone();
+
+    //  Save the current state of the graph
+    let data_bak = self.mr.clone();
+
+    self.recalculate_all_users(&infos, 0);
+    let nodes = self.top_nodes(
+      &infos,
+      self.settings.top_nodes_limit,
+      self.settings.zero_opinion_num_walks,
+    );
+
+    //  Drop all walks and make sure to empty caches.
+    self.recalculate_all_users(&infos, 0);
+    self.cached_scores = Cache::new(self.settings.scores_cache_size as u64);
+    // self.cached_walks = LruCache::new(self.settings.walks_cache_size);
+
+    self.zero_opinion = vec![];
+    self.zero_opinion.reserve(nodes.len());
+
+    for (node_id, amount) in nodes.iter() {
+      if *node_id >= self.zero_opinion.len() {
+        self.zero_opinion.resize(*node_id + 1, 0.0);
+      }
+      self.zero_opinion[*node_id] = *amount;
+    }
+
+    //  Reset the graph
+    self.mr = data_bak;
+  }
+
   fn reg_owner_and_get_ids(
     &mut self,
     src: NodeName,
@@ -1311,7 +2260,15 @@ impl AugGraph {
             .register_with_owner(&mut self.mr, dst, src_kind, src_id);
         Ok((src_id, dst_id))
       },
-      _ => Err(AugGraphError::IncorrectNodeKinds(src, dst)),
+      _ => {
+        if self.settings.legacy_connections_mode {
+          let src_id = self.nodes.register(&mut self.mr, src, NodeKind::User);
+          let dst_id = self.nodes.register(&mut self.mr, dst, NodeKind::User);
+          Ok((src_id, dst_id))
+        } else {
+          Err(AugGraphError::IncorrectNodeKinds(src, dst))
+        }
+      },
     }
   }
 }

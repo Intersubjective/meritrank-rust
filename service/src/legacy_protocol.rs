@@ -48,9 +48,12 @@ pub const CMD_CREATE_CONTEXT: &str = "create_context";
 pub const CMD_SET_ZERO_OPINION: &str = "set_zero_opinion";
 pub const CMD_NEIGHBORS: &str = "neighbors";
 
-// pub const NEIGHBORS_ALL: i64 = 0;
-// pub const NEIGHBORS_OUTBOUND: i64 = 1;
-// pub const NEIGHBORS_INBOUND: i64 = 2;
+#[allow(unused)]
+pub const NEIGHBORS_ALL: i64 = 0;
+#[allow(unused)]
+pub const NEIGHBORS_OUTBOUND: i64 = 1;
+#[allow(unused)]
+pub const NEIGHBORS_INBOUND: i64 = 2;
 
 #[derive(Clone, Debug)]
 pub struct Command {
@@ -118,25 +121,3 @@ where
     Err(e) => Err(e.to_string()),
   }
 }
-
-// #[derive(Debug, Clone, Copy, PartialEq)]
-// pub enum NeighborDirection {
-//   All,
-//   Outbound,
-//   Inbound,
-// }
-
-// pub fn neighbor_dir_from(
-//   direction: i64
-// ) -> Result<NeighborDirection, ServiceError> {
-//   match direction {
-//     NEIGHBORS_ALL => Ok(NeighborDirection::All),
-//     NEIGHBORS_OUTBOUND => Ok(NeighborDirection::Outbound),
-//     NEIGHBORS_INBOUND => Ok(NeighborDirection::Inbound),
-//     _ => {
-//       let err_msg = format!("Invalid direction: {}", direction);
-//       log_error!("{}", err_msg);
-//       Err(ServiceError::Internal(err_msg))
-//     },
-//   }
-// }

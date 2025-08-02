@@ -10,7 +10,9 @@ use nng::{Aio, AioResult, Context, Protocol, Socket};
 use std::{
   string::ToString,
   sync::{atomic::Ordering, Arc},
+  collections::HashSet,
 };
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 fn kind_from_prefix(prefix: NodeName) -> Option<NodeKind> {
@@ -57,7 +59,7 @@ fn request_from_command(command: &Command) -> Option<Request> {
       {
         return Some(Request {
           subgraph: command.context.clone(),
-          data:     ReqData::WriteSetZeroOpinion(OpWriteSetZeroOpinion {
+          data:     ReqData::WriteZeroOpinion(OpWriteZeroOpinion {
             node,
             score,
           }),
@@ -312,9 +314,8 @@ fn encode_response_dispatch(
 async fn decode_and_handle_request(
   state: Arc<MultiGraphProcessor>,
   request: &[u8],
+  node_names: &mut HashSet<String>,
 ) -> Result<Vec<u8>, ServiceError> {
-  //  TODO: On CMD_PUT_EDGE, perform `calculate` for new nodes.
-
   log_trace!();
 
   let command = decode_request(request)?;
@@ -351,7 +352,7 @@ async fn decode_and_handle_request(
     CMD_LOG_LEVEL => {
       if let Ok(log_level) = rmp_serde::from_slice(command.payload.as_slice()) {
         let _: u32 = log_level; // For type annotation.
-                                //  NOTE: Log level ignored.
+                                // NOTE: Log level ignored.
                                 // return encode_response(&write_ops::write_log_level(log_level));
       }
       let err_msg = "Invalid payload.".to_string();
@@ -363,6 +364,9 @@ async fn decode_and_handle_request(
       // sync(state);
       return encode_response(&());
     },
+    CMD_RESET => {
+      node_names.clear();
+    },
     _ => {},
   }
 
@@ -371,32 +375,46 @@ async fn decode_and_handle_request(
   //  NOTE: command.blocking ignored.
 
   if let Some(request_data) = request {
+    if let ReqData::WriteEdge(ref write_edge) = request_data.data {
+      let subgraph = request_data.subgraph.clone();
+      let src = write_edge.src.clone();
+      let dst = write_edge.dst.clone();
+
+      //  FIXME: Refactor code duplication.
+
+      if !node_names.contains(&src) {
+        let _ = state.process_request(&Request {
+          subgraph: subgraph.clone(),
+          data: ReqData::WriteCalculate (OpWriteCalculate {
+            ego: src.clone(),
+          }),
+        }).await;
+
+        node_names.insert(src);
+      }
+
+      if !node_names.contains(&dst) {
+        let _ = state.process_request(&Request {
+          subgraph,
+          data: ReqData::WriteCalculate (OpWriteCalculate {
+            ego: dst.clone(),
+          }),
+        }).await;
+
+        node_names.insert(dst);
+      }
+    }
+
     let response = state.process_request(&request_data).await;
     return encode_response_dispatch(response);
   } else {
     return Err(ServiceError::Internal("Process failed".into()));
   }
-
-  // if !command.blocking {
-  //   let _ = queue(state, request); // Assuming queue handles its own errors or is infallible
-  //   encode_response(&())
-  // } else {
-  //   let begin = SystemTime::now();
-
-  //   let response = perform(state, request); // Assuming perform handles its own errors or is infallible
-
-  //   let duration = SystemTime::now().duration_since(begin).unwrap().as_secs();
-
-  //   if duration > 5 {
-  //     log_warning!("Command was done in {} seconds.", duration);
-  //   }
-
-  //   encode_response_dispatch(response)
-  // }
 }
 
 async fn worker_callback(
   state: Arc<MultiGraphProcessor>,
+  node_names: Arc<Mutex<HashSet<String>>>,
   aio: Aio,
   ctx: &Context,
   res: AioResult,
@@ -412,7 +430,9 @@ async fn worker_callback(
     },
 
     AioResult::Recv(Ok(req)) => {
-      let msg: Vec<u8> = decode_and_handle_request(state, req.as_slice())
+      let mut node_names_ref = node_names.lock().await;
+      
+      let msg: Vec<u8> = decode_and_handle_request(state, req.as_slice(), &mut node_names_ref)
         .await
         .unwrap_or_else(|_| {
           encode_response(&"Internal error, see server logs".to_string())
@@ -444,6 +464,7 @@ async fn worker_callback(
 
 async fn nng_task(
   state: Arc<MultiGraphProcessor>,
+  node_names: Arc<Mutex<HashSet<String>>>,
   url: &str,
   num_workers: usize,
   running: CancellationToken,
@@ -460,15 +481,17 @@ async fn nng_task(
       let ctx = Context::new(&nng_socket)?;
       let ctx_cloned = ctx.clone();
       let state_cloned = Arc::clone(&state);
+      let node_names_cloned = node_names.clone();
       let aio = Aio::new(move |aio, res| {
         //  HACK
         //  HACK
         //  HACK
         let ctx_cloned2 = ctx_cloned.clone();
         let state_cloned2 = Arc::clone(&state_cloned);
+        let node_names_cloned2 = node_names_cloned.clone();
         let runtime = tokio::runtime::Runtime::new().unwrap();
         runtime.block_on(async move {
-          worker_callback(state_cloned2, aio, &ctx_cloned2, res).await;
+          worker_callback(state_cloned2, node_names_cloned2, aio, &ctx_cloned2, res).await;
         });
       })?;
       Ok((aio, ctx))
@@ -499,12 +522,14 @@ pub async fn run(
 
   let running_cloned = running.clone();
 
+  let node_names = Arc::new(Mutex::new(HashSet::<String>::new()));
+
   tokio::select! {
     _ = running.cancelled() => {
       log_verbose!("Legacy Server stopped.");
     },
     _ = tokio::spawn(async move {
-      match nng_task(state, &settings.url, settings.num_threads, running_cloned).await {
+      match nng_task(state, node_names, &settings.url, settings.num_threads, running_cloned).await {
         _ => {},
       }
     }) => {},
@@ -534,7 +559,7 @@ mod tests {
         },
         Arc::new(MultiGraphProcessor::new(MultiGraphProcessorSettings {
           sleep_duration_after_publish_ms: 0,
-          subgraph_queue_capacity:         1024,
+          ..MultiGraphProcessorSettings::default()
         })),
         running_clonned,
       )
@@ -562,7 +587,7 @@ mod tests {
         },
         Arc::new(MultiGraphProcessor::new(MultiGraphProcessorSettings {
           sleep_duration_after_publish_ms: 0,
-          subgraph_queue_capacity:         1024,
+          ..MultiGraphProcessorSettings::default()
         })),
         running_clonned,
       )
@@ -614,7 +639,11 @@ mod tests {
     let scores: Vec<(String, String, f64, f64, i32, i32)> =
       decode_response(response.as_slice()).unwrap();
 
-    assert!(scores.len() == 0);
+    assert!(scores.len() == 2);
+    assert!(scores[0].2 > 0.35);
+    assert!(scores[0].2 < 0.50);
+    assert!(scores[1].2 > 0.25);
+    assert!(scores[1].2 < 0.45);
 
     running.cancel();
     let _ = timeout(Duration::from_secs(1), &mut server_task)

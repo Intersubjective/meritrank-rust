@@ -167,7 +167,7 @@ mod tests {
         },
         Arc::new(MultiGraphProcessor::new(MultiGraphProcessorSettings {
           sleep_duration_after_publish_ms: 0,
-          subgraph_queue_capacity:         1024,
+          ..MultiGraphProcessorSettings::default()
         })),
         running_clonned,
       )
@@ -194,7 +194,7 @@ mod tests {
         },
         Arc::new(MultiGraphProcessor::new(MultiGraphProcessorSettings {
           sleep_duration_after_publish_ms: 0,
-          subgraph_queue_capacity:         1024,
+          ..MultiGraphProcessorSettings::default()
         })),
         running_clonned,
       )
@@ -289,7 +289,7 @@ mod tests {
         },
         Arc::new(MultiGraphProcessor::new(MultiGraphProcessorSettings {
           sleep_duration_after_publish_ms: 0,
-          subgraph_queue_capacity:         1024,
+          ..MultiGraphProcessorSettings::default()
         })),
         running_clonned,
       )
