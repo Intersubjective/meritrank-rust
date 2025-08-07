@@ -38,10 +38,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
   let processor = Arc::new(MultiGraphProcessor::new(settings.clone()));
 
-  let _legacy_server = legacy_request_handler::run(
-    settings.clone(),
-    Arc::clone(&processor)
-  );
+  let _legacy_server =
+    legacy_request_handler::run(settings.clone(), Arc::clone(&processor));
 
   let _ = run_server(settings, processor, CancellationToken::new()).await;
 

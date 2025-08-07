@@ -21,7 +21,7 @@ pub struct ConcurrentDataProcessor<T, Op> {
 
 pub struct MultiGraphProcessor {
   pub subgraphs_map: DashMap<SubgraphName, GraphProcessor>,
-  settings:      Settings,
+  settings:          Settings,
 }
 
 pub type GraphProcessor = ConcurrentDataProcessor<AugGraph, AugGraphOp>;

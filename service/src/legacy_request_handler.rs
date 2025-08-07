@@ -15,7 +15,7 @@ use std::{
 };
 
 pub struct LegacyServer {
-  pub _socket: Socket,
+  pub _socket:  Socket,
   pub _workers: Vec<(Aio, Context)>,
 }
 
@@ -388,22 +388,22 @@ fn decode_and_handle_request(
 
       if !node_names.contains(&src) {
         let _ = state.process_request_sync(&Request {
-            subgraph: subgraph.clone(),
-            data:     ReqData::WriteCalculate(OpWriteCalculate {
-              ego: src.clone(),
-            }),
-          });
+          subgraph: subgraph.clone(),
+          data:     ReqData::WriteCalculate(OpWriteCalculate {
+            ego: src.clone(),
+          }),
+        });
 
         node_names.insert(src);
       }
 
       if !node_names.contains(&dst) {
         let _ = state.process_request_sync(&Request {
-            subgraph,
-            data: ReqData::WriteCalculate(OpWriteCalculate {
-              ego: dst.clone(),
-            }),
-          });
+          subgraph,
+          data: ReqData::WriteCalculate(OpWriteCalculate {
+            ego: dst.clone(),
+          }),
+        });
 
         node_names.insert(dst);
       }
@@ -485,7 +485,11 @@ pub fn run(
     settings.server_address, settings.legacy_server_port
   );
 
-  log_verbose!("Starting {} NNG workers on {}", settings.legacy_server_num_threads, url);
+  log_verbose!(
+    "Starting {} NNG workers on {}",
+    settings.legacy_server_num_threads,
+    url
+  );
 
   // Request/Reply NNG protocol.
   let nng_socket = Socket::new(Protocol::Rep0)?;
@@ -519,8 +523,8 @@ pub fn run(
   }
 
   Ok(LegacyServer {
-    _socket: nng_socket,
-    _workers: workers
+    _socket:  nng_socket,
+    _workers: workers,
   })
 }
 
@@ -541,7 +545,8 @@ mod tests {
     let _server = run(
       settings.clone(),
       Arc::new(MultiGraphProcessor::new(settings)),
-    ).unwrap();
+    )
+    .unwrap();
 
     sleep(Duration::from_millis(20)).await;
 

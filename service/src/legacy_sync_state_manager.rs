@@ -6,12 +6,12 @@
 //    There is a lot of duplicated logic here.
 //
 //    FIXME: Move to a separate file.
-//  
+//
 //  ============================================================
 
-use crate::state_manager::*;
 use crate::data::*;
 use crate::node_registry::*;
+use crate::state_manager::*;
 use crate::utils::log::*;
 use crate::vsids::Magnitude;
 
@@ -111,38 +111,30 @@ impl MultiGraphProcessor {
     let dst_kind_opt = node_kind_from_prefix(&data.dst);
 
     match (src_kind_opt, dst_kind_opt) {
-      (Some(NodeKind::User), Some(NodeKind::User)) => {
-        self
-          .process_user_to_user_edge_sync(
-            subgraph_name,
-            &data.src,
-            &data.dst,
-            data.amount,
-            data.magnitude,
-          )
-      },
+      (Some(NodeKind::User), Some(NodeKind::User)) => self
+        .process_user_to_user_edge_sync(
+          subgraph_name,
+          &data.src,
+          &data.dst,
+          data.amount,
+          data.magnitude,
+        ),
 
-      (Some(NodeKind::User), Some(NodeKind::PollVariant)) => {
-        self
-          .send_op_sync(
-            subgraph_name,
-            AugGraphOp::SetUserVote(OpSetUserVote {
-              user_id:    data.src.clone(),
-              variant_id: data.dst.clone(),
-              amount:     data.amount,
-            }),
-          )
-      },
-      (Some(NodeKind::PollVariant), Some(NodeKind::Poll)) => {
-        self
-          .send_op_sync(
-            subgraph_name,
-            AugGraphOp::AddPollVariant(OpAddPollVariant {
-              poll_id:    data.dst.clone(),
-              variant_id: data.src.clone(),
-            }),
-          )
-      },
+      (Some(NodeKind::User), Some(NodeKind::PollVariant)) => self.send_op_sync(
+        subgraph_name,
+        AugGraphOp::SetUserVote(OpSetUserVote {
+          user_id:    data.src.clone(),
+          variant_id: data.dst.clone(),
+          amount:     data.amount,
+        }),
+      ),
+      (Some(NodeKind::PollVariant), Some(NodeKind::Poll)) => self.send_op_sync(
+        subgraph_name,
+        AugGraphOp::AddPollVariant(OpAddPollVariant {
+          poll_id:    data.dst.clone(),
+          variant_id: data.src.clone(),
+        }),
+      ),
       (Some(src_kind), Some(dst_kind))
         if src_kind == NodeKind::PollVariant
           || src_kind == NodeKind::Poll
@@ -152,18 +144,15 @@ impl MultiGraphProcessor {
         log_error!("Unexpected edge type: {:?} -> {:?} in context {:?}. No action taken.", src_kind_opt, dst_kind_opt, subgraph_name);
         Response::Fail
       },
-      _ => {
-        self
-          .send_op_sync(
-            subgraph_name,
-            AugGraphOp::WriteEdge(OpWriteEdge {
-              src:       data.src.clone(),
-              dst:       data.dst.clone(),
-              amount:    data.amount,
-              magnitude: data.magnitude,
-            }),
-          )
-      },
+      _ => self.send_op_sync(
+        subgraph_name,
+        AugGraphOp::WriteEdge(OpWriteEdge {
+          src:       data.src.clone(),
+          dst:       data.dst.clone(),
+          amount:    data.amount,
+          magnitude: data.magnitude,
+        }),
+      ),
     }
   }
 
@@ -177,50 +166,42 @@ impl MultiGraphProcessor {
       ReqData::WriteEdge(data) => {
         self.process_write_edge_sync(&req.subgraph, &data)
       },
-      ReqData::WriteCalculate(data) => {
-        self
-          .send_op_sync(
-            &req.subgraph,
-            AugGraphOp::WriteCalculate(OpWriteCalculate {
-              ego: data.ego.clone(),
-            }),
-          )
-      },
+      ReqData::WriteCalculate(data) => self.send_op_sync(
+        &req.subgraph,
+        AugGraphOp::WriteCalculate(OpWriteCalculate {
+          ego: data.ego.clone(),
+        }),
+      ),
       ReqData::WriteCreateContext => {
         self.insert_subgraph_if_does_not_exist(&req.subgraph);
         Response::Ok
       },
-      ReqData::WriteDeleteEdge(data) => {
-        self
-          .process_write_edge_sync(
-            &req.subgraph,
-            &OpWriteEdge {
-              src:       data.src,
-              dst:       data.dst,
-              amount:    0.0,
-              magnitude: data.index as u32,
-            },
-          )
-      },
+      ReqData::WriteDeleteEdge(data) => self.process_write_edge_sync(
+        &req.subgraph,
+        &OpWriteEdge {
+          src:       data.src,
+          dst:       data.dst,
+          amount:    0.0,
+          magnitude: data.index as u32,
+        },
+      ),
       ReqData::WriteDeleteNode(_) => {
         log_warning!("Delete node request ignored!");
         Response::Ok
       },
-      ReqData::WriteZeroOpinion(data) => {
-        self
-          .send_op_sync(&req.subgraph, AugGraphOp::WriteZeroOpinion(data.clone()))
-      },
+      ReqData::WriteZeroOpinion(data) => self.send_op_sync(
+        &req.subgraph,
+        AugGraphOp::WriteZeroOpinion(data.clone()),
+      ),
       ReqData::WriteReset => {
         self.subgraphs_map.clear();
         Response::Ok
       },
       ReqData::WriteRecalculateZero => {
-        self
-          .send_op_sync(&req.subgraph, AugGraphOp::WriteRecalculateZero)
+        self.send_op_sync(&req.subgraph, AugGraphOp::WriteRecalculateZero)
       },
       ReqData::WriteRecalculateClustering => {
-        self
-          .send_op_sync(&req.subgraph, AugGraphOp::WriteRecalculateClustering)
+        self.send_op_sync(&req.subgraph, AugGraphOp::WriteRecalculateClustering)
       },
       ReqData::WriteFetchNewEdges(_) => {
         self.process_read(&req.subgraph, |_| {
