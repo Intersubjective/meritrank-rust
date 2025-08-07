@@ -17,7 +17,7 @@ pg_module_magic!();
 
 lazy_static! {
   static ref SERVICE_URL: String =
-    var("MERITRANK_SERVICE_URL").unwrap_or("tcp://127.0.0.1:8040".to_string());
+    var("MERITRANK_SERVICE_URL").unwrap_or("tcp://127.0.0.1:10234".to_string());
   static ref RECV_TIMEOUT_MSEC: u64 = var("MERITRANK_RECV_TIMEOUT_MSEC")
     .ok()
     .and_then(|s| s.parse::<u64>().ok())
