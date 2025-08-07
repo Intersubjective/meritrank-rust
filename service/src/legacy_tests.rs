@@ -331,7 +331,7 @@ async fn mutual_scores_uncontexted() {
   write_calculate(&proc, "U2").await;
   write_calculate(&proc, "U3").await;
 
-  sleep(Duration::from_millis(300)).await;
+  sleep(Duration::from_millis(400)).await;
 
   let res = proc
     .process_request(&Request {

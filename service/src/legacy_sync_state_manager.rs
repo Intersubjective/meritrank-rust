@@ -5,8 +5,6 @@
 //    Temporary solution for NNG compatibility.
 //    There is a lot of duplicated logic here.
 //
-//    FIXME: Move to a separate file.
-//
 //  ============================================================
 
 use crate::data::*;
