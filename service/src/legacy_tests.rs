@@ -317,6 +317,7 @@ async fn connected() {
 async fn mutual_scores_uncontexted() {
   let proc = MultiGraphProcessor::new(Settings {
     sleep_duration_after_publish_ms: 0,
+    num_walks: 500,
     ..Settings::default()
   });
 
