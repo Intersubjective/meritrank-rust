@@ -11,6 +11,7 @@ mod vsids;
 
 mod legacy_protocol;
 mod legacy_request_handler;
+mod legacy_sync_state_manager;
 
 #[cfg(test)]
 mod legacy_tests;
@@ -20,7 +21,6 @@ use crate::settings::*;
 use crate::state_manager::MultiGraphProcessor;
 use crate::utils::log::*;
 
-use tokio::join;
 use tokio_util::sync::CancellationToken;
 
 use std::{error::Error, sync::Arc};
@@ -38,15 +38,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
   let processor = Arc::new(MultiGraphProcessor::new(settings.clone()));
 
-  let legacy_server_task = legacy_request_handler::run(
+  let _legacy_server = legacy_request_handler::run(
     settings.clone(),
-    Arc::clone(&processor),
-    CancellationToken::new(),
+    Arc::clone(&processor)
   );
 
-  let server_task = run_server(settings, processor, CancellationToken::new());
-
-  let _ = join!(legacy_server_task, server_task);
+  let _ = run_server(settings, processor, CancellationToken::new()).await;
 
   Ok(())
 }

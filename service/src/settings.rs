@@ -35,7 +35,7 @@ pub struct Settings {
 impl Default for Settings {
   fn default() -> Self {
     Self {
-      legacy_server_port: 8040,
+      legacy_server_port: 10234,
       legacy_server_num_threads: 4,
       legacy_connections_mode: true,
       server_address: "127.0.0.1".into(),
@@ -119,6 +119,14 @@ pub fn load_from_env() -> Settings {
   load_var(
     "MERITRANK_SCORE_CLUSTERS_TIMEOUT",
     &mut s.score_clusters_timeout,
+  );
+  load_var(
+    "MERITRANK_SCORES_CACHE_SIZE",
+    &mut s.scores_cache_size,
+  );
+  load_var(
+    "MERITRANK_SCORES_CACHE_TIMEOUT",
+    &mut s.scores_cache_timeout,
   );
   load_var(
     "MERITRANK_OMIT_NEG_EDGES_SCORES",

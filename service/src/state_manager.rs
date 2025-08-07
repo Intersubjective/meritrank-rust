@@ -20,7 +20,7 @@ pub struct ConcurrentDataProcessor<T, Op> {
 }
 
 pub struct MultiGraphProcessor {
-  subgraphs_map: DashMap<SubgraphName, GraphProcessor>,
+  pub subgraphs_map: DashMap<SubgraphName, GraphProcessor>,
   settings:      Settings,
 }
 
@@ -89,7 +89,7 @@ impl MultiGraphProcessor {
     }
   }
 
-  fn get_tx_channel(
+  pub fn get_tx_channel(
     &self,
     subgraph_name: &SubgraphName,
   ) -> mpsc::Sender<AugGraphOp> {
@@ -127,7 +127,7 @@ impl MultiGraphProcessor {
     }
   }
 
-  fn process_read<F>(
+  pub fn process_read<F>(
     &self,
     subgraph_name: &SubgraphName,
     read_function: F,
@@ -430,7 +430,7 @@ impl MultiGraphProcessor {
     }
   }
 
-  fn insert_subgraph_if_does_not_exist(
+  pub fn insert_subgraph_if_does_not_exist(
     &self,
     subgraph_name: &SubgraphName,
   ) {
