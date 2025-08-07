@@ -1304,8 +1304,10 @@ impl AugGraph {
       return Err(AugGraphError::SelfReference);
     }
 
-    let (src, dst) = (src.clone(), dst.clone());
-    match (node_kind_from_prefix(&src), node_kind_from_prefix(&dst)) {
+    let opt_src_kind = node_kind_from_prefix(&src);
+    let opt_dst_kind = node_kind_from_prefix(&dst);
+
+    match (opt_src_kind, opt_dst_kind) {
       (Some(NodeKind::User), Some(NodeKind::User)) => {
         let src_id = self.nodes.register(&mut self.mr, src, NodeKind::User);
         let dst_id = self.nodes.register(&mut self.mr, dst, NodeKind::User);
@@ -1319,15 +1321,16 @@ impl AugGraph {
             .register_with_owner(&mut self.mr, dst, src_kind, src_id);
         Ok((src_id, dst_id))
       },
-      _ => {
+      (Some(src_kind), Some(dst_kind)) => {
         if self.settings.legacy_connections_mode {
-          let src_id = self.nodes.register(&mut self.mr, src, NodeKind::User);
-          let dst_id = self.nodes.register(&mut self.mr, dst, NodeKind::User);
+          let src_id = self.nodes.register(&mut self.mr, src, src_kind);
+          let dst_id = self.nodes.register(&mut self.mr, dst, dst_kind);
           Ok((src_id, dst_id))
         } else {
           Err(AugGraphError::IncorrectNodeKinds(src, dst))
         }
       },
+      _ => Err(AugGraphError::IncorrectNodeKinds(src, dst)),
     }
   }
 }
