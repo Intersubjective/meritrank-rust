@@ -118,6 +118,8 @@ impl MultiGraphProcessor {
     subgraph_name: &SubgraphName,
     op: AugGraphOp,
   ) -> Response {
+    //  NOTE: Duplicated logic with `send_op_sync`.
+
     log_trace!();
 
     if self.get_tx_channel(subgraph_name).send(op).await.is_ok() {
@@ -135,6 +137,8 @@ impl MultiGraphProcessor {
   where
     F: FnOnce(&AugGraph) -> Response,
   {
+    log_trace!();
+
     let subgraph = match self.subgraphs_map.get(subgraph_name) {
       Some(subgraph) => {
         log_verbose!("Found subgraph for name: {:?}", subgraph_name);
@@ -179,7 +183,12 @@ impl MultiGraphProcessor {
     &self,
     req: &Request,
   ) -> Response {
+    //  NOTE: Duplicated logic with `process_request_sync`.
+    //
     //  FIXME: No need to clone here, but borrow checker!!!
+
+    log_trace!();
+
     let data = req.data.clone();
 
     match data {
@@ -359,6 +368,8 @@ impl MultiGraphProcessor {
     subgraph_name: &SubgraphName,
     data: &OpWriteEdge,
   ) -> Response {
+    //  NOTE: Duplicated logic with `process_write_edge_sync`.
+
     log_trace!("{:?} {:?}", subgraph_name, data);
 
     if data.src == data.dst {
@@ -458,6 +469,8 @@ impl MultiGraphProcessor {
     amount: Weight,
     magnitude: Magnitude,
   ) -> Response {
+    //  NOTE: Duplicated logic with `process_user_to_user_edge_sync`.
+
     log_trace!();
 
     self.insert_subgraph_if_does_not_exist(subgraph_name);

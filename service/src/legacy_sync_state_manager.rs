@@ -5,6 +5,8 @@
 //    Temporary solution for NNG compatibility.
 //    There is a lot of duplicated logic here.
 //
+//  FIXME: Factor out duplicated logic, see `state_manager.rs`.
+//
 //  ============================================================
 
 use crate::data::*;
