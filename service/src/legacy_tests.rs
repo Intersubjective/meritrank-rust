@@ -2,9 +2,6 @@ use crate::data::*;
 use crate::legacy_protocol::*;
 use crate::settings::*;
 use crate::state_manager::MultiGraphProcessor;
-// use crate::utils::log::*;
-
-use tokio::time::{sleep, Duration};
 
 async fn write_edge(
   processor: &MultiGraphProcessor,
@@ -57,6 +54,18 @@ async fn write_calculate(
     .await;
 }
 
+async fn sync_request(
+  proc: &MultiGraphProcessor,
+  stamp: u64,
+) {
+  let _ = proc
+    .process_request(&Request {
+      subgraph: "".into(),
+      data:     ReqData::Sync(stamp),
+    })
+    .await;
+}
+
 #[tokio::test]
 async fn node_score_uncontexted() {
   let proc = MultiGraphProcessor::new(Settings {
@@ -70,7 +79,7 @@ async fn node_score_uncontexted() {
 
   write_calculate(&proc, "U1").await;
 
-  sleep(Duration::from_millis(100)).await;
+  sync_request(&proc, 1).await;
 
   let res = proc
     .process_request(&Request {
@@ -110,7 +119,7 @@ async fn graph_uncontexted() {
   write_calculate(&proc, "U2").await;
   write_calculate(&proc, "U3").await;
 
-  sleep(Duration::from_millis(100)).await;
+  sync_request(&proc, 1).await;
 
   let res = proc
     .process_request(&Request {
@@ -175,7 +184,7 @@ async fn neighbors_all() {
   write_calculate(&proc, "U2").await;
   write_calculate(&proc, "U3").await;
 
-  sleep(Duration::from_millis(100)).await;
+  sync_request(&proc, 1).await;
 
   let res = proc
     .process_request(&Request {
@@ -220,7 +229,7 @@ async fn node_list_uncontexted() {
   write_edge(&proc, "", "U1", "U3", 1.0, 1).await;
   write_edge(&proc, "", "U3", "U2", 3.0, 1).await;
 
-  sleep(Duration::from_millis(100)).await;
+  sync_request(&proc, 1).await;
 
   let res = proc
     .process_request(&Request {
@@ -262,7 +271,7 @@ async fn edge_uncontexted() {
 
   write_edge(&proc, "", "U1", "U2", 1.5, 1).await;
 
-  sleep(Duration::from_millis(100)).await;
+  sync_request(&proc, 1).await;
 
   let res = proc
     .process_request(&Request {
@@ -291,7 +300,7 @@ async fn connected() {
 
   write_edge(&proc, "", "U1", "U2", 1.5, 1).await;
 
-  sleep(Duration::from_millis(100)).await;
+  sync_request(&proc, 1).await;
 
   let res = proc
     .process_request(&Request {
@@ -332,7 +341,7 @@ async fn mutual_scores_uncontexted() {
   write_calculate(&proc, "U2").await;
   write_calculate(&proc, "U3").await;
 
-  sleep(Duration::from_millis(800)).await;
+  sync_request(&proc, 1).await;
 
   let res = proc
     .process_request(&Request {
@@ -405,7 +414,7 @@ async fn set_zero_opinion_uncontexted() {
   write_edge(&proc, "", "U1", "U2", -5.0, 1).await;
   write_calculate(&proc, "U1").await;
 
-  sleep(Duration::from_millis(100)).await;
+  sync_request(&proc, 1).await;
 
   let s0 = match proc
     .process_request(&Request {
@@ -429,7 +438,7 @@ async fn set_zero_opinion_uncontexted() {
 
   write_zero_opinion(&proc, "U2", 10.0).await;
 
-  sleep(Duration::from_millis(100)).await;
+  sync_request(&proc, 2).await;
 
   let s1 = match proc
     .process_request(&Request {
@@ -480,7 +489,7 @@ async fn reset() {
     })
     .await;
 
-  sleep(Duration::from_millis(100)).await;
+  sync_request(&proc, 1).await;
 
   let res = proc
     .process_request(&Request {
@@ -559,7 +568,7 @@ async fn recalculate_zero_graph_all() {
     })
     .await;
 
-  sleep(Duration::from_millis(300)).await;
+  sync_request(&proc, 1).await;
 
   let res = proc
     .process_request(&Request {

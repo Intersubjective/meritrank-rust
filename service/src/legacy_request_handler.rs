@@ -37,10 +37,23 @@ fn kind_from_prefix(prefix: NodeName) -> Option<NodeKind> {
   }
 }
 
-fn request_from_command(command: &Command) -> Option<Request> {
+fn request_from_command(
+  command: &Command,
+  stamp: &mut u64,
+) -> Option<Request> {
   log_trace!();
 
   match command.id.as_str() {
+    CMD_SYNC => {
+      if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
+        *stamp += 1;
+
+        return Some(Request {
+          subgraph: String::default(),
+          data:     ReqData::Sync(*stamp),
+        });
+      }
+    },
     CMD_RESET => {
       if let Ok(()) = rmp_serde::from_slice(command.payload.as_slice()) {
         return Some(Request {
@@ -315,10 +328,15 @@ fn encode_response_dispatch(
   }
 }
 
+struct InternalState {
+  node_names: HashSet<String>,
+  stamp:      u64,
+}
+
 fn decode_and_handle_request(
   state: Arc<MultiGraphProcessor>,
   request: &[u8],
-  node_names: &mut HashSet<String>,
+  internal: &mut InternalState,
 ) -> Result<Vec<u8>, ServiceError> {
   log_trace!();
 
@@ -363,18 +381,14 @@ fn decode_and_handle_request(
       log_error!("{}", err_msg);
       return Err(ServiceError::Internal(err_msg));
     },
-    CMD_SYNC => {
-      //  NOTE: Sync ignored.
-      return encode_response(&());
-    },
     CMD_RESET => {
-      node_names.clear();
+      internal.node_names.clear();
       // Don't return yet, we have to process reset on the state layer.
     },
     _ => {},
   }
 
-  let request = request_from_command(&command);
+  let request = request_from_command(&command, &mut internal.stamp);
 
   //  NOTE: command.blocking ignored.
 
@@ -386,30 +400,30 @@ fn decode_and_handle_request(
 
       //  FIXME: Refactor code duplication.
 
-      if !node_names.contains(&src) {
-        let _ = state.process_request_sync(&Request {
+      if !internal.node_names.contains(&src) {
+        let _ = state.process_request_blocking(&Request {
           subgraph: subgraph.clone(),
           data:     ReqData::WriteCalculate(OpWriteCalculate {
             ego: src.clone(),
           }),
         });
 
-        node_names.insert(src);
+        internal.node_names.insert(src);
       }
 
-      if !node_names.contains(&dst) {
-        let _ = state.process_request_sync(&Request {
+      if !internal.node_names.contains(&dst) {
+        let _ = state.process_request_blocking(&Request {
           subgraph,
           data: ReqData::WriteCalculate(OpWriteCalculate {
             ego: dst.clone(),
           }),
         });
 
-        node_names.insert(dst);
+        internal.node_names.insert(dst);
       }
     }
 
-    let response = state.process_request_sync(&request_data);
+    let response = state.process_request_blocking(&request_data);
     return encode_response_dispatch(response);
   } else {
     return Err(ServiceError::Internal("Process failed.".into()));
@@ -418,7 +432,7 @@ fn decode_and_handle_request(
 
 fn worker_callback(
   state: Arc<MultiGraphProcessor>,
-  node_names: Arc<Mutex<HashSet<String>>>,
+  internal: Arc<Mutex<InternalState>>,
   aio: Aio,
   ctx: &Context,
   res: AioResult,
@@ -434,7 +448,7 @@ fn worker_callback(
     },
 
     AioResult::Recv(Ok(req)) => {
-      let mut node_names_ref = match node_names.lock() {
+      let mut internal_ref = match internal.lock() {
         Ok(x) => x,
         Err(e) => {
           log_error!("Mutex lock failed: {}", e);
@@ -443,7 +457,7 @@ fn worker_callback(
       };
 
       let msg: Vec<u8> =
-        decode_and_handle_request(state, req.as_slice(), &mut node_names_ref)
+        decode_and_handle_request(state, req.as_slice(), &mut internal_ref)
           .unwrap_or_else(|_| {
             encode_response(&"Internal error, see server logs".to_string())
               .unwrap_or_else(|error| {
@@ -478,7 +492,10 @@ pub fn run(
 ) -> Result<LegacyServer, ServiceError> {
   log_trace!();
 
-  let node_names = Arc::new(Mutex::new(HashSet::<String>::new()));
+  let internal = Arc::new(Mutex::new(InternalState {
+    node_names: HashSet::<String>::new(),
+    stamp:      0,
+  }));
 
   let url = format!(
     "tcp://{}:{}",
@@ -499,14 +516,14 @@ pub fn run(
       let ctx = Context::new(&nng_socket)?;
       let ctx_cloned = ctx.clone();
       let state_cloned = Arc::clone(&state);
-      let node_names_cloned = node_names.clone();
+      let internal_cloned = internal.clone();
       let aio = Aio::new(move |aio, res| {
         let ctx_cloned2 = ctx_cloned.clone();
         let state_cloned2 = Arc::clone(&state_cloned);
-        let node_names_cloned2 = node_names_cloned.clone();
+        let internal_cloned2 = internal_cloned.clone();
         worker_callback(
           state_cloned2,
-          node_names_cloned2,
+          internal_cloned2,
           aio,
           &ctx_cloned2,
           res,
@@ -576,7 +593,15 @@ mod tests {
 
     let _ = do_request(req.as_slice());
 
-    sleep(Duration::from_millis(100)).await;
+    let req = encode_request(&Command {
+      id:       CMD_SYNC.into(),
+      context:  "".into(),
+      blocking: true,
+      payload:  rmp_serde::to_vec(&()).unwrap(),
+    })
+    .unwrap();
+
+    let _ = do_request(req.as_slice());
 
     let response = do_request(
       encode_request(&Command {

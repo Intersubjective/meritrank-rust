@@ -229,8 +229,20 @@ mod tests {
 
     let _ = read_response(&mut stream).await.unwrap();
 
-    //  FIXME: Wait for the writing to take effect. This should not be required!!!
-    sleep(Duration::from_millis(100)).await;
+    //  Reconnect again and sync the state.
+    let mut stream = connect().await;
+
+    write_request(
+      &mut stream,
+      Request {
+        subgraph: "".into(),
+        data:     ReqData::Sync(1),
+      },
+    )
+    .await
+    .unwrap();
+
+    let _ = read_response(&mut stream).await.unwrap();
 
     //  Reconnect again.
     let mut stream = connect().await;
@@ -342,8 +354,20 @@ mod tests {
 
     let _ = read_response(&mut stream).await.unwrap();
 
-    //  FIXME: Wait for the writing to take effect. This should not be required!!!
-    sleep(Duration::from_millis(100)).await;
+    //  Reconnect again and sync the state.
+    let mut stream = connect().await;
+
+    write_request(
+      &mut stream,
+      Request {
+        subgraph: "".into(),
+        data:     ReqData::Sync(1),
+      },
+    )
+    .await
+    .unwrap();
+
+    let _ = read_response(&mut stream).await.unwrap();
 
     //  Reconnect again.
     let mut stream = connect().await;

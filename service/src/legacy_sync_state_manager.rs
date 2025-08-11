@@ -21,10 +21,61 @@ use tokio::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-const SYNC_SLEEP_PERIOD: u64 = 10;
-
 impl MultiGraphProcessor {
-  fn process_user_to_user_edge_sync(
+  pub fn sync_blocking(
+    &self,
+    stamp: u64,
+  ) {
+    log_trace!();
+
+    for ref_multi in self.subgraphs_map.iter() {
+      let subgraph = ref_multi.value();
+      let op_sender = subgraph.op_sender.clone();
+
+      let op = AugGraphOp::Stamp(stamp);
+
+      loop {
+        let s = op_sender.try_send(op.clone());
+        match s {
+          Ok(_) => break,
+          Err(e) => match e {
+            mpsc::error::TrySendError::Full(_) => {},
+            mpsc::error::TrySendError::Closed(_) => {
+              log_error!("Send failed: channel is closed.");
+              return;
+            },
+          },
+        };
+
+        thread::sleep(Duration::from_millis(SYNC_SLEEP_PERIOD));
+      }
+    }
+
+    let mut done = false;
+
+    while !done {
+      thread::sleep(Duration::from_millis(SYNC_SLEEP_PERIOD));
+
+      done = true;
+
+      for ref_multi in self.subgraphs_map.iter() {
+        let subgraph_name = ref_multi.key();
+
+        let res = self.process_read(&subgraph_name, |aug_graph| {
+          Response::Stamp(aug_graph.stamp)
+        });
+
+        if let Response::Stamp(x) = res {
+          if x < stamp {
+            done = false;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  fn process_user_to_user_edge_blocking(
     &self,
     subgraph_name: &SubgraphName,
     src: &NodeName,
@@ -69,12 +120,12 @@ impl MultiGraphProcessor {
     Response::Ok
   }
 
-  fn send_op_sync(
+  fn send_op_blocking(
     &self,
     subgraph_name: &SubgraphName,
     op: AugGraphOp,
   ) -> Response {
-    log_trace!();
+    log_trace!("{:?} {:?}", subgraph_name, op);
 
     let c = self.get_tx_channel(subgraph_name);
 
@@ -95,7 +146,7 @@ impl MultiGraphProcessor {
     }
   }
 
-  fn process_write_edge_sync(
+  fn process_write_edge_blocking(
     &self,
     subgraph_name: &SubgraphName,
     data: &OpWriteEdge,
@@ -112,7 +163,7 @@ impl MultiGraphProcessor {
 
     match (src_kind_opt, dst_kind_opt) {
       (Some(NodeKind::User), Some(NodeKind::User)) => self
-        .process_user_to_user_edge_sync(
+        .process_user_to_user_edge_blocking(
           subgraph_name,
           &data.src,
           &data.dst,
@@ -120,21 +171,14 @@ impl MultiGraphProcessor {
           data.magnitude,
         ),
 
-      (Some(NodeKind::User), Some(NodeKind::PollVariant)) => self.send_op_sync(
-        subgraph_name,
-        AugGraphOp::SetUserVote(OpSetUserVote {
-          user_id:    data.src.clone(),
-          variant_id: data.dst.clone(),
-          amount:     data.amount,
-        }),
-      ),
-      (Some(NodeKind::PollVariant), Some(NodeKind::Poll)) => self.send_op_sync(
-        subgraph_name,
-        AugGraphOp::AddPollVariant(OpAddPollVariant {
-          poll_id:    data.dst.clone(),
-          variant_id: data.src.clone(),
-        }),
-      ),
+      (Some(NodeKind::User), Some(NodeKind::PollVariant)) => {
+        //  TODO
+        Response::Ok
+      },
+      (Some(NodeKind::PollVariant), Some(NodeKind::Poll)) => {
+        //  TODO
+        Response::Ok
+      },
       (Some(src_kind), Some(dst_kind))
         if src_kind == NodeKind::PollVariant
           || src_kind == NodeKind::Poll
@@ -144,7 +188,7 @@ impl MultiGraphProcessor {
         log_error!("Unexpected edge type: {:?} -> {:?} in context {:?}. No action taken.", src_kind_opt, dst_kind_opt, subgraph_name);
         Response::Fail
       },
-      _ => self.send_op_sync(
+      _ => self.send_op_blocking(
         subgraph_name,
         AugGraphOp::WriteEdge(OpWriteEdge {
           src:       data.src.clone(),
@@ -156,17 +200,26 @@ impl MultiGraphProcessor {
     }
   }
 
-  pub fn process_request_sync(
+  pub fn process_request_blocking(
     &self,
     req: &Request,
   ) -> Response {
+    log_trace!("{:?}", req);
+
     let data = req.data.clone();
 
     match data {
-      ReqData::WriteEdge(data) => {
-        self.process_write_edge_sync(&req.subgraph, &data)
+      ReqData::Sync(stamp) => {
+        self.sync_blocking(stamp);
+        Response::Ok
       },
-      ReqData::WriteCalculate(data) => self.send_op_sync(
+      ReqData::Stamp(value) => {
+        self.send_op_blocking(&req.subgraph, AugGraphOp::Stamp(value))
+      },
+      ReqData::WriteEdge(data) => {
+        self.process_write_edge_blocking(&req.subgraph, &data)
+      },
+      ReqData::WriteCalculate(data) => self.send_op_blocking(
         &req.subgraph,
         AugGraphOp::WriteCalculate(OpWriteCalculate {
           ego: data.ego.clone(),
@@ -176,7 +229,7 @@ impl MultiGraphProcessor {
         self.insert_subgraph_if_does_not_exist(&req.subgraph);
         Response::Ok
       },
-      ReqData::WriteDeleteEdge(data) => self.process_write_edge_sync(
+      ReqData::WriteDeleteEdge(data) => self.process_write_edge_blocking(
         &req.subgraph,
         &OpWriteEdge {
           src:       data.src,
@@ -189,7 +242,7 @@ impl MultiGraphProcessor {
         log_warning!("Delete node request ignored!");
         Response::Ok
       },
-      ReqData::WriteZeroOpinion(data) => self.send_op_sync(
+      ReqData::WriteZeroOpinion(data) => self.send_op_blocking(
         &req.subgraph,
         AugGraphOp::WriteZeroOpinion(data.clone()),
       ),
@@ -198,11 +251,12 @@ impl MultiGraphProcessor {
         Response::Ok
       },
       ReqData::WriteRecalculateZero => {
-        self.send_op_sync(&req.subgraph, AugGraphOp::WriteRecalculateZero)
+        self.send_op_blocking(&req.subgraph, AugGraphOp::WriteRecalculateZero)
       },
-      ReqData::WriteRecalculateClustering => {
-        self.send_op_sync(&req.subgraph, AugGraphOp::WriteRecalculateClustering)
-      },
+      ReqData::WriteRecalculateClustering => self.send_op_blocking(
+        &req.subgraph,
+        AugGraphOp::WriteRecalculateClustering,
+      ),
       ReqData::WriteFetchNewEdges(_) => {
         self.process_read(&req.subgraph, |_| {
           log_warning!("Fetch new edges request ignored!");

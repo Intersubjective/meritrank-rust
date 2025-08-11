@@ -10,7 +10,9 @@ use left_right::{Absorb, ReadHandleFactory, WriteHandle};
 use meritrank_core::Weight;
 use tokio::{sync::mpsc, task::JoinSet};
 
-use std::thread;
+use std::{thread, time::Duration};
+
+pub const SYNC_SLEEP_PERIOD: u64 = 10;
 
 pub struct ConcurrentDataProcessor<T, Op> {
   #[allow(unused)]
@@ -19,12 +21,12 @@ pub struct ConcurrentDataProcessor<T, Op> {
   pub data_reader_factory: ReadHandleFactory<T>,
 }
 
+pub type GraphProcessor = ConcurrentDataProcessor<AugGraph, AugGraphOp>;
+
 pub struct MultiGraphProcessor {
   pub subgraphs_map: DashMap<SubgraphName, GraphProcessor>,
   settings:          Settings,
 }
-
-pub type GraphProcessor = ConcurrentDataProcessor<AugGraph, AugGraphOp>;
 
 impl<T, Op> ConcurrentDataProcessor<T, Op>
 where
@@ -118,7 +120,7 @@ impl MultiGraphProcessor {
     subgraph_name: &SubgraphName,
     op: AugGraphOp,
   ) -> Response {
-    //  NOTE: Duplicated logic with `send_op_sync`.
+    //  NOTE: Duplicated logic with `send_op_blocking`.
 
     log_trace!();
 
@@ -179,11 +181,50 @@ impl MultiGraphProcessor {
     response
   }
 
+  pub async fn sync_future(
+    &self,
+    stamp: u64,
+  ) {
+    //  NOTE: Duplicated logic with `sync_blocking`.
+
+    log_trace!();
+
+    for ref_multi in self.subgraphs_map.iter() {
+      let subgraph = ref_multi.value();
+      let op_sender = subgraph.op_sender.clone();
+
+      let _ = op_sender.send(AugGraphOp::Stamp(stamp)).await;
+    }
+
+    let mut done = false;
+
+    while !done {
+      tokio::time::sleep(Duration::from_millis(SYNC_SLEEP_PERIOD)).await;
+
+      done = true;
+
+      for ref_multi in self.subgraphs_map.iter() {
+        let subgraph_name = ref_multi.key();
+
+        let res = self.process_read(&subgraph_name, |aug_graph| {
+          Response::Stamp(aug_graph.stamp)
+        });
+
+        if let Response::Stamp(x) = res {
+          if x < stamp {
+            done = false;
+            break;
+          }
+        }
+      }
+    }
+  }
+
   pub async fn process_request(
     &self,
     req: &Request,
   ) -> Response {
-    //  NOTE: Duplicated logic with `process_request_sync`.
+    //  NOTE: Duplicated logic with `process_request_blocking`.
     //
     //  FIXME: No need to clone here, but borrow checker!!!
 
@@ -192,6 +233,9 @@ impl MultiGraphProcessor {
     let data = req.data.clone();
 
     match data {
+      ReqData::Stamp(value) => {
+        self.send_op(&req.subgraph, AugGraphOp::Stamp(value)).await
+      },
       ReqData::WriteEdge(data) => {
         self.process_write_edge(&req.subgraph, &data).await
       },
@@ -360,6 +404,10 @@ impl MultiGraphProcessor {
           })
         })
       },
+      ReqData::Sync(stamp) => {
+        self.sync_future(stamp).await;
+        Response::Ok
+      },
     }
   }
 
@@ -368,7 +416,7 @@ impl MultiGraphProcessor {
     subgraph_name: &SubgraphName,
     data: &OpWriteEdge,
   ) -> Response {
-    //  NOTE: Duplicated logic with `process_write_edge_sync`.
+    //  NOTE: Duplicated logic with `process_write_edge_blocking`.
 
     log_trace!("{:?} {:?}", subgraph_name, data);
 
@@ -394,27 +442,12 @@ impl MultiGraphProcessor {
       },
 
       (Some(NodeKind::User), Some(NodeKind::PollVariant)) => {
-        self
-          .send_op(
-            subgraph_name,
-            AugGraphOp::SetUserVote(OpSetUserVote {
-              user_id:    data.src.clone(),
-              variant_id: data.dst.clone(),
-              amount:     data.amount,
-            }),
-          )
-          .await
+        //  TODO
+        Response::Ok
       },
       (Some(NodeKind::PollVariant), Some(NodeKind::Poll)) => {
-        self
-          .send_op(
-            subgraph_name,
-            AugGraphOp::AddPollVariant(OpAddPollVariant {
-              poll_id:    data.dst.clone(),
-              variant_id: data.src.clone(),
-            }),
-          )
-          .await
+        //  TODO
+        Response::Ok
       },
       (Some(src_kind), Some(dst_kind))
         if src_kind == NodeKind::PollVariant
@@ -447,7 +480,6 @@ impl MultiGraphProcessor {
   ) {
     log_trace!();
 
-    //  FIXME: Cleanup! Code duplication here, but generic types are tricky.
     self
       .subgraphs_map
       .entry(subgraph_name.clone())
@@ -469,7 +501,7 @@ impl MultiGraphProcessor {
     amount: Weight,
     magnitude: Magnitude,
   ) -> Response {
-    //  NOTE: Duplicated logic with `process_user_to_user_edge_sync`.
+    //  NOTE: Duplicated logic with `process_user_to_user_edge_blocking`.
 
     log_trace!();
 
@@ -556,7 +588,7 @@ mod tests {
     processor.op_sender.blocking_send(TestOp(1)).unwrap();
     processor.op_sender.blocking_send(TestOp(1)).unwrap();
     processor.op_sender.blocking_send(TestOp(1)).unwrap();
-    thread::sleep(std::time::Duration::from_millis(10));
+    thread::sleep(Duration::from_millis(10));
     let handle = processor.data_reader_factory.handle();
     assert_eq!(handle.enter().unwrap().0, 3);
     processor

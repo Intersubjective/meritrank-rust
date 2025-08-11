@@ -25,6 +25,7 @@ pub struct AugGraph {
   pub cached_scores:         Cache<(NodeId, NodeId), NodeScore>,
   pub cached_score_clusters: Cache<(NodeId, NodeKind), ClusterGroupBounds>,
   pub vsids:                 VSIDSManager,
+  pub stamp:                 u64,
 }
 
 #[derive(Debug)]
@@ -54,6 +55,7 @@ impl AugGraph {
       cached_scores,
       cached_score_clusters,
       vsids: VSIDSManager::new(),
+      stamp: 0,
     }
   }
 
@@ -1341,11 +1343,16 @@ impl Absorb<AugGraphOp> for AugGraph {
     op: &mut AugGraphOp,
     _: &Self,
   ) {
-    log_trace!();
+    log_command!("{:?}", op);
 
     //  FIXME: Pass strings by reference, no clones!
 
     match op {
+      AugGraphOp::WriteReset => {
+        // NOTE: This doesn't actually get called, because reset
+        //       is implemented on the multi-graph level.
+        *self = AugGraph::new(self.settings.clone());
+      },
       AugGraphOp::WriteEdge(OpWriteEdge {
         src,
         dst,
@@ -1380,9 +1387,7 @@ impl Absorb<AugGraphOp> for AugGraph {
       AugGraphOp::WriteRecalculateClustering => {
         log_warning!("Recalculate clustering is ignored!")
       },
-      _ => {
-        log_error!("Not implemented.");
-      },
+      AugGraphOp::Stamp(value) => self.stamp = *value,
     }
   }
 
