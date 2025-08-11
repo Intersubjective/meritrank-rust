@@ -17,7 +17,7 @@ pg_module_magic!();
 
 lazy_static! {
   static ref SERVICE_URL: String =
-    var("MERITRANK_SERVICE_URL").unwrap_or("tcp://127.0.0.1:8040".to_string());
+    var("MERITRANK_SERVICE_URL").unwrap_or("tcp://127.0.0.1:10234".to_string());
   static ref RECV_TIMEOUT_MSEC: u64 = var("MERITRANK_RECV_TIMEOUT_MSEC")
     .ok()
     .and_then(|s| s.parse::<u64>().ok())
@@ -804,11 +804,11 @@ fn mr_recalculate_clustering(
 #[cfg(any(test, feature = "pg_test"))]
 #[pg_schema]
 mod tests {
-  use super::testing::*;
+  // use super::testing::*;
   use meritrank_service::legacy_protocol::*;
   use pgrx::prelude::*;
-  use std::thread::sleep;
-  use std::time::{Duration, SystemTime};
+  // use std::thread::sleep;
+  // use std::time::Duration;
 
   // #[pg_test]
   // fn sync_deadlock() {
@@ -1016,8 +1016,8 @@ mod tests {
         .unwrap();
     let _ = crate::mr_create_context(Some("X"));
 
-    sleep(Duration::from_millis(100));
-    // let _ = crate::mr_sync(Some(1000)).unwrap();
+    // sleep(Duration::from_millis(100));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res = crate::mr_edgelist(Some("X")).unwrap();
 
@@ -1096,7 +1096,7 @@ mod tests {
     let _ = crate::mr_delete_edge(Some("B1"), Some("B2"), Some("X"), Some(-1))
       .unwrap();
 
-    sleep(Duration::from_millis(100));
+    // sleep(Duration::from_millis(100));
     // let _ = crate::mr_sync(Some(1000)).unwrap();
 
     //  We should still have "Y" edge.
@@ -1124,8 +1124,8 @@ mod tests {
     let _ = crate::mr_delete_node(Some("B1"), None, Some(-1)).unwrap();
     let _ = crate::mr_delete_node(Some("B2"), None, Some(-1)).unwrap();
 
-    sleep(Duration::from_millis(100));
-    // let _ = crate::mr_sync(Some(1000)).unwrap();
+    // sleep(Duration::from_millis(100));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let _res = crate::mr_edgelist(None).unwrap();
 
@@ -1153,8 +1153,8 @@ mod tests {
     )
     .unwrap();
 
-    sleep(Duration::from_millis(100));
-    // let _ = crate::mr_sync(Some(1000)).unwrap();
+    // sleep(Duration::from_millis(100));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     //  Delete and put back again.
     let _ = crate::mr_delete_edge(Some("B1"), Some("B2"), Some("X"), Some(-1));
@@ -1212,8 +1212,8 @@ mod tests {
     )
     .unwrap();
 
-    sleep(Duration::from_millis(100));
-    // let _ = crate::mr_sync(Some(1000)).unwrap();
+    // sleep(Duration::from_millis(100));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res = crate::mr_node_score(Some("U1"), Some("U2"), Some("X")).unwrap();
 
@@ -1246,8 +1246,8 @@ mod tests {
       crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), Some(""), Some(-1))
         .unwrap();
 
-    sleep(Duration::from_millis(100));
-    // let _ = crate::mr_sync(Some(1000)).unwrap();
+    // sleep(Duration::from_millis(100));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res: Vec<_> = crate::mr_scores(
       Some("U1"),
@@ -1319,8 +1319,8 @@ mod tests {
     )
     .unwrap();
 
-    sleep(Duration::from_millis(100));
-    // let _ = crate::mr_sync(Some(1000)).unwrap();
+    // sleep(Duration::from_millis(100));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res: Vec<_> = crate::mr_scores(
       Some("U1"),
@@ -1392,8 +1392,8 @@ mod tests {
     )
     .unwrap();
 
-    sleep(Duration::from_millis(100));
-    // let _ = crate::mr_sync(Some(1000)).unwrap();
+    // sleep(Duration::from_millis(100));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res: Vec<_> = crate::mr_scores(
       Some("U1"),
@@ -1450,8 +1450,8 @@ mod tests {
       crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), None, Some(-1))
         .unwrap();
 
-    sleep(Duration::from_millis(100));
-    // let _ = crate::mr_sync(Some(1000)).unwrap();
+    // sleep(Duration::from_millis(100));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res: Vec<_> = crate::mr_nodelist(None).unwrap().collect();
 
@@ -1476,8 +1476,8 @@ mod tests {
       crate::mr_put_edge(Some("U2"), Some("U3"), Some(3.0), None, Some(-1))
         .unwrap();
 
-    sleep(Duration::from_millis(100));
-    // let _ = crate::mr_sync(Some(1000)).unwrap();
+    // sleep(Duration::from_millis(100));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res: Vec<_> = crate::mr_connected(Some("U1"), None).unwrap().collect();
 
@@ -1512,8 +1512,8 @@ mod tests {
       crate::mr_put_edge(Some("U3"), Some("U2"), Some(2.0), None, Some(-1))
         .unwrap();
 
-    sleep(Duration::from_millis(100));
-    // let _ = crate::mr_sync(Some(1000)).unwrap();
+    // sleep(Duration::from_millis(100));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res: Vec<_> =
       crate::mr_mutual_scores(Some("U1"), None).unwrap().collect();
@@ -1583,8 +1583,8 @@ mod tests {
       crate::mr_put_edge(Some("U2"), Some("B4"), Some(3.0), None, Some(-1))
         .unwrap();
 
-    sleep(Duration::from_millis(100));
-    // let _ = crate::mr_sync(Some(1000)).unwrap();
+    // sleep(Duration::from_millis(100));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res = crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap();
 
@@ -1636,8 +1636,8 @@ mod tests {
 
     let _ = crate::mr_set_new_edges_filter(Some("U1"), Some(filter)).unwrap();
 
-    sleep(Duration::from_millis(100));
-    // let _ = crate::mr_sync(Some(1000)).unwrap();
+    // sleep(Duration::from_millis(100));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res = crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap();
 
@@ -1668,8 +1668,8 @@ mod tests {
       crate::mr_put_edge(Some("U2"), Some("U1"), Some(4.0), None, Some(-1))
         .unwrap();
 
-    sleep(Duration::from_millis(100));
-    // let _ = crate::mr_sync(Some(1000)).unwrap();
+    // sleep(Duration::from_millis(100));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let res: Vec<_> = crate::mr_scores(
       Some("U1"),
@@ -1712,8 +1712,8 @@ mod tests {
       crate::mr_put_edge(Some("U1"), Some("U2"), Some(5.0), None, Some(-1))
         .unwrap();
 
-    sleep(Duration::from_millis(100));
-    // let _ = crate::mr_sync(Some(1000)).unwrap();
+    // sleep(Duration::from_millis(100));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let s0: Vec<_> = crate::mr_node_score(Some("U1"), Some("U2"), None)
       .unwrap()
@@ -1721,8 +1721,8 @@ mod tests {
 
     let _ = crate::mr_set_zero_opinion(Some("U2"), Some(-10.0), None);
 
-    sleep(Duration::from_millis(100));
-    // let _ = crate::mr_sync(Some(1000)).unwrap();
+    // sleep(Duration::from_millis(100));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let s1: Vec<_> = crate::mr_node_score(Some("U1"), Some("U2"), None)
       .unwrap()
@@ -1739,8 +1739,8 @@ mod tests {
       crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None, Some(-1))
         .unwrap();
 
-    sleep(Duration::from_millis(100));
-    // let _ = crate::mr_sync(Some(1000)).unwrap();
+    // sleep(Duration::from_millis(100));
+    let _ = crate::mr_sync(Some(1000)).unwrap();
 
     let _neighbors: Vec<_> = crate::mr_neighbors(
       Some("U1"),

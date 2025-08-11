@@ -83,19 +83,6 @@ pub struct OpWriteCalculate {
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-pub struct OpAddPollVariant {
-  pub poll_id:    NodeName,
-  pub variant_id: NodeName,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct OpSetUserVote {
-  pub user_id:    NodeName,
-  pub variant_id: NodeName,
-  pub amount:     Weight,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
 pub struct OpReadNodeScore {
   pub ego:    NodeName,
   pub target: NodeName,
@@ -164,8 +151,7 @@ pub enum AugGraphOp {
   WriteReset,
   WriteRecalculateZero,
   WriteRecalculateClustering,
-  AddPollVariant(OpAddPollVariant),
-  SetUserVote(OpSetUserVote),
+  Stamp(u64),
 }
 
 #[derive(Debug, Encode, Decode, Serialize, Deserialize)]
@@ -251,6 +237,8 @@ pub enum ReqData {
   ReadScores(OpReadScores),
   WriteEdge(OpWriteEdge),
   WriteCalculate(OpWriteCalculate),
+  Stamp(u64),
+  Sync(u64),
 
   //  Legacy requests
   ReadNodeList,
@@ -284,6 +272,7 @@ pub struct Request {
 pub enum Response {
   Ok,
   Fail,
+  Stamp(u64),
   Scores(ResScores),
   NodeList(ResNodeList),
   NewEdgesFilter(ResNewEdgesFilter),
