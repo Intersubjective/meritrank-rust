@@ -24,15 +24,27 @@ mod tests {
     let walkid2 = walk_storage.get_next_free_walkid();
     let walkid3 = walk_storage.get_next_free_walkid();
 
-    walk_storage.get_walk_mut(walkid1).unwrap().extend(&walk1);
-    walk_storage.get_walk_mut(walkid2).unwrap().extend(&walk2);
-    walk_storage.get_walk_mut(walkid3).unwrap().extend(&walk3);
+    walk_storage
+      .get_walk_mut(walkid1)
+      .unwrap()
+      .extend(&walk1)
+      .unwrap();
+    walk_storage
+      .get_walk_mut(walkid2)
+      .unwrap()
+      .extend(&walk2)
+      .unwrap();
+    walk_storage
+      .get_walk_mut(walkid3)
+      .unwrap()
+      .extend(&walk3)
+      .unwrap();
 
     walk_storage.update_walk_bookkeeping(walkid1, 0);
     walk_storage.update_walk_bookkeeping(walkid2, 0);
     walk_storage.update_walk_bookkeeping(walkid3, 0);
 
-    walk_storage.drop_walks_from_node(1);
+    walk_storage.drop_walks_from_node(1).unwrap();
 
     let walk_storage_str = format!("{:?}", walk_storage);
     let expected_visits_str = format!(

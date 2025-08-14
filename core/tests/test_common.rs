@@ -47,7 +47,7 @@ mod tests {
 
     // Test skipping invalidation on edge deletion
     let (may_skip, new_pos) =
-      decide_skip_invalidation(&walk, 2, edge, None, Some(&mut rng));
+      decide_skip_invalidation(&walk, 2, edge, None, Some(&mut rng)).unwrap();
     assert!(may_skip);
     assert_eq!(new_pos, 2);
 
@@ -58,7 +58,8 @@ mod tests {
       edge,
       step_recalc_probability,
       Some(&mut rng),
-    );
+    )
+    .unwrap();
     assert!(may_skip);
     assert_eq!(new_pos, 1);
 
@@ -69,7 +70,8 @@ mod tests {
       edge,
       step_recalc_probability,
       Some(&mut rng),
-    );
+    )
+    .unwrap();
     assert!(!may_skip);
     assert_eq!(new_pos, 1);
   }
@@ -81,19 +83,19 @@ mod tests {
 
     // Test invalidation without skipping
     let (may_skip, new_pos) =
-      decide_skip_invalidation_on_edge_deletion(&walk, 0, edge);
+      decide_skip_invalidation_on_edge_deletion(&walk, 0, edge).unwrap();
     assert!(!may_skip);
     assert_eq!(new_pos, 1);
 
     // Test invalidation with skipping
     let (may_skip, new_pos) =
-      decide_skip_invalidation_on_edge_deletion(&walk, 1, edge);
+      decide_skip_invalidation_on_edge_deletion(&walk, 1, edge).unwrap();
     assert!(!may_skip);
     assert_eq!(new_pos, 1);
 
     // Test invalidation at the end of the walk
     let (may_skip, new_pos) =
-      decide_skip_invalidation_on_edge_deletion(&walk, 2, edge);
+      decide_skip_invalidation_on_edge_deletion(&walk, 2, edge).unwrap();
     assert!(may_skip);
     assert_eq!(new_pos, 2);
   }
@@ -117,7 +119,8 @@ mod tests {
       edge,
       step_recalc_probability,
       Some(&mut rng),
-    );
+    )
+    .unwrap();
     assert!(!may_skip);
     assert_eq!(new_pos, 2);
 
@@ -128,7 +131,8 @@ mod tests {
       edge,
       step_recalc_probability,
       Some(&mut rng),
-    );
+    )
+    .unwrap();
     assert!(may_skip);
     assert_eq!(new_pos, 2);
 
@@ -139,7 +143,8 @@ mod tests {
       edge,
       step_recalc_probability,
       Some(&mut rng),
-    );
+    )
+    .unwrap();
     // let should_skip = random::<Weight>() > step_recalc_probability;
     assert_eq!(may_skip, false);
     assert_eq!(new_pos, 2);

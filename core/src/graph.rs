@@ -61,27 +61,36 @@ impl NodeData {
   pub fn random_neighbor(
     &mut self,
     positive_only: bool,
-  ) -> Option<(NodeId, bool)> {
+  ) -> Result<Option<(NodeId, bool)>, MeritRankError> {
     if positive_only {
       if self.pos_edges.is_empty() {
-        return None;
+        return Ok(None);
       }
 
       if self.pos_distr_cache.is_none() {
         // Build and cache the distribution for positive edges
         let weights: Vec<Weight> = self.pos_edges.values().copied().collect();
-        let wi = WeightedIndex::new(weights).unwrap();
+        let wi = match WeightedIndex::new(weights) {
+          Ok(x) => x,
+          Err(_) => return Err(MeritRankError::InternalFatalError),
+        };
         self.pos_distr_cache = Some(wi);
       }
 
       // Use the cached distribution
-      let cache = self.pos_distr_cache.as_ref().unwrap();
+      let cache = match self.pos_distr_cache.as_ref() {
+        Some(x) => x,
+        None => return Err(MeritRankError::InternalFatalError),
+      };
       let index = cache.sample(&mut thread_rng());
-      let node_id = *self.pos_edges.keys().nth(index).unwrap();
-      Some((node_id, true))
+      let node_id = match self.pos_edges.keys().nth(index) {
+        Some(x) => *x,
+        None => return Err(MeritRankError::InternalFatalError),
+      };
+      Ok(Some((node_id, true)))
     } else {
       if self.pos_edges.is_empty() && self.neg_edges.is_empty() {
-        return None;
+        return Ok(None);
       }
 
       if self.abs_distr_cache.is_none() {
@@ -93,12 +102,18 @@ impl NodeData {
           .map(|&w| w)
           .collect();
 
-        let wi = WeightedIndex::new(combined_weights).unwrap();
+        let wi = match WeightedIndex::new(combined_weights) {
+          Ok(x) => x,
+          Err(_) => return Err(MeritRankError::InternalFatalError),
+        };
         self.abs_distr_cache = Some(wi);
       }
 
       // Use the cached distribution
-      let cache = self.abs_distr_cache.as_ref().unwrap();
+      let cache = match self.abs_distr_cache.as_ref() {
+        Some(x) => x,
+        None => return Err(MeritRankError::InternalFatalError),
+      };
       let index = cache.sample(&mut thread_rng());
       self.get_node_at_index(index)
     }
@@ -108,16 +123,22 @@ impl NodeData {
   fn get_node_at_index(
     &self,
     index: usize,
-  ) -> Option<(NodeId, bool)> {
+  ) -> Result<Option<(NodeId, bool)>, MeritRankError> {
     let pos_len = self.pos_edges.len();
 
     if index < pos_len {
-      let node_id = *self.pos_edges.keys().nth(index).unwrap();
-      Some((node_id, true))
+      let node_id = match self.pos_edges.keys().nth(index) {
+        Some(x) => *x,
+        None => return Err(MeritRankError::InternalFatalError),
+      };
+      Ok(Some((node_id, true)))
     } else {
       let neg_index = index - pos_len;
-      let node_id = *self.neg_edges.keys().nth(neg_index).unwrap();
-      Some((node_id, false))
+      let node_id = match self.neg_edges.keys().nth(neg_index) {
+        Some(x) => *x,
+        None => return Err(MeritRankError::InternalFatalError),
+      };
+      Ok(Some((node_id, false)))
     }
   }
   pub fn abs_sum(&self) -> Weight {
@@ -164,7 +185,9 @@ impl Graph {
       return Err(MeritRankError::SelfReferenceNotAllowed);
     }
     if self.edge_weight(from, to)?.is_some() {
-      self.remove_edge(from, to).unwrap();
+      if self.remove_edge(from, to).is_err() {
+        return Err(MeritRankError::InternalFatalError);
+      }
     }
     if weight.is_nan() {
       error!("Trying to set NaN weight for edge from {} to {}", from, to);
@@ -293,7 +316,7 @@ impl Graph {
     start_node: NodeId,
     alpha: f64,
     positive_only: bool,
-  ) -> RandomWalk {
+  ) -> Result<RandomWalk, MeritRankError> {
     let mut node = start_node;
     let mut segment = RandomWalk::new();
     let mut rng = thread_rng();
@@ -309,14 +332,20 @@ impl Graph {
     // P  P  P    N   N  N  N
 
     loop {
-      let node_data = self.get_node_data_mut(node).unwrap();
+      let node_data = match self.get_node_data_mut(node) {
+        Some(x) => x,
+        None => return Err(MeritRankError::InternalFatalError),
+      };
       if rng.gen::<f64>() > alpha {
         break;
       }
-      if let Some((next_step, step_is_positive)) =
-        node_data.random_neighbor(negative_continuation_mode || positive_only)
+      if let Some((next_step, step_is_positive)) = match node_data
+        .random_neighbor(negative_continuation_mode || positive_only)
       {
-        segment.push(next_step, step_is_positive);
+        Ok(x) => x,
+        Err(e) => return Err(e),
+      } {
+        segment.push(next_step, step_is_positive)?;
         if !step_is_positive {
           assert!(!negative_continuation_mode);
           negative_continuation_mode = true;
@@ -327,28 +356,31 @@ impl Graph {
         break;
       }
     }
-    segment
+    Ok(segment)
   }
 
   pub fn continue_walk(
     &mut self,
     walk: &mut RandomWalk,
     alpha: f64,
-  ) {
+  ) -> Result<(), MeritRankError> {
     // If the original walk is already in "negative mode",
     // we should restrict segment generation to positive edges
     let positive_only = walk.negative_segment_start.is_some();
-    let start_node = walk.last_node().unwrap();
+    let start_node = match walk.last_node() {
+      Some(x) => x,
+      None => return Err(MeritRankError::InternalFatalError),
+    };
     let new_segment =
-      self.generate_walk_segment(start_node, alpha, positive_only);
+      self.generate_walk_segment(start_node, alpha, positive_only)?;
 
     // Borrow mutable `walk` again for `extend`
-    walk.extend(&new_segment);
+    walk.extend(&new_segment)
   }
   pub fn extend_walk_in_case_of_edge_deletion(
     &mut self,
     walk: &mut RandomWalk,
-  ) {
+  ) -> Result<(), MeritRankError> {
     // Borrow mutable `walk` from `self.walks`
     // No force_first_step, so this is "edge deletion mode"
     //
@@ -362,10 +394,11 @@ impl Graph {
     let node_data = self.get_node_data_mut(src_node).unwrap();
     let adding_to_negative_subsegment = walk.negative_segment_start.is_some();
     if let Some((forced_step, step_is_positive)) =
-      node_data.random_neighbor(adding_to_negative_subsegment)
+      node_data.random_neighbor(adding_to_negative_subsegment)?
     {
-      walk.push(forced_step, step_is_positive);
+      walk.push(forced_step, step_is_positive)?;
     }
+    Ok(())
   }
 
   pub fn get_inbound_edges(

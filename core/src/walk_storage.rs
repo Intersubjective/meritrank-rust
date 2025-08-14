@@ -6,6 +6,7 @@ use integer_hasher::IntMap;
 use crate::constants::OPTIMIZE_INVALIDATION;
 use crate::graph::{EdgeId, NodeId, Weight};
 use crate::random_walk::RandomWalk;
+use crate::MeritRankError;
 
 pub type WalkId = usize;
 
@@ -86,7 +87,7 @@ impl WalkStorage {
   pub fn drop_walks_from_node(
     &mut self,
     node: NodeId,
-  ) {
+  ) -> Result<(), MeritRankError> {
     // Check if there are any visits for the given node
     if let Some(visits_for_node) = self.visits.get_mut(node) {
       // Identify the walks that start from the given node (i.e., position is 0)
@@ -107,17 +108,25 @@ impl WalkStorage {
           }
         }
         self.unused_walks.push_back(walk_id);
-        self.walks.get_mut(walk_id).unwrap().clear();
+        match self.walks.get_mut(walk_id) {
+          Some(x) => x.clear(),
+          None => return Err(MeritRankError::InternalFatalError),
+        };
       }
     }
+
+    Ok(())
   }
 
-  pub fn assert_visits_consistency(&self) {
+  pub fn assert_visits_consistency(&self) -> Result<(), MeritRankError> {
     for (node, visits) in self.visits.iter().enumerate() {
       for (walkid, pos) in visits.iter() {
-        assert_eq!(self.walks[*walkid].nodes[*pos], node);
+        if self.walks[*walkid].nodes[*pos] != node {
+          return Err(MeritRankError::InternalFatalError);
+        }
       }
     }
+    Ok(())
   }
 
   /// Returns a walk IDs and cut positions for the walks affected by introducing new outgoing
@@ -127,28 +136,37 @@ impl WalkStorage {
     invalidated_node: NodeId,
     dst_node: Option<NodeId>,
     step_recalc_probability: Option<Weight>,
-  ) -> Vec<(WalkId, usize)> {
+  ) -> Result<Vec<(WalkId, usize)>, MeritRankError> {
     let mut invalidated_walks_ids = vec![];
 
     // Check if there are any walks passing through the invalidated node
     let walks = match self.visits.get(invalidated_node) {
       Some(walks) => walks,
-      None => return invalidated_walks_ids,
+      None => return Ok(invalidated_walks_ids),
     };
 
-    walks.iter().for_each(|(walk_id, visit_pos)| {
+    for (walk_id, visit_pos) in walks {
       let _new_pos = if OPTIMIZE_INVALIDATION && dst_node.is_some() {
         let mut rng = thread_rng();
         let (may_skip, new_pos) = decide_skip_invalidation(
-          self.get_walk(*walk_id).unwrap(),
+          match self.get_walk(*walk_id) {
+            Some(x) => x,
+            None => return Err(MeritRankError::InternalFatalError),
+          },
           *visit_pos,
-          (invalidated_node, dst_node.unwrap()),
+          (
+            invalidated_node,
+            match dst_node {
+              Some(x) => x,
+              None => return Err(MeritRankError::InternalFatalError),
+            },
+          ),
           step_recalc_probability,
           Some(&mut rng),
-        );
+        )?;
         if may_skip {
           // Skip invalidating this walk if it is determined to be unnecessary
-          return;
+          continue;
         }
         new_pos
       } else {
@@ -156,19 +174,22 @@ impl WalkStorage {
       };
 
       invalidated_walks_ids.push((*walk_id, _new_pos));
-    });
+    }
 
-    invalidated_walks_ids
+    Ok(invalidated_walks_ids)
   }
 
   pub fn split_and_remove_from_bookkeeping(
     &mut self,
     walk_id: &WalkId,
     cut_pos: usize,
-  ) {
+  ) -> Result<(), MeritRankError> {
     // Cut position is the index of the first element of the invalidated segment
     // Split the walk and obtain the invalidated segment
-    let walk = self.walks.get_mut(*walk_id).unwrap();
+    let walk = match self.walks.get_mut(*walk_id) {
+      Some(x) => x,
+      None => return Err(MeritRankError::InternalFatalError),
+    };
     let invalidated_segment = walk.split_from(cut_pos);
 
     // Remove affected nodes from bookkeeping, but ensure we don't accidentally remove references
@@ -185,6 +206,8 @@ impl WalkStorage {
         }
       }
     }
+
+    Ok(())
   }
 }
 
@@ -194,7 +217,7 @@ pub fn decide_skip_invalidation<R>(
   edge: EdgeId,
   step_recalc_probability: Option<Weight>,
   rnd: Option<R>,
-) -> (bool, usize)
+) -> Result<(bool, usize), MeritRankError>
 where
   R: RngCore,
 {
@@ -208,25 +231,31 @@ pub fn decide_skip_invalidation_on_edge_deletion(
   walk: &RandomWalk,
   pos: usize,
   edge: EdgeId,
-) -> (bool, usize) {
-  assert!(pos < walk.len());
+) -> Result<(bool, usize), MeritRankError> {
+  if pos >= walk.len() {
+    return Err(MeritRankError::InternalFatalError);
+  }
+
   let (invalidated_node, dst_node) = edge;
 
   if pos == walk.len() - 1 {
-    return (true, pos);
+    return Ok((true, pos));
   }
 
-  walk.get_nodes()[pos..walk.len() - 1]
-    .iter()
-    .enumerate()
-    .find_map(|(i, &node)| {
-      if node == invalidated_node && walk.get_nodes()[pos + i + 1] == dst_node {
-        Some((false, pos + i))
-      } else {
-        None
-      }
-    })
-    .unwrap_or((true, pos))
+  Ok(
+    walk.get_nodes()[pos..walk.len() - 1]
+      .iter()
+      .enumerate()
+      .find_map(|(i, &node)| {
+        if node == invalidated_node && walk.get_nodes()[pos + i + 1] == dst_node
+        {
+          Some((false, pos + i))
+        } else {
+          None
+        }
+      })
+      .unwrap_or((true, pos)),
+  )
 }
 
 pub fn decide_skip_invalidation_on_edge_addition<R>(
@@ -235,11 +264,14 @@ pub fn decide_skip_invalidation_on_edge_addition<R>(
   edge: EdgeId,
   step_recalc_probability: Weight,
   mut rnd: Option<R>,
-) -> (bool, usize)
+) -> Result<(bool, usize), MeritRankError>
 where
   R: RngCore,
 {
-  assert!(pos < walk.len(), "Position must be within walk length");
+  if pos >= walk.len() {
+    return Err(MeritRankError::InternalFatalError);
+  }
+
   let (invalidated_node, _dst_node) = edge;
 
   let mut thread_rng = thread_rng();
@@ -266,5 +298,5 @@ where
         }
       });
 
-  (result.is_none(), new_pos)
+  Ok((result.is_none(), new_pos))
 }
