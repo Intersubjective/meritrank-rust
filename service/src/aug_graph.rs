@@ -990,7 +990,12 @@ impl AugGraph {
       must_rescale,
     );
 
-    self.mr.set_edge(src_id, dst_id, amount);
+    match self.mr.set_edge(src_id, dst_id, amount) {
+      Ok(_) => {},
+      Err(e) => {
+        log_error!("{}", e);
+      },
+    };
 
     if must_rescale {
       log_verbose!(
@@ -1062,7 +1067,12 @@ impl AugGraph {
         dst_id_iter,
         weight_iter
       );
-      self.mr.set_edge(src_id, dst_id_iter, weight_iter);
+      match self.mr.set_edge(src_id, dst_id_iter, weight_iter) {
+        Ok(_) => {},
+        Err(e) => {
+          log_error!("{}", e);
+        },
+      };
     }
     new_min_weight_from_scan // Return the updated min_weight
   }

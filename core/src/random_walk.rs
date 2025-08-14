@@ -1,4 +1,5 @@
 use crate::graph::NodeId;
+use crate::MeritRankError;
 use tinyset::SetUsize;
 
 /// Represents a random walk through a graph.
@@ -84,27 +85,25 @@ impl RandomWalk {
     &mut self,
     node_id: NodeId,
     step_is_positive: bool,
-  ) {
+  ) -> Result<(), MeritRankError> {
     let index = self.nodes.len();
     // Ensure the node_id is not the same as the last node in the walk:
     // direct self-loops are forbidden and should never happen.
     if let Some(prev) = self.nodes.last() {
-      assert_ne!(*prev, node_id);
+      if *prev == node_id {
+        return Err(MeritRankError::InternalFatalError);
+      }
     }
     self.nodes.push(node_id);
 
     // Update `negative_segment_start` based on `step_is_positive`
     if !step_is_positive {
-      //  FIXME
       if !self.negative_segment_start.is_none() {
-        eprintln!("ERROR: Expected `negative_segment_start` to be `None`");
+        return Err(MeritRankError::InternalFatalError);
       }
-      // assert!(
-      //   self.negative_segment_start.is_none(),
-      //   "Expected `negative_segment_start` to be `None`"
-      // );
       self.negative_segment_start = Some(index);
     }
+    Ok(())
   }
 
   pub fn insert_first(
@@ -130,15 +129,17 @@ impl RandomWalk {
   pub fn extend(
     &mut self,
     new_segment: &RandomWalk,
-  ) {
-    assert!(
-      !(self.negative_segment_start.is_some()
-        && new_segment.negative_segment_start.is_some())
-    );
+  ) -> Result<(), MeritRankError> {
+    if self.negative_segment_start.is_some()
+      && new_segment.negative_segment_start.is_some()
+    {
+      return Err(MeritRankError::InternalFatalError);
+    }
     if let Some(new_neg_start) = new_segment.negative_segment_start {
       self.negative_segment_start = Some(self.nodes.len() + new_neg_start);
     }
     self.nodes.extend(new_segment.get_nodes());
+    Ok(())
   }
 
   pub fn split_from(

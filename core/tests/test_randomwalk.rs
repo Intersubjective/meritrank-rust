@@ -92,16 +92,16 @@ mod tests {
   #[test]
   fn test_random_walk_push() {
     let mut random_walk = RandomWalk::new();
-    random_walk.push(1, true);
-    random_walk.push(2, false);
-    random_walk.push(3, true);
+    random_walk.push(1, true).unwrap();
+    random_walk.push(2, false).unwrap();
+    random_walk.push(3, true).unwrap();
     assert_eq!(random_walk.negative_segment_start.unwrap(), 1);
     assert_eq!(random_walk.get_nodes(), &[1, 2, 3]);
   }
   #[test]
   fn test_start_with_negative_step() {
     let mut random_walk = RandomWalk::new();
-    random_walk.push(10, false); // Step 0: Negative
+    random_walk.push(10, false).unwrap(); // Step 0: Negative
     assert_eq!(random_walk.negative_segment_start.unwrap(), 0);
     assert_eq!(random_walk.get_nodes(), &[10]);
   }
@@ -109,29 +109,27 @@ mod tests {
   #[test]
   fn test_multiple_positive_steps_after_negative() {
     let mut random_walk = RandomWalk::new();
-    random_walk.push(1, false); // Step 0: Negative
-    random_walk.push(2, true); // Step 1: Positive
-    random_walk.push(3, true); // Step 2: Positive
+    random_walk.push(1, false).unwrap(); // Step 0: Negative
+    random_walk.push(2, true).unwrap(); // Step 1: Positive
+    random_walk.push(3, true).unwrap(); // Step 2: Positive
 
     assert_eq!(random_walk.negative_segment_start.unwrap(), 0);
     assert_eq!(random_walk.get_nodes(), &[1, 2, 3]);
   }
 
-  //  FIXME
-  // #[test]
-  // #[should_panic(expected = "Expected `negative_segment_start` to be `None`")]
-  // fn test_no_overlapping_negative_segments() {
-  //   let mut random_walk = RandomWalk::new();
-  //   random_walk.push(1, false); // Step 0: Negative
-  //   random_walk.push(2, false); // Step 1: Negative (should panic)
-  // }
+  #[test]
+  fn test_no_overlapping_negative_segments() {
+    let mut random_walk = RandomWalk::new();
+    random_walk.push(1, false).unwrap(); // Step 0: Negative
+    assert!(random_walk.push(2, false).is_err()); // Step 1: Negative
+  }
 
   #[test]
   fn test_random_walk_extend_pos_to_neg() {
     let mut random_walk = RandomWalk::from_nodes(vec![1]);
     let mut new_segment = RandomWalk::from_nodes(vec![2, 3]);
     new_segment.negative_segment_start = Some(0);
-    random_walk.extend(&new_segment);
+    random_walk.extend(&new_segment).unwrap();
     assert_eq!(random_walk.get_nodes(), &[1, 2, 3,]);
     assert_eq!(random_walk.negative_segment_start.unwrap(), 1)
   }
@@ -141,7 +139,7 @@ mod tests {
     let mut random_walk = RandomWalk::from_nodes(vec![1, 2]);
     let new_segment = RandomWalk::from_nodes(vec![3, 4]);
     random_walk.negative_segment_start = Some(1);
-    random_walk.extend(&new_segment);
+    random_walk.extend(&new_segment).unwrap();
     assert_eq!(random_walk.get_nodes(), &[1, 2, 3, 4]);
     assert_eq!(random_walk.negative_segment_start.unwrap(), 1)
   }

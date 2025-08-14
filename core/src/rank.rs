@@ -32,15 +32,18 @@ impl MeritRank {
     ego: NodeId,
     num_walks: usize,
   ) -> Result<(), MeritRankError> {
-    self.walks.drop_walks_from_node(ego);
+    self.walks.drop_walks_from_node(ego)?;
 
     for _ in 0..num_walks {
       let new_walk_id = self.walks.get_next_free_walkid();
-      let walk = self.walks.get_walk_mut(new_walk_id).unwrap();
+      let walk = match self.walks.get_walk_mut(new_walk_id) {
+        Some(x) => x,
+        None => return Err(MeritRankError::InternalFatalError),
+      };
       assert_eq!(walk.len(), 0);
-      walk.push(ego, true);
+      walk.push(ego, true)?;
 
-      self.graph.continue_walk(walk, self.alpha);
+      self.graph.continue_walk(walk, self.alpha)?;
 
       self
         .pos_hits
@@ -56,8 +59,8 @@ impl MeritRank {
       self.walks.update_walk_bookkeeping(new_walk_id, 0);
     }
     if ASSERT {
-      self.walks.assert_visits_consistency();
-      self.assert_counters_consistency_after_edge_addition();
+      self.walks.assert_visits_consistency()?;
+      self.assert_counters_consistency_after_edge_addition()?;
     }
 
     Ok(())
@@ -136,7 +139,7 @@ impl MeritRank {
     src: NodeId,
     dest: NodeId,
     new_weight: f64,
-  ) {
+  ) -> Result<(), MeritRankError> {
     let old_weight = self
       .graph
       .edge_weight(src, dest)
@@ -154,9 +157,9 @@ impl MeritRank {
     }
 
     if old_weight.abs() > EPSILON && new_weight.abs() > EPSILON {
-      self.set_edge_(src, dest, 0.0);
+      self.set_edge_(src, dest, 0.0)?;
     }
-    self.set_edge_(src, dest, new_weight);
+    self.set_edge_(src, dest, new_weight)
   }
 
   pub fn set_edge_(
@@ -164,8 +167,10 @@ impl MeritRank {
     src: NodeId,
     dest: NodeId,
     new_weight: f64,
-  ) {
-    assert_ne!(src, dest, "Self reference not allowed");
+  ) -> Result<(), MeritRankError> {
+    if src == dest {
+      return Err(MeritRankError::SelfReferenceNotAllowed);
+    }
 
     let old_weight = self
       .graph
@@ -173,32 +178,43 @@ impl MeritRank {
       .expect("Node should exist!")
       .unwrap_or(0.0);
     if old_weight == new_weight {
-      return;
+      return Ok(());
     }
     let deletion_mode = new_weight.abs() <= EPSILON;
-    let step_recalc_probability: Option<f64> =
-      (OPTIMIZE_INVALIDATION && !deletion_mode).then(|| {
+    let mut step_recalc_probability = None;
+
+    if OPTIMIZE_INVALIDATION && !deletion_mode {
+      step_recalc_probability = Some(
         new_weight.abs()
-          / (self.graph.get_node_data(src).unwrap().abs_sum()
-            + new_weight.abs())
-      });
+          / (match self.graph.get_node_data(src) {
+            Some(x) => x.abs_sum(),
+            None => return Err(MeritRankError::InternalFatalError),
+          } + new_weight.abs()),
+      );
+    }
 
     if deletion_mode {
-      self.graph.remove_edge(src, dest).unwrap();
+      self.graph.remove_edge(src, dest)?;
     } else {
-      self.graph.set_edge(src, dest, new_weight).unwrap();
+      self.graph.set_edge(src, dest, new_weight)?;
     }
 
     let affected_walkids = self.walks.find_affected_walkids(
       src,
       Some(dest),
       step_recalc_probability,
-    );
+    )?;
 
     for (walk_id, visit_pos) in &affected_walkids {
       // Revert the counters associated with the affected walks, as if the walks never existed
-      let walk = self.walks.get_walk(*walk_id).unwrap();
-      let ego = walk.first_node().unwrap();
+      let walk = match self.walks.get_walk(*walk_id) {
+        Some(x) => x,
+        None => return Err(MeritRankError::InternalFatalError),
+      };
+      let ego = match walk.first_node() {
+        Some(x) => x,
+        None => return Err(MeritRankError::InternalFatalError),
+      };
       self
         .pos_hits
         .entry(ego)
@@ -213,23 +229,26 @@ impl MeritRank {
       let cut_position = visit_pos + 1;
       self
         .walks
-        .split_and_remove_from_bookkeeping(walk_id, cut_position);
+        .split_and_remove_from_bookkeeping(walk_id, cut_position)?;
 
-      let walk = self.walks.get_walk_mut(*walk_id).unwrap();
+      let walk = match self.walks.get_walk_mut(*walk_id) {
+        Some(x) => x,
+        None => return Err(MeritRankError::InternalFatalError),
+      };
 
       let mut skip_continuation = false;
       //#[cfg(optimize_invalidation)]
       if OPTIMIZE_INVALIDATION {
         if deletion_mode {
-          self.graph.extend_walk_in_case_of_edge_deletion(walk);
+          self.graph.extend_walk_in_case_of_edge_deletion(walk)?;
         } else if random::<f64>() < self.alpha {
-          walk.push(dest, new_weight > 0.0);
+          walk.push(dest, new_weight > 0.0)?;
         } else {
           skip_continuation = true;
         }
       }
       if !skip_continuation {
-        self.graph.continue_walk(walk, self.alpha);
+        self.graph.continue_walk(walk, self.alpha)?;
       }
 
       // Update counters associated with the updated walks
@@ -248,15 +267,22 @@ impl MeritRank {
     }
 
     if ASSERT {
-      self.walks.assert_visits_consistency();
-      self.assert_counters_consistency_after_edge_addition();
+      self.walks.assert_visits_consistency()?;
+      self.assert_counters_consistency_after_edge_addition()?;
     }
+
+    Ok(())
   }
 
-  fn assert_counters_consistency_after_edge_addition(&self) {
+  fn assert_counters_consistency_after_edge_addition(
+    &self
+  ) -> Result<(), MeritRankError> {
     for (ego, hits) in &self.pos_hits {
       for (peer, count) in hits {
-        let visits = self.walks.get_visits_through_node(*peer).unwrap();
+        let visits = match self.walks.get_visits_through_node(*peer) {
+          Some(x) => x,
+          None => return Err(MeritRankError::InternalFatalError),
+        };
         let walks: Vec<_> = visits
           .iter()
           .filter(|&(walkid, pos)| {
@@ -271,8 +297,12 @@ impl MeritRank {
           })
           .collect();
 
-        assert_eq!(walks.len(), *count as usize);
-        //assert!(*count == 0.0 || weight <= EPSILON || self.graph.is_connecting(*ego, *peer));
+        if walks.len() != *count as usize {
+          return Err(MeritRankError::InternalFatalError);
+        }
+        // if !(*count == 0.0 || weight <= EPSILON || self.graph.is_connecting(*ego, *peer)) {
+        //   return Err(MeritRankError::InternalFatalError);
+        // }
       }
     }
     for (ego, hits) in &self.neg_hits {
@@ -290,10 +320,15 @@ impl MeritRank {
           })
           .collect();
 
-        assert_eq!(walks.len(), *count as usize);
-        //assert!(*count == 0.0 || weight <= EPSILON || self.graph.is_connecting(*ego, *peer));
+        if walks.len() != *count as usize {
+          return Err(MeritRankError::InternalFatalError);
+        }
+        // if !(*count == 0.0 || weight <= EPSILON || self.graph.is_connecting(*ego, *peer)) {
+        //   return Err(MeritRankError::InternalFatalError);
+        // }
       }
     }
+    Ok(())
   }
 
   pub fn print_walks(&self) {

@@ -32,12 +32,12 @@ mod tests {
     rank.calculate(0, walk_count).unwrap();
     for n in 1..9 {
       rank_ref.get_new_nodeid();
-      rank_ref.set_edge(n - 1, n, 1.0);
+      rank_ref.set_edge(n - 1, n, 1.0).unwrap();
       rank.get_new_nodeid();
-      rank.set_edge(n - 1, n, 1.0);
+      rank.set_edge(n - 1, n, 1.0).unwrap();
     }
-    rank_ref.set_edge(8, 1, 1.0);
-    rank.set_edge(8, 1, 1.0);
+    rank_ref.set_edge(8, 1, 1.0).unwrap();
+    rank.set_edge(8, 1, 1.0).unwrap();
     rank_ref.calculate(0, walk_count).unwrap();
     println!("{:?}", rank_ref.get_all_scores(0, None));
     println!("{:?}", rank.get_all_scores(0, None));
@@ -59,12 +59,12 @@ mod tests {
     rank.calculate(0, walk_count).unwrap();
     for n in 1..9 {
       rank_ref.get_new_nodeid();
-      rank_ref.set_edge(n - 1, n, 1.0);
+      rank_ref.set_edge(n - 1, n, 1.0).unwrap();
       rank.get_new_nodeid();
-      rank.set_edge(n - 1, n, 1.0);
+      rank.set_edge(n - 1, n, 1.0).unwrap();
     }
-    rank_ref.set_edge(8, 1, 1.0);
-    rank.set_edge(8, 1, 1.0);
+    rank_ref.set_edge(8, 1, 1.0).unwrap();
+    rank.set_edge(8, 1, 1.0).unwrap();
     let cloned = rank.clone();
     rank_ref.calculate(0, walk_count).unwrap();
     println!("{:?}", cloned.get_all_scores(0, None));
@@ -84,9 +84,9 @@ mod tests {
     rank.get_new_nodeid();
     rank.get_new_nodeid();
 
-    rank.set_edge(0, 1, -10000.0);
-    rank.set_edge(0, 2, 0.0001);
-    rank.set_edge(1, 0, 1.0);
+    rank.set_edge(0, 1, -10000.0).unwrap();
+    rank.set_edge(0, 2, 0.0001).unwrap();
+    rank.set_edge(1, 0, 1.0).unwrap();
     rank.calculate(0, walk_count).unwrap();
   }
 
@@ -98,26 +98,26 @@ mod tests {
     ref_rank.get_new_nodeid();
     ref_rank.get_new_nodeid();
     ref_rank.get_new_nodeid();
-    ref_rank.set_edge(0, 1, -1.0);
-    ref_rank.set_edge(0, 2, 1.0);
-    ref_rank.set_edge(1, 2, 1.0);
-    ref_rank.set_edge(2, 1, 1.0);
-    ref_rank.set_edge(2, 0, 1.0);
+    ref_rank.set_edge(0, 1, -1.0).unwrap();
+    ref_rank.set_edge(0, 2, 1.0).unwrap();
+    ref_rank.set_edge(1, 2, 1.0).unwrap();
+    ref_rank.set_edge(2, 1, 1.0).unwrap();
+    ref_rank.set_edge(2, 0, 1.0).unwrap();
     ref_rank.calculate(0, walk_count).unwrap();
 
     let mut rank = MeritRank::new(Graph::new());
     rank.get_new_nodeid();
     rank.get_new_nodeid();
     rank.get_new_nodeid();
-    rank.set_edge(0, 1, -1.0);
-    rank.set_edge(0, 2, 1.0);
-    rank.set_edge(1, 2, 1.0);
-    rank.set_edge(2, 1, 1.0);
+    rank.set_edge(0, 1, -1.0).unwrap();
+    rank.set_edge(0, 2, 1.0).unwrap();
+    rank.set_edge(1, 2, 1.0).unwrap();
+    rank.set_edge(2, 1, 1.0).unwrap();
 
     rank.calculate(0, walk_count).unwrap();
 
     //rank.print_walks();
-    rank.set_edge(2, 0, 1.0);
+    rank.set_edge(2, 0, 1.0).unwrap();
     let ref_score = ref_rank.get_node_score(0, 2).unwrap() as f64;
     let score = rank.get_node_score(0, 2).unwrap() as f64;
     assert_approx_eq!(ref_score, score, 0.2);
@@ -134,24 +134,24 @@ mod tests {
     ref_rank.get_new_nodeid();
     ref_rank.get_new_nodeid();
     ref_rank.get_new_nodeid();
-    ref_rank.set_edge(0, 2, 1.0);
-    ref_rank.set_edge(1, 0, 1.0);
-    ref_rank.set_edge(2, 1, 1.0);
+    ref_rank.set_edge(0, 2, 1.0).unwrap();
+    ref_rank.set_edge(1, 0, 1.0).unwrap();
+    ref_rank.set_edge(2, 1, 1.0).unwrap();
     ref_rank.calculate(0, walk_count).unwrap();
 
     let mut rank = MeritRank::new(Graph::new());
     rank.get_new_nodeid();
     rank.get_new_nodeid();
     rank.get_new_nodeid();
-    rank.set_edge(0, 1, -1.0);
-    rank.set_edge(0, 2, 1.0);
-    rank.set_edge(1, 0, 1.0);
-    rank.set_edge(2, 1, 1.0);
+    rank.set_edge(0, 1, -1.0).unwrap();
+    rank.set_edge(0, 2, 1.0).unwrap();
+    rank.set_edge(1, 0, 1.0).unwrap();
+    rank.set_edge(2, 1, 1.0).unwrap();
 
     rank.calculate(0, walk_count).unwrap();
 
     //rank.print_walks();
-    rank.set_edge(0, 1, 0.0);
+    rank.set_edge(0, 1, 0.0).unwrap();
 
     let ref_score = ref_rank.get_node_score(0, 2).unwrap() as f64;
     let score = rank.get_node_score(0, 2).unwrap() as f64;
@@ -169,8 +169,8 @@ mod tests {
     rank.get_new_nodeid();
     rank.get_new_nodeid();
     rank.get_new_nodeid();
-    rank.set_edge(0, 1, 1.0);
-    rank.set_edge(0, 2, -1.0);
+    rank.set_edge(0, 1, 1.0).unwrap();
+    rank.set_edge(0, 2, -1.0).unwrap();
     rank.calculate(0, walk_count).unwrap();
     let result = rank.get_all_scores(0, None).unwrap();
 

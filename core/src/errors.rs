@@ -1,4 +1,6 @@
-/// Errors that can occur in the MeritRank implementation.
+use std::error::Error;
+use std::fmt::{Display, Formatter, Result};
+
 #[derive(Debug, Clone)]
 pub enum MeritRankError {
   InfWeightEncountered,
@@ -14,10 +16,8 @@ pub enum MeritRankError {
   NodeNotFound,
   WalkNotFound,
   EdgeNotFound,
+  InternalFatalError,
 }
-
-use std::error::Error;
-use std::fmt::{Display, Formatter, Result};
 
 impl Display for MeritRankError {
   fn fmt(
@@ -61,6 +61,9 @@ impl Display for MeritRankError {
       },
       MeritRankError::EdgeNotFound => {
         write!(f, "Can't find the edge between given nodes")
+      },
+      MeritRankError::InternalFatalError => {
+        write!(f, "Internal fatal error")
       },
     }
   }

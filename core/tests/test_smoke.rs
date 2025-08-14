@@ -34,12 +34,14 @@ mod tests {
   pub fn load_graph_from_csv(filename: &str) -> MeritRank {
     let mut rank = MeritRank::new(Graph::new());
     let mut max_node_id = 0;
-    for edge in read_edges_from_csv("tests/graph_with_zero.csv") {
+    for edge in read_edges_from_csv(filename) {
       while edge.src >= max_node_id || edge.dst >= max_node_id {
         max_node_id += 1;
         rank.get_new_nodeid();
       }
-      rank.set_edge(edge.src as NodeId, edge.dst as NodeId, edge.weight);
+      rank
+        .set_edge(edge.src as NodeId, edge.dst as NodeId, edge.weight)
+        .unwrap();
     }
     rank
   }
@@ -58,11 +60,11 @@ mod tests {
     //  Should be fast!
 
     println!("1");
-    rank.set_edge(3, 35, 0.6);
+    rank.set_edge(3, 35, 0.6).unwrap();
     assert!(get_time() < 80000);
 
     println!("2");
-    rank.set_edge(3, 27, 0.6);
+    rank.set_edge(3, 27, 0.6).unwrap();
     assert!(get_time() < 80000);
   }
   #[cfg(feature = "expensive_tests")]
