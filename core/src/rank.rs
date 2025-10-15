@@ -175,6 +175,8 @@ impl MeritRank {
     if old_weight == new_weight {
       return;
     }
+
+    let step_is_positive = new_weight > 0.0;
     let deletion_mode = new_weight.abs() <= EPSILON;
     let step_recalc_probability: Option<f64> =
       (OPTIMIZE_INVALIDATION && !deletion_mode).then(|| {
@@ -193,6 +195,7 @@ impl MeritRank {
       src,
       Some(dest),
       step_recalc_probability,
+      step_is_positive
     );
 
     for (walk_id, visit_pos) in &affected_walkids {
@@ -217,18 +220,21 @@ impl MeritRank {
 
       let walk = self.walks.get_walk_mut(*walk_id).unwrap();
 
-      let mut skip_continuation = false;
+      let mut continue_walk = true;
       //#[cfg(optimize_invalidation)]
       if OPTIMIZE_INVALIDATION {
         if deletion_mode {
           self.graph.extend_walk_in_case_of_edge_deletion(walk);
         } else if random::<f64>() < self.alpha {
-          walk.push(dest, new_weight > 0.0);
+          // Note that this line expects the walk to be in positive state.
+          // If the walk is in negative state, this will trigger asser down the line.
+          // But this should never trigger, as only walke in positive state are returned as affected_walkids
+          walk.push(dest, step_is_positive);
         } else {
-          skip_continuation = true;
+          continue_walk = false;
         }
       }
-      if !skip_continuation {
+      if continue_walk {
         self.graph.continue_walk(walk, self.alpha);
       }
 

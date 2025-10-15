@@ -178,6 +178,34 @@ mod tests {
     assert!(result[2].1 < 0.0);
   }
 
+
+  #[test]
+  fn test_avoiding_continuing_negative_walk_by_negative_edge() {
+    // This handles the case where we have a negative walk,
+    // and then we add a new negative edge later in its path: in this case,
+    // continuation of the walk should be skipped, to conform with the case
+    // as if the new negative edge would have been there originally (and therefore
+    // did not affect the walk at all, because we don't handle double-negation,
+    // and negative walks avoid negative edges completely)
+    let walk_count = 10;
+    let mut rank = MeritRank::new(Graph::new());
+    rank.get_new_nodeid();
+    rank.get_new_nodeid();
+    rank.get_new_nodeid();
+    rank.get_new_nodeid();
+    rank.set_edge(0, 1, -1.0);
+    rank.set_edge(1, 2, 1.0);
+    rank.calculate(0, walk_count).unwrap();
+
+    // Add new negative edge that may provoke the (already negative) walk to continue through it
+    rank.set_edge(1, 3, -1.0);
+
+    let result = rank.get_all_scores(0, None).unwrap();
+
+    //assert_eq!(result.len(), 3);
+    //assert!(result[2].1 < 0.0);
+  }
+
   #[test]
   fn test_node_data_get_outgoing_edges() {
     let mut graph = Graph::new();

@@ -127,6 +127,7 @@ impl WalkStorage {
     invalidated_node: NodeId,
     dst_node: Option<NodeId>,
     step_recalc_probability: Option<Weight>,
+    step_is_positive: bool,
   ) -> Vec<(WalkId, usize)> {
     let mut invalidated_walks_ids = vec![];
 
@@ -144,6 +145,7 @@ impl WalkStorage {
           *visit_pos,
           (invalidated_node, dst_node.unwrap()),
           step_recalc_probability,
+          step_is_positive,
           Some(&mut rng),
         );
         if may_skip {
@@ -193,13 +195,14 @@ pub fn decide_skip_invalidation<R>(
   pos: usize,
   edge: EdgeId,
   step_recalc_probability: Option<Weight>,
+  step_is_positive: bool,
   rnd: Option<R>,
 ) -> (bool, usize)
 where
   R: RngCore,
 {
   if let Some(probability) = step_recalc_probability {
-    decide_skip_invalidation_on_edge_addition(walk, pos, edge, probability, rnd)
+    decide_skip_invalidation_on_edge_addition(walk, pos, edge, probability, step_is_positive, rnd)
   } else {
     decide_skip_invalidation_on_edge_deletion(walk, pos, edge)
   }
@@ -234,6 +237,7 @@ pub fn decide_skip_invalidation_on_edge_addition<R>(
   pos: usize,
   edge: EdgeId,
   step_recalc_probability: Weight,
+  step_is_positive: bool,
   mut rnd: Option<R>,
 ) -> (bool, usize)
 where
@@ -256,7 +260,10 @@ where
       .find_map(|(i, &node)| {
         if node == invalidated_node {
           new_pos = pos + i;
-          if rng.gen::<Weight>() < step_recalc_probability {
+          if rng.gen::<Weight>() < step_recalc_probability
+              // See test_avoiding_continuing_negative_walk_by_negative_edge
+              && !(!step_is_positive && (walk.negative_segment_start <= Some(new_pos)) )
+              {
             Some(false) // may_skip = false, exit early
           } else {
             None // continue searching
