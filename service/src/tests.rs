@@ -1834,6 +1834,47 @@ fn neighbors_prioritize_ego_owned_objects() {
 }
 
 #[test]
+fn neighbors_opinions_on_ego() {
+  let mut graph = default_graph();
+
+
+  // Opinion from U1 to U2
+  graph.write_put_edge("", "U1", "O12", 1.0, -1);
+  graph.write_put_edge("", "O12", "U1", 1.0, -1);
+  graph.write_put_edge("", "O12", "U2", 1.0, -1);
+
+  // Opinion from U1 to U3 - to complicate the case and make U3 visible to U1
+  graph.write_put_edge("", "U1", "O13", 1.0, -1);
+  graph.write_put_edge("", "O13", "U1", 1.0, -1);
+  graph.write_put_edge("", "O13", "U3", 1.0, -1);
+
+  // Opinion from U3 to U1
+  graph.write_put_edge("", "U3", "O31", 1.0, -1);
+  graph.write_put_edge("", "O31", "U3", 1.0, -1);
+  graph.write_put_edge("", "O31", "U1", 1.0, -1);
+
+
+  let neighbors = graph.read_neighbors(
+    "",
+    "U1",
+    "U1",
+    NEIGHBORS_INBOUND,
+    "O",
+    false,
+    100.0,
+    false,
+    -100.0,
+    false,
+    0,
+    100,
+  );
+
+  assert_eq!(neighbors[0].0, "U1");
+  assert_eq!(neighbors[0].1, "O31");
+  assert_eq!(neighbors.len(), 1);
+}
+
+#[test]
 fn neighbors_omit_opinions_from_self_to_focus() {
   let mut graph = default_graph();
 

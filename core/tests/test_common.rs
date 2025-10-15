@@ -47,7 +47,7 @@ mod tests {
 
     // Test skipping invalidation on edge deletion
     let (may_skip, new_pos) =
-      decide_skip_invalidation(&walk, 2, edge, None, Some(&mut rng));
+      decide_skip_invalidation(&walk, 2, edge, None, true, Some(&mut rng));
     assert!(may_skip);
     assert_eq!(new_pos, 2);
 
@@ -57,6 +57,7 @@ mod tests {
       1,
       edge,
       step_recalc_probability,
+      true,
       Some(&mut rng),
     );
     assert!(may_skip);
@@ -68,6 +69,7 @@ mod tests {
       0,
       edge,
       step_recalc_probability,
+      true,
       Some(&mut rng),
     );
     assert!(!may_skip);
@@ -116,6 +118,7 @@ mod tests {
       0,
       edge,
       step_recalc_probability,
+      true,
       Some(&mut rng),
     );
     assert!(!may_skip);
@@ -127,6 +130,7 @@ mod tests {
       2,
       edge,
       step_recalc_probability,
+      true,
       Some(&mut rng),
     );
     assert!(may_skip);
@@ -138,6 +142,7 @@ mod tests {
       1,
       edge,
       step_recalc_probability,
+      true,
       Some(&mut rng),
     );
     // let should_skip = random::<Weight>() > step_recalc_probability;

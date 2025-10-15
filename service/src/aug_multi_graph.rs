@@ -501,8 +501,8 @@ impl AugMultiGraph {
           }
           if x.pos_edges.len() == 2 && node_kind_opt == Some(NodeKind::Opinion)
           {
-            // FIXME! This might produce incorrect results in case the first edge is the edge to the opinion's target
-            return Some(x.pos_edges.keys()[0]);
+            // FIXME! This might produce incorrect results if we add opinions on opinions
+            return Some(x.inbound_edges.keys()[0]);
           }
           log_error!("Something went wrong with finding the node's owner");
           None
