@@ -14,7 +14,7 @@ crate-type = ["cdylib", "lib"]
 default = ["pg17"]
 shared = []
 pg17 = ["pgrx/pg17", "pgrx-tests/pg17"]
-pg_test = []
+pg_test = ["csv"]
 
 [dependencies]
 meritrank_service = { path="../service" }
@@ -25,6 +25,7 @@ rmp-serde = "1.1.2"
 serde = "1.0.193"
 
 dotenv = { version = "0.15.0" }
+csv = { version = "1.3", optional = true }
 
 [dev-dependencies]
 pgrx-tests = "=0.12.8"
