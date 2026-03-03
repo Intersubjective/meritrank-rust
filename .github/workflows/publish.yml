@@ -62,6 +62,7 @@ jobs:
       run: |
         export RUST_TEST_THREADS=1
         export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10234
+        sudo chmod a+rwx /usr/share/postgresql/17/extension /usr/lib/postgresql/17/lib
         cargo pgrx test
   publish_service:
     needs: [ test_core, test_service, test_psql_connector ]
