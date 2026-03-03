@@ -1,6 +1,5 @@
 use crate::data::*;
 use crate::helpers::*;
-use crate::legacy_protocol::*;
 use crate::node_registry::*;
 use crate::settings::*;
 use crate::utils::{log::*, quantiles::*};
@@ -1086,9 +1085,21 @@ impl AugGraph {
   ) {
     log_trace!("{:?} {:?} {}", src, dst, amount);
 
-    match self.reg_owner_and_get_ids(src, dst) {
+    match self.reg_owner_and_get_ids(src.clone(), dst.clone()) {
       Ok((src_id, dst_id)) => {
         self.set_edge_by_id(src_id, dst_id, amount, magnitude);
+
+        //  D1 (JOURNAL): auto-calculate for nodes that have never had walks
+        //  initialised. This ensures read_scores works immediately after a
+        //  put_edge + sync even when no explicit WriteCalculate was sent (new
+        //  TCP path). For nodes that already have walks, meritrank_core's
+        //  incremental set_edge_ update is sufficient.
+        if !self.mr.get_personal_hits().contains_key(&src_id) {
+          self.calculate(src);
+        }
+        if !self.mr.get_personal_hits().contains_key(&dst_id) {
+          self.calculate(dst);
+        }
       },
       Err(e) => match e {
         AugGraphError::SelfReference => {
@@ -1396,6 +1407,31 @@ impl Absorb<AugGraphOp> for AugGraph {
       AugGraphOp::WriteRecalculateZero => self.recalculate_zero(),
       AugGraphOp::WriteRecalculateClustering => {
         log_warning!("Recalculate clustering is ignored!")
+      },
+      AugGraphOp::DeleteNode(node) => {
+        //  D2 (JOURNAL): zero all outgoing edges from the node.
+        if let Some(src_info) = self.nodes.get_by_name(node) {
+          let src_id = src_info.id;
+          let dst_ids: Vec<NodeId> = self
+            .mr
+            .graph
+            .get_node_data(src_id)
+            .map(|data| {
+              data
+                .get_outgoing_edges()
+                .map(|(dst_id, _)| dst_id)
+                .collect()
+            })
+            .unwrap_or_default();
+          for dst_id in dst_ids {
+            match self.mr.set_edge(src_id, dst_id, 0.0) {
+              Ok(_) => {},
+              Err(e) => log_error!("{}", e),
+            }
+          }
+        } else {
+          log_warning!("DeleteNode: node not found: {:?}", node);
+        }
       },
       AugGraphOp::Stamp(value) => self.stamp = *value,
     }

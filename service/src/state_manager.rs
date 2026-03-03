@@ -266,9 +266,10 @@ impl MultiGraphProcessor {
           )
           .await
       },
-      ReqData::WriteDeleteNode(_) => {
-        log_warning!("Delete node request ignored!");
-        Response::Ok
+      ReqData::WriteDeleteNode(data) => {
+        self
+          .send_op(&req.subgraph, AugGraphOp::DeleteNode(data.node.clone()))
+          .await
       },
       ReqData::WriteZeroOpinion(data) => {
         self

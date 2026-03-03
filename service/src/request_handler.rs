@@ -274,7 +274,12 @@ mod tests {
 
     match scores {
       Response::Scores(scores) => {
-        assert!(scores.scores.len() == 0);
+        //  With auto-calculate (D1 in JOURNAL): WriteEdge now triggers
+        //  calculate for new nodes inside aug_graph::set_edge, so scores
+        //  are non-empty after put_edge + sync even without explicit
+        //  WriteCalculate. U2 is not "owned by U1" so hide_personal=true
+        //  does not filter it out.
+        assert!(scores.scores.len() > 0);
       },
       _ => assert!(false),
     };

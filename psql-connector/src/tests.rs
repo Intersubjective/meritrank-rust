@@ -1,6 +1,7 @@
 // use super::testing::*;
-use meritrank_service::legacy_protocol::*;
 use pgrx::prelude::*;
+
+const NEIGHBORS_INBOUND: i64 = 2;
 // use std::thread::sleep;
 // use std::time::Duration;
 

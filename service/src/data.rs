@@ -1,8 +1,10 @@
 //  FIXME: Clean up type names consistency.
 
-use crate::vsids::Magnitude;
-
 use bincode::{Decode, Encode};
+
+pub const NEIGHBORS_ALL: i64 = 0;
+pub const NEIGHBORS_OUTBOUND: i64 = 1;
+pub const NEIGHBORS_INBOUND: i64 = 2;
 use meritrank_core::Weight;
 use serde::{Deserialize, Serialize};
 
@@ -74,7 +76,7 @@ pub struct OpWriteEdge {
   pub src:       NodeName,
   pub dst:       NodeName,
   pub amount:    Weight,
-  pub magnitude: Magnitude,
+  pub magnitude: u32,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -151,6 +153,7 @@ pub enum AugGraphOp {
   WriteReset,
   WriteRecalculateZero,
   WriteRecalculateClustering,
+  DeleteNode(NodeName),
   Stamp(u64),
 }
 

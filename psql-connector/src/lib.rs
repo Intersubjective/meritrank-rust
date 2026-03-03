@@ -4,10 +4,9 @@ mod types;
 #[cfg(any(test, feature = "pg_test"))]
 pub mod testing;
 
-use meritrank_service::legacy_protocol::*;
+use rpc::*;
 use pgrx::iter::TableIterator;
 use pgrx::*;
-use rpc::*;
 use std::error::Error;
 use types::*;
 
@@ -51,12 +50,10 @@ fn mr_connector() -> &'static str {
   VERSION
 }
 
+//  D3 (JOURNAL): Return connector version; no network call needed.
 #[pg_extern(immutable)]
-fn mr_service() -> String {
-  match service_wrapped() {
-    Err(e) => format!("{e}"),
-    Ok(s) => s,
-  }
+fn mr_service() -> &'static str {
+  VERSION
 }
 
 #[pg_extern(immutable)]
@@ -80,9 +77,7 @@ fn mr_node_score(
 > {
   let ego = require(src, "src")?;
   let target = require(dst, "dst")?;
-  let response: Vec<(String, String, f64, f64, i32, i32)> =
-    call(CMD_NODE_SCORE, ctx(context), true, (ego, target))?;
-  Ok(TableIterator::new(response))
+  Ok(TableIterator::new(new_node_score(ego, target, ctx(context))?))
 }
 
 #[pg_extern(immutable)]
@@ -112,24 +107,18 @@ fn mr_scores(
   Box<dyn Error + 'static>,
 > {
   let ego = require(src, "ego")?;
-  let (lt_val, lte_flag, gt_val, gte_flag) = validate_bounds(lt, lte, gt, gte)?;
-  let response: Vec<(String, String, f64, f64, i32, i32)> = call(
-    CMD_SCORES,
+  Ok(TableIterator::new(new_scores(
+    ego,
+    hide_personal.unwrap_or(false),
     ctx(context),
-    true,
-    (
-      ego,
-      kind.unwrap_or(""),
-      hide_personal.unwrap_or(false),
-      lt_val,
-      lte_flag,
-      gt_val,
-      gte_flag,
-      index.unwrap_or(0) as u32,
-      count.unwrap_or(i32::MAX as i64) as u32,
-    ),
-  )?;
-  Ok(TableIterator::new(response))
+    kind.unwrap_or(""),
+    lt,
+    lte,
+    gt,
+    gte,
+    index.unwrap_or(0) as u32,
+    count.unwrap_or(i32::MAX as i64) as u32,
+  )?))
 }
 
 #[pg_extern(immutable)]
@@ -157,19 +146,14 @@ fn mr_graph(
 > {
   let ego = require(ego, "ego")?;
   let focus = require(focus, "focus")?;
-  let response: Vec<(String, String, f64, f64, f64, i32, i32)> = call(
-    CMD_GRAPH,
+  Ok(TableIterator::new(new_graph(
+    ego,
+    focus,
     ctx(context),
-    true,
-    (
-      ego,
-      focus,
-      positive_only.unwrap_or(false),
-      index.unwrap_or(0) as u32,
-      count.unwrap_or(i32::MAX as i64) as u32,
-    ),
-  )?;
-  Ok(TableIterator::new(response))
+    positive_only.unwrap_or(false),
+    index.unwrap_or(0) as u64,
+    count.unwrap_or(i32::MAX as i64) as u64,
+  )?))
 }
 
 #[pg_extern(immutable)]
@@ -210,26 +194,20 @@ fn mr_neighbors(
       )
     },
   };
-  let (lt_val, lte_flag, gt_val, gte_flag) = validate_bounds(lt, lte, gt, gte)?;
-  let response: Vec<(String, String, f64, f64, i32, i32)> = call(
-    CMD_NEIGHBORS,
+  Ok(TableIterator::new(new_neighbors(
+    ego,
+    focus,
+    direction,
+    hide_personal.unwrap_or(false),
     ctx(context),
-    true,
-    (
-      ego,
-      focus,
-      direction,
-      kind.unwrap_or(""),
-      hide_personal.unwrap_or(false),
-      lt_val,
-      lte_flag,
-      gt_val,
-      gte_flag,
-      index.unwrap_or(0) as u32,
-      count.unwrap_or(i32::MAX as i64) as u32,
-    ),
-  )?;
-  Ok(TableIterator::new(response))
+    kind.unwrap_or(""),
+    lt,
+    lte,
+    gt,
+    gte,
+    index.unwrap_or(0) as u32,
+    count.unwrap_or(i32::MAX as i64) as u32,
+  )?))
 }
 
 #[pg_extern(immutable)]
@@ -239,8 +217,7 @@ fn mr_nodelist(
   TableIterator<'static, (name!(node, String),)>,
   Box<dyn Error + 'static>,
 > {
-  let response: Vec<(String,)> = call(CMD_NODE_LIST, ctx(context), true, ())?;
-  Ok(TableIterator::new(response))
+  Ok(TableIterator::new(new_node_list(ctx(context))?))
 }
 
 #[pg_extern(immutable)]
@@ -253,9 +230,7 @@ fn mr_edgelist(
   >,
   Box<dyn Error + 'static>,
 > {
-  let response: Vec<(String, String, f64)> =
-    call(CMD_EDGES, ctx(context), true, ())?;
-  Ok(TableIterator::new(response))
+  Ok(TableIterator::new(new_edgelist(ctx(context))?))
 }
 
 #[pg_extern(immutable)]
@@ -267,9 +242,7 @@ fn mr_connected(
   Box<dyn Error + 'static>,
 > {
   let ego = require(src, "src")?;
-  let response: Vec<(String, String)> =
-    call(CMD_CONNECTED, ctx(context), true, ego)?;
-  Ok(TableIterator::new(response))
+  Ok(TableIterator::new(new_connected(ego, ctx(context))?))
 }
 
 #[pg_extern(immutable)]
@@ -291,9 +264,7 @@ fn mr_mutual_scores(
   Box<dyn Error + 'static>,
 > {
   let ego = require(src, "src")?;
-  let response: Vec<(String, String, f64, f64, i32, i32)> =
-    call(CMD_MUTUAL_SCORES, ctx(context), true, ego)?;
-  Ok(TableIterator::new(response))
+  Ok(TableIterator::new(new_mutual_scores(ego, ctx(context))?))
 }
 
 #[pg_extern]
@@ -301,7 +272,7 @@ fn mr_get_new_edges_filter(
   src: Option<&str>,
 ) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
   let src = require(src, "src")?;
-  call(CMD_READ_NEW_EDGES_FILTER, "", true, src)
+  new_get_new_edges_filter(src)
 }
 
 //  ================================================================
@@ -314,15 +285,16 @@ fn mr_get_new_edges_filter(
 fn mr_sync(
   timeout_msec: default!(Option<i64>, "6000000"),
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-  call_void(CMD_SYNC, "", true, (), timeout_u64(timeout_msec))
+  new_sync(timeout_u64(timeout_msec))
 }
 
+//  D3 (JOURNAL): mr_log_level is a no-op in the new protocol; log level is
+//  controlled server-side via environment variables.
 #[pg_extern]
 fn mr_log_level(
-  log_level: default!(Option<i64>, "1"),
+  _log_level: default!(Option<i64>, "1"),
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-  let log_level = log_level.unwrap_or(0) as u32;
-  call_void(CMD_LOG_LEVEL, "", true, log_level, Some(*RECV_TIMEOUT_MSEC))
+  Ok("Ok")
 }
 
 //  ================================================================
@@ -335,13 +307,7 @@ fn mr_log_level(
 fn mr_create_context(
   context: Option<&str>,
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-  call_void(
-    CMD_CREATE_CONTEXT,
-    ctx(context),
-    false,
-    (),
-    Some(*RECV_TIMEOUT_MSEC),
-  )
+  new_create_context(ctx(context))
 }
 
 #[pg_extern]
@@ -358,18 +324,12 @@ fn mr_put_edge(
   >,
   Box<dyn Error + 'static>,
 > {
-  let ctx = ctx(context);
+  let c = ctx(context);
   let src = require(src, "src")?;
   let dest = require(dst, "dst")?;
   let weight = require(weight, "weight")?;
   let index = require(index, "index")?;
-  call_void(
-    CMD_PUT_EDGE,
-    ctx,
-    false,
-    (src, dest, weight, index),
-    Some(*RECV_TIMEOUT_MSEC),
-  )?;
+  new_put_edge(src, dest, weight, c, index)?;
   Ok(TableIterator::once((
     src.to_string(),
     dest.to_string(),
@@ -384,17 +344,11 @@ fn mr_delete_edge(
   context: default!(Option<&str>, "''"),
   index: default!(Option<i64>, "-1"),
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-  let ctx = ctx(context);
+  let c = ctx(context);
   let ego = require(src, "src")?;
   let dst = require(dst, "dst")?;
   let index = require(index, "index")?;
-  call_void(
-    CMD_DELETE_EDGE,
-    ctx,
-    false,
-    (ego, dst, index),
-    Some(*RECV_TIMEOUT_MSEC),
-  )
+  new_delete_edge(ego, dst, c, index)
 }
 
 #[pg_extern]
@@ -403,16 +357,10 @@ fn mr_delete_node(
   context: default!(Option<&str>, "''"),
   index: default!(Option<i64>, "-1"),
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-  let ctx = ctx(context);
+  let c = ctx(context);
   let ego = require(src, "src")?;
   let index = require(index, "index")?;
-  call_void(
-    CMD_DELETE_NODE,
-    ctx,
-    false,
-    (ego, index),
-    Some(*RECV_TIMEOUT_MSEC),
-  )
+  new_delete_node(ego, c, index)
 }
 
 #[pg_extern]
@@ -421,16 +369,10 @@ fn mr_set_zero_opinion(
   score: Option<f64>,
   context: default!(Option<&str>, "''"),
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-  let ctx = ctx(context);
+  let c = ctx(context);
   let node = require(node, "node")?;
   let score = require(score, "score")?;
-  call_void(
-    CMD_SET_ZERO_OPINION,
-    ctx,
-    false,
-    (node, score),
-    Some(*RECV_TIMEOUT_MSEC),
-  )
+  new_set_zero_opinion(node, score, c)
 }
 
 #[pg_extern]
@@ -440,13 +382,7 @@ fn mr_set_new_edges_filter(
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
   let src = require(src, "src")?;
   let filter = require(filter, "filter")?;
-  call_void(
-    CMD_WRITE_NEW_EDGES_FILTER,
-    "",
-    false,
-    (src, filter),
-    Some(*RECV_TIMEOUT_MSEC),
-  )
+  new_set_new_edges_filter(src, filter)
 }
 
 #[pg_extern]
@@ -469,48 +405,30 @@ fn mr_fetch_new_edges(
 > {
   let src = require(src, "src")?;
   let prefix = prefix.unwrap_or("");
-  let response: Vec<(String, f64, f64, i32, i32)> =
-    call(CMD_FETCH_NEW_EDGES, "", true, (src, prefix))?;
-  let edges: Vec<_> = response
-    .into_iter()
-    .map(|(dst, sv_dst, sv_src, sc_dst, sc_src)| {
-      (src.to_string(), dst, sv_dst, sv_src, sc_dst, sc_src)
-    })
-    .collect();
-  Ok(TableIterator::new(edges))
+  Ok(TableIterator::new(new_fetch_new_edges(src, prefix)?))
 }
 
 #[pg_extern]
 fn mr_reset() -> Result<&'static str, Box<dyn Error + 'static>> {
-  call_void(CMD_RESET, "", false, (), Some(*RECV_TIMEOUT_MSEC))
+  new_reset()
 }
 
 #[pg_extern]
 fn mr_zerorec(
-  blocking: default!(Option<bool>, "true"),
+  //  D6 (JOURNAL): blocking flag is no longer relevant in the new protocol;
+  //  accepted for backward compatibility but ignored.
+  _blocking: default!(Option<bool>, "true"),
   timeout_msec: default!(Option<i64>, "6000000"),
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-  call_void(
-    CMD_RECALCULATE_ZERO,
-    "",
-    blocking.unwrap_or(true),
-    (),
-    timeout_u64(timeout_msec),
-  )
+  new_zerorec(timeout_u64(timeout_msec))
 }
 
 #[pg_extern]
 fn mr_recalculate_clustering(
-  blocking: default!(Option<bool>, "true"),
+  _blocking: default!(Option<bool>, "true"),
   timeout_msec: default!(Option<i64>, "6000000"),
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-  call_void(
-    CMD_RECALCULATE_CLUSTERING,
-    "",
-    blocking.unwrap_or(true),
-    (),
-    timeout_u64(timeout_msec),
-  )
+  new_recalculate_clustering(timeout_u64(timeout_msec))
 }
 
 //  ================================================================
