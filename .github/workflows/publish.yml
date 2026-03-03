@@ -61,7 +61,8 @@ jobs:
     - name: Do the tests
       run: |
         export RUST_TEST_THREADS=1
-        cargo pgrx test --runas postgres --pgdata /var/lib/postgresql/pgrx
+        export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10234
+        cargo pgrx test
   publish_service:
     needs: [ test_core, test_service, test_psql_connector ]
     if: success()
