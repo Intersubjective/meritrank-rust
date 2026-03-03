@@ -4,6 +4,7 @@ use nng::*;
 use serde::{de::Deserialize, Serialize};
 use std::env::var;
 use std::error::Error;
+use std::result::Result as StdResult;
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -19,30 +20,36 @@ pub static RECV_TIMEOUT_MSEC: LazyLock<u64> = LazyLock::new(|| {
     .unwrap_or(10000)
 });
 
+fn to_box_err(e: impl std::error::Error + Send + Sync + 'static) -> Box<dyn Error + 'static> {
+  Box::new(e)
+}
+
 fn request_raw(
   payload: Vec<u8>,
   timeout_msec: Option<u64>,
-) -> Result<Message, Box<dyn Error + 'static>> {
-  let client = Socket::new(Protocol::Req0)?;
+) -> StdResult<Message, Box<dyn Error + 'static>> {
+  let client = Socket::new(Protocol::Req0).map_err(to_box_err)?;
   if let Some(t) = timeout_msec {
-    client.set_opt::<RecvTimeout>(Some(Duration::from_millis(t)))?;
+    client
+      .set_opt::<RecvTimeout>(Some(Duration::from_millis(t)))
+      .map_err(to_box_err)?;
   }
-  client.dial(&SERVICE_URL)?;
+  client.dial(&SERVICE_URL).map_err(to_box_err)?;
   client
     .send(Message::from(payload.as_slice()))
-    .map_err(|(_, err)| err)?;
-  Ok(client.recv()?)
+    .map_err(|(_, err)| to_box_err(err))?;
+  client.recv().map_err(to_box_err)
 }
 
 fn request<T>(
   payload: Vec<u8>,
   timeout_msec: Option<u64>,
-) -> Result<T, Box<dyn Error + 'static>>
+) -> StdResult<T, Box<dyn Error + 'static>>
 where
   T: Clone + for<'a> Deserialize<'a>,
 {
   let msg = request_raw(payload, timeout_msec)?;
-  decode_response(msg.as_slice()).map_err(|s| s.into())
+  decode_response(msg.as_slice()).map_err(|s: String| s.into())
 }
 
 pub fn call<T>(
@@ -50,7 +57,7 @@ pub fn call<T>(
   context: &str,
   blocking: bool,
   args: impl Serialize,
-) -> Result<T, Box<dyn Error + 'static>>
+) -> StdResult<T, Box<dyn Error + 'static>>
 where
   T: Clone + for<'a> Deserialize<'a>,
 {
@@ -58,8 +65,9 @@ where
     id:       cmd.to_string(),
     context:  context.to_string(),
     blocking,
-    payload:  rmp_serde::to_vec(&args)?,
-  })?;
+    payload:  rmp_serde::to_vec(&args).map_err(to_box_err)?,
+  })
+  .map_err(|e: String| -> Box<dyn Error + 'static> { e.into() })?;
   request(payload, Some(*RECV_TIMEOUT_MSEC))
 }
 
@@ -69,17 +77,18 @@ pub fn call_void(
   blocking: bool,
   args: impl Serialize,
   timeout: Option<u64>,
-) -> Result<&'static str, Box<dyn Error + 'static>> {
+) -> StdResult<&'static str, Box<dyn Error + 'static>> {
   let payload = encode_request(&Command {
     id:       cmd.to_string(),
     context:  context.to_string(),
     blocking,
-    payload:  rmp_serde::to_vec(&args)?,
-  })?;
+    payload:  rmp_serde::to_vec(&args).map_err(to_box_err)?,
+  })
+  .map_err(|e: String| -> Box<dyn Error + 'static> { e.into() })?;
   let _: () = request(payload, timeout)?;
   Ok("Ok")
 }
 
-pub fn service_wrapped() -> Result<String, Box<dyn Error + 'static>> {
+pub fn service_wrapped() -> StdResult<String, Box<dyn Error + 'static>> {
   call(CMD_VERSION, "", true, ())
 }
