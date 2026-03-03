@@ -213,17 +213,17 @@ mod tests {
   #[test]
   fn test_get_inbound_edges_not_affected_by_outbound_changes() {
     let mut graph = Graph::new();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // Create 10 nodes
     let nodes: Vec<NodeId> = (0..10).map(|_| graph.get_new_nodeid()).collect();
 
     // Perform 50 random edge operations
     for _ in 0..50 {
-      let from = nodes[rng.gen_range(0..nodes.len())];
-      let to = nodes[rng.gen_range(0..nodes.len())];
+      let from = nodes[rng.random_range(0..nodes.len())];
+      let to = nodes[rng.random_range(0..nodes.len())];
       if from != to {
-        let weight = rng.gen_range(-5.0..5.0);
+        let weight = rng.random_range(-5.0..5.0);
         if weight != 0.0 {
           graph.set_edge(from, to, weight).unwrap();
         } else {
@@ -260,10 +260,10 @@ mod tests {
 
     // Perform additional random modifications
     for _ in 0..20 {
-      let from = nodes[rng.gen_range(0..nodes.len())];
-      let to = nodes[rng.gen_range(0..nodes.len())];
+      let from = nodes[rng.random_range(0..nodes.len())];
+      let to = nodes[rng.random_range(0..nodes.len())];
       if from != to {
-        let weight = rng.gen_range(-5.0..5.0);
+        let weight = rng.random_range(-5.0..5.0);
         if weight != 0.0 {
           graph.set_edge(from, to, weight).unwrap();
         } else {

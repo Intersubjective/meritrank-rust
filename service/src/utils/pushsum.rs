@@ -1,5 +1,6 @@
 use indexmap::IndexMap;
-use rand::prelude::*;
+use rand::rngs::ThreadRng;
+use rand::{rng, Rng};
 use std::collections::HashMap;
 use std::f64;
 
@@ -66,10 +67,10 @@ fn fire_random(
   }
 
   let node_count = nodes.len();
-  let src_index = rng.gen_range(0..node_count);
+  let src_index = rng.random_range(0..node_count);
   let mut dst_index;
   loop {
-    dst_index = rng.gen_range(0..node_count);
+    dst_index = rng.random_range(0..node_count);
     if dst_index != src_index {
       break;
     }
@@ -118,12 +119,12 @@ pub fn calculate_consensus(
   mut nodes: PushsumAdjMap,
   num_steps: usize,
 ) -> Option<Vec<Weight>> {
-  let mut rng = thread_rng();
+  let mut rng = rng();
   let node_count = nodes.len();
   let m = nodes.values().next().map(|n| n.s.len()).unwrap_or(0);
 
   for step in 1..=num_steps {
-    let i = rng.gen_range(0..node_count);
+    let i = rng.random_range(0..node_count);
     fire(&mut nodes, i);
     // We transfer a tiny amount of mass to other nodes to
     // breach the sinks and add a bit of connectivity to everyone

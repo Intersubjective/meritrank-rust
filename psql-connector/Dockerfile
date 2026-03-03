@@ -7,7 +7,7 @@ COPY . .
 WORKDIR /usr/project/psql-connector
 ENV RUSTFLAGS="-Ctarget-feature=-crt-static"
 ENV LIBCLANG_PATH=/usr/lib/llvm21/lib
-RUN cargo install --locked --version 0.12.8 cargo-pgrx
+RUN cargo install --locked --version 0.17.0 cargo-pgrx
 RUN cargo pgrx init --pg17 pg_config
 RUN cargo pgrx package
 RUN sh generate_scripts.sh target/release/pgmer2-pg17/usr/local/share/postgresql/extension

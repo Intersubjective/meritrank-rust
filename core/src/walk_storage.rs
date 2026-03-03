@@ -1,4 +1,6 @@
-use rand::prelude::*;
+use rand::rng;
+use rand::rand_core::RngCore;
+use rand::Rng;
 use std::collections::VecDeque;
 
 use integer_hasher::IntMap;
@@ -147,7 +149,7 @@ impl WalkStorage {
 
     for (walk_id, visit_pos) in walks {
       let _new_pos = if OPTIMIZE_INVALIDATION && dst_node.is_some() {
-        let mut rng = thread_rng();
+        let mut rng = rng();
         let (may_skip, new_pos) = decide_skip_invalidation(
           match self.get_walk(*walk_id) {
             Some(x) => x,
@@ -274,11 +276,11 @@ where
 
   let (invalidated_node, _dst_node) = edge;
 
-  let mut thread_rng = thread_rng();
+  let mut fallback_rng = rng();
   let rng = rnd
     .as_mut()
     .map(|r| r as &mut dyn RngCore)
-    .unwrap_or(&mut thread_rng);
+    .unwrap_or(&mut fallback_rng);
 
   let mut new_pos = pos;
   let result =
@@ -288,7 +290,7 @@ where
       .find_map(|(i, &node)| {
         if node == invalidated_node {
           new_pos = pos + i;
-          if rng.gen::<Weight>() < step_recalc_probability {
+          if rng.random::<Weight>() < step_recalc_probability {
             Some(false) // may_skip = false, exit early
           } else {
             None // continue searching

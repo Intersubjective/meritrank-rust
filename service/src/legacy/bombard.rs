@@ -66,8 +66,8 @@ fn main() {
     handles.push(thread::spawn(move || {
       while Instant::now() - start < DURATION {
         //thread::sleep(Duration::from_millis(1));
-        let mut rng = rand::thread_rng();
-        let random_number = rng.gen_range(0..=99);
+        let mut rng = rand::rng();
+        let random_number = rng.random_range(0..=99);
         if send_request(random_number).is_ok() {
           if random_number < 1 {
             counter_w.fetch_add(1, Ordering::Relaxed);

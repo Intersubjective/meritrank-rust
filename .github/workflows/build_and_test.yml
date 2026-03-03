@@ -8,6 +8,8 @@ on:
 jobs:
   test_core_oom:
     runs-on: ubuntu-latest
+    env:
+      RUST_BACKTRACE: "1"
     defaults:
       run:
         working-directory: ./core
@@ -23,6 +25,8 @@ jobs:
         fi
   test_service:
     runs-on: ubuntu-latest
+    env:
+      RUST_BACKTRACE: "1"
     defaults:
       run:
         working-directory: ./service
@@ -37,6 +41,8 @@ jobs:
     needs: [ test_core_oom, test_service ]
     if: success()
     runs-on: ubuntu-latest
+    env:
+      RUST_BACKTRACE: "1"
     defaults:
       run:
         working-directory: ./core
@@ -52,6 +58,8 @@ jobs:
     needs: [ test_core_oom, test_service ]
     if: success()
     runs-on: ubuntu-latest
+    env:
+      RUST_BACKTRACE: "1"
     defaults:
       run:
         working-directory: ./service
@@ -70,6 +78,8 @@ jobs:
     needs: [ test_core_oom, test_service ]
     if: success()
     runs-on: ubuntu-latest
+    env:
+      RUST_BACKTRACE: "1"
     defaults:
       run:
         working-directory: ./psql-connector
@@ -93,7 +103,7 @@ jobs:
       working-directory: ./service
       run: |
         cargo build --release
-        export MERITRANK_LEGACY_SERVER_PORT=10234
+        export MERITRANK_SERVER_PORT=10234
         export MERITRANK_SERVER_ADDRESS=127.0.0.1
         export MERITRANK_NUM_WALKS=500
         cargo run --release --bin meritrank_service >/dev/null 2>&1 &

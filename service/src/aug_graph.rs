@@ -456,21 +456,17 @@ impl AugGraph {
     )
   }
 
-  fn get_object_owner(
+  pub(crate) fn get_object_owner(
     &self,
     node: NodeId,
   ) -> Option<NodeId> {
-    Some(node)
-
-    //  FIXME
-    //
-    // match self.nodes.id_to_info.get(node) {
-    //   Some(info) => match info.owner {
-    //     Some(id) => Some(id),
-    //     None => Some(node),
-    //   },
-    //   None => Some(node),
-    // }
+    match self.nodes.id_to_info.get(node) {
+      Some(info) => match info.owner {
+        Some(id) => Some(id),
+        None => Some(node),
+      },
+      None => Some(node),
+    }
   }
 
   fn sort_paginate_and_format_graph_edges(
@@ -1337,11 +1333,11 @@ impl AugGraph {
         Ok((src_id, dst_id))
       },
       (Some(src_kind), Some(NodeKind::User)) => {
-        let src_id = self.nodes.register(&mut self.mr, src, NodeKind::User);
-        let dst_id =
+        let dst_id = self.nodes.register(&mut self.mr, dst, NodeKind::User);
+        let src_id =
           self
             .nodes
-            .register_with_owner(&mut self.mr, dst, src_kind, src_id);
+            .register_with_owner(&mut self.mr, src, src_kind, dst_id);
         Ok((src_id, dst_id))
       },
       (Some(src_kind), Some(dst_kind)) => {
@@ -1489,5 +1485,34 @@ mod tests {
     // Test non-existent entries
     assert_eq!(registry.get_by_id(2), None);
     assert_eq!(registry.get_by_name("Bob"), None);
+  }
+
+  #[test]
+  fn ownership_assigned_on_nonuser_to_user_edge() {
+    let mut aug = AugGraph::new(Settings::default());
+    aug.set_edge("O1".into(), "U1".into(), 1.0, 0);
+
+    let o1 = aug.nodes.get_by_name("O1").unwrap();
+    let u1 = aug.nodes.get_by_name("U1").unwrap();
+    assert_eq!(o1.kind, NodeKind::Opinion);
+    assert_eq!(o1.owner, Some(u1.id));
+    assert_eq!(u1.kind, NodeKind::User);
+    assert_eq!(u1.owner, None);
+
+    assert_eq!(aug.get_object_owner(o1.id), Some(u1.id));
+    assert_eq!(aug.get_object_owner(u1.id), Some(u1.id));
+  }
+
+  #[test]
+  fn ownership_stable_across_subsequent_edges() {
+    let mut aug = AugGraph::new(Settings::default());
+    aug.set_edge("O1".into(), "U1".into(), 1.0, 0);
+    aug.set_edge("O1".into(), "U2".into(), 1.0, 0);
+
+    let o1 = aug.nodes.get_by_name("O1").unwrap();
+    let u1 = aug.nodes.get_by_name("U1").unwrap();
+    let u2 = aug.nodes.get_by_name("U2").unwrap();
+    assert_eq!(o1.owner, Some(u1.id));
+    assert_eq!(u2.owner, None);
   }
 }

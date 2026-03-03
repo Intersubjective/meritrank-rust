@@ -4,8 +4,9 @@ use integer_hasher::BuildIntHasher;
 use crate::errors::MeritRankError;
 use crate::RandomWalk;
 use log::error;
-use rand::distributions::{Distribution, WeightedIndex};
-use rand::{thread_rng, Rng};
+use rand::distr::weighted::WeightedIndex;
+use rand::distr::Distribution;
+use rand::{rng, Rng};
 
 type IntIndexMap<K, V> = IndexMap<K, V, BuildIntHasher<K>>;
 
@@ -82,7 +83,7 @@ impl NodeData {
         Some(x) => x,
         None => return Err(MeritRankError::InternalFatalError),
       };
-      let index = cache.sample(&mut thread_rng());
+      let index = cache.sample(&mut rng());
       let node_id = match self.pos_edges.keys().nth(index) {
         Some(x) => *x,
         None => return Err(MeritRankError::InternalFatalError),
@@ -114,7 +115,7 @@ impl NodeData {
         Some(x) => x,
         None => return Err(MeritRankError::InternalFatalError),
       };
-      let index = cache.sample(&mut thread_rng());
+      let index = cache.sample(&mut rng());
       self.get_node_at_index(index)
     }
   }
@@ -319,7 +320,7 @@ impl Graph {
   ) -> Result<RandomWalk, MeritRankError> {
     let mut node = start_node;
     let mut segment = RandomWalk::new();
-    let mut rng = thread_rng();
+    let mut rng = rng();
 
     let mut negative_continuation_mode = false;
     // When this variable becomes true, it means that a walk has encountered a negative edge,
@@ -336,7 +337,7 @@ impl Graph {
         Some(x) => x,
         None => return Err(MeritRankError::InternalFatalError),
       };
-      if rng.gen::<f64>() > alpha {
+      if rng.random::<f64>() > alpha {
         break;
       }
       if let Some((next_step, step_is_positive)) = match node_data
