@@ -1,0 +1,6 @@
+# Legacy service (large tests, edges.tar.gz, test_data)
+service/src/legacy/
+
+# Test data files (CSV, tar.gz) - avoid consuming context
+**/testdata/**
+**/edges.tar.gz
