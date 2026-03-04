@@ -101,10 +101,13 @@ jobs:
         export MERITRANK_SERVER_ADDRESS=127.0.0.1
         export MERITRANK_NUM_WALKS=500
         cargo run --release --bin meritrank_service >/dev/null 2>&1 &
-    - name: Install sudo (for cargo pgrx install --sudo in container)
-      run: apk add --no-cache sudo
+    - name: Install sudo and netcat (for cargo pgrx and service port check)
+      run: apk add --no-cache sudo netcat-openbsd
     - name: Do the tests
       run: |
+        (cd ../service && export MERITRANK_SERVER_PORT=10234 MERITRANK_SERVER_ADDRESS=127.0.0.1 MERITRANK_NUM_WALKS=500 && cargo run --release --bin meritrank_service) &
+        i=0; while [ $i -lt 30 ]; do nc -z 127.0.0.1 10234 && break; i=$((i+1)); sleep 1; done
+        nc -z 127.0.0.1 10234 || (echo "Meritrank service did not start"; exit 1)
         export RUST_TEST_THREADS=1
         export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10234
         mkdir -p /usr/local/share/postgresql/extension /usr/local/lib/postgresql
