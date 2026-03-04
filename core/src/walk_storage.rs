@@ -142,7 +142,7 @@ impl WalkStorage {
     &self,
     invalidated_node: NodeId,
     dst_node: Option<NodeId>,
-    step_recalc_probability: Option<Weight>,
+    step_recalc_probability: Option<(Weight, Weight)>,
   ) -> Result<Vec<(WalkId, usize)>, MeritRankError> {
     let mut invalidated_walks_ids = vec![];
 
@@ -228,14 +228,21 @@ pub fn decide_skip_invalidation<R>(
   walk: &RandomWalk,
   pos: usize,
   edge: EdgeId,
-  step_recalc_probability: Option<Weight>,
+  step_recalc_probability: Option<(Weight, Weight)>,
   rnd: Option<R>,
 ) -> Result<(bool, usize), MeritRankError>
 where
   R: RngCore,
 {
-  if let Some(probability) = step_recalc_probability {
-    decide_skip_invalidation_on_edge_addition(walk, pos, edge, probability, rnd)
+  if let Some((prob_pos_segment, prob_neg_segment)) = step_recalc_probability {
+    decide_skip_invalidation_on_edge_addition(
+      walk,
+      pos,
+      edge,
+      prob_pos_segment,
+      prob_neg_segment,
+      rnd,
+    )
   } else {
     decide_skip_invalidation_on_edge_deletion(walk, pos, edge)
   }
@@ -277,7 +284,8 @@ pub fn decide_skip_invalidation_on_edge_addition<R>(
   walk: &RandomWalk,
   pos: usize,
   edge: EdgeId,
-  step_recalc_probability: Weight,
+  prob_pos_segment: Weight,
+  prob_neg_segment: Weight,
   mut rnd: Option<R>,
 ) -> Result<(bool, usize), MeritRankError>
 where
@@ -297,23 +305,34 @@ where
     .map(|r| r as &mut dyn RngCore)
     .unwrap_or(&mut fallback_rng);
 
+  // Positions at or after neg_start are in the negative subsegment (positive-only candidate set).
+  // Positions before neg_start are in the positive subsegment (full candidate set).
+  let neg_start = walk.negative_segment_start.unwrap_or(usize::MAX);
+
   let mut new_pos = pos;
-  let result =
-    walk.get_nodes()[pos..]
-      .iter()
-      .enumerate()
-      .find_map(|(i, &node)| {
-        if node == invalidated_node {
-          new_pos = pos + i;
-          if rng.random::<Weight>() < step_recalc_probability {
-            Some(false) // may_skip = false, exit early
-          } else {
-            None // continue searching
-          }
+  let result = walk.get_nodes()[pos..]
+    .iter()
+    .enumerate()
+    .find_map(|(i, &node)| {
+      if node == invalidated_node {
+        new_pos = pos + i;
+        // Choose the probability matching the walk regime at this position.
+        // Positions before neg_start: full candidate set (pos+neg edges).
+        // Positions at or after neg_start: positive-only candidate set.
+        let prob = if new_pos >= neg_start {
+          prob_neg_segment
         } else {
-          None // continue searching
+          prob_pos_segment
+        };
+        if prob > 0.0 && rng.random::<Weight>() < prob {
+          Some(false) // invalidate at this position
+        } else {
+          None // skip this occurrence, keep scanning
         }
-      });
+      } else {
+        None
+      }
+    });
 
   Ok((result.is_none(), new_pos))
 }

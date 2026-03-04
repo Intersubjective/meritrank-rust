@@ -49,7 +49,8 @@ mod tests {
   fn test_decide_skip_invalidation() {
     let walk = RandomWalk::from_nodes(vec![1, 2, 3]);
     let edge: EdgeId = (2, 3);
-    let step_recalc_probability = Some(0.5);
+    // (prob_pos_segment, prob_neg_segment); walk has no negative segment so only first is used
+    let step_recalc_probability = Some((0.5, 0.5));
     let rng_seed = 1342; // Set the seed for the random number generator
 
     // Create a deterministic random number generator
@@ -112,11 +113,10 @@ mod tests {
 
   #[test]
   fn test_decide_skip_invalidation_on_edge_addition() {
-    use rand::random;
-
     let walk = RandomWalk::from_nodes(vec![1, 2, 1, 3]);
     let edge: EdgeId = (1, 2);
-    let step_recalc_probability = 0.5;
+    // (prob_pos_segment, prob_neg_segment); walk has no negative segment
+    let (prob_pos, prob_neg) = (0.5, 0.5);
     let rng_seed = 1342; // Set the seed for the random number generator
 
     // Create a deterministic random number generator
@@ -127,7 +127,8 @@ mod tests {
       &walk,
       0,
       edge,
-      step_recalc_probability,
+      prob_pos,
+      prob_neg,
       Some(&mut rng),
     )
     .unwrap();
@@ -139,7 +140,8 @@ mod tests {
       &walk,
       2,
       edge,
-      step_recalc_probability,
+      prob_pos,
+      prob_neg,
       Some(&mut rng),
     )
     .unwrap();
@@ -151,12 +153,65 @@ mod tests {
       &walk,
       1,
       edge,
-      step_recalc_probability,
+      prob_pos,
+      prob_neg,
       Some(&mut rng),
     )
     .unwrap();
-    // let should_skip = random::<Weight>() > step_recalc_probability;
     assert_eq!(may_skip, false);
+    assert_eq!(new_pos, 2);
+  }
+
+  /// Walk with negative segment: nodes [0..neg_start) positive, [neg_start..) negative.
+  /// Negative new edge at a position in the negative segment must always be skipped
+  /// (prob_neg_segment = 0 for negative edges).
+  #[test]
+  fn test_decide_skip_invalidation_on_edge_addition_negative_segment_negative_edge(
+  ) {
+    let mut walk = RandomWalk::from_nodes(vec![0, 1, 2, 3]); // 0->1->2->3
+    walk.negative_segment_start = Some(2); // positions 2,3 are in negative segment
+    let edge: EdgeId = (2, 99); // edge from node 2 (in negative segment)
+    // Negative new edge: prob_neg_segment = 0, so we must never invalidate at pos 2
+    let (prob_pos, prob_neg) = (0.5, 0.0);
+
+    let mut rng = StdRng::seed_from_u64(12345);
+    // Scan from pos 0: first occurrence of node 2 is at index 2 (in negative segment)
+    let (may_skip, new_pos) = decide_skip_invalidation_on_edge_addition(
+      &walk,
+      0,
+      edge,
+      prob_pos,
+      prob_neg,
+      Some(&mut rng),
+    )
+    .unwrap();
+    // Must skip: at position 2 we use prob_neg = 0, so we never invalidate
+    assert!(may_skip);
+    assert_eq!(new_pos, 2);
+  }
+
+  /// Positive new edge at a position in the negative segment uses prob_neg_segment.
+  #[test]
+  fn test_decide_skip_invalidation_on_edge_addition_negative_segment_positive_edge(
+  ) {
+    let mut walk = RandomWalk::from_nodes(vec![0, 1, 2, 3]);
+    walk.negative_segment_start = Some(2);
+    let edge: EdgeId = (2, 99);
+    // Positive new edge: prob_neg_segment > 0 so invalidation at pos 2 is possible
+    let (prob_pos, prob_neg) = (0.0, 1.0); // 100% prob in negative segment
+
+    let mut rng = StdRng::seed_from_u64(99999);
+    let (may_skip, new_pos) = decide_skip_invalidation_on_edge_addition(
+      &walk,
+      0,
+      edge,
+      prob_pos,
+      prob_neg,
+      Some(&mut rng),
+    )
+    .unwrap();
+    // With prob_neg = 1.0 we always invalidate at the first occurrence (index 2)
+    assert!(!may_skip);
     assert_eq!(new_pos, 2);
   }
 }

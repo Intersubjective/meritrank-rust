@@ -184,18 +184,27 @@ impl MeritRank {
       return Ok(());
     }
     let deletion_mode = new_weight.abs() <= EPSILON;
-    let mut step_recalc_probability = None;
+    let mut step_recalc_probability: Option<(Weight, Weight)> = None;
 
     if OPTIMIZE_INVALIDATION && !deletion_mode {
-      step_recalc_probability = Some(
-        new_weight.abs()
-          / (match self.graph.get_node_data(src) {
-            Some(x) => x.abs_sum(),
-            None => return Err(MeritRankError::InternalFatalError(Some(
-              internal_fatal::RANK_SET_EDGE_GET_NODE_DATA_SRC,
-            ))),
-          } + new_weight.abs()),
-      );
+      let node_data = match self.graph.get_node_data(src) {
+        Some(x) => x,
+        None => return Err(MeritRankError::InternalFatalError(Some(
+          internal_fatal::RANK_SET_EDGE_GET_NODE_DATA_SRC,
+        ))),
+      };
+      // In the positive segment, the walker picks among ALL edges (pos + neg).
+      // P(new edge) = |w_new| / (sum_all_old + |w_new|)
+      let prob_pos_seg =
+        new_weight.abs() / (node_data.abs_sum() + new_weight.abs());
+      // In the negative segment, the walker picks among POSITIVE edges only.
+      // Negative new edges have zero probability here (they aren't candidates).
+      let prob_neg_seg = if new_weight > 0.0 {
+        new_weight / (node_data.pos_sum + new_weight)
+      } else {
+        0.0
+      };
+      step_recalc_probability = Some((prob_pos_seg, prob_neg_seg));
     }
 
     if deletion_mode {
@@ -253,7 +262,11 @@ impl MeritRank {
         if deletion_mode {
           self.graph.extend_walk_in_case_of_edge_deletion(walk)?;
         } else if random::<f64>() < self.alpha {
-          walk.push(dest, new_weight > 0.0)?;
+          // If already in negative continuation, appended node is in negative
+          // subsegment by position; do not set negative_segment_start again.
+          let step_is_positive =
+            walk.negative_segment_start.is_some() || (new_weight > 0.0);
+          walk.push(dest, step_is_positive)?;
         } else {
           skip_continuation = true;
         }
