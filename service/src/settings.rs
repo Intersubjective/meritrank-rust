@@ -8,7 +8,6 @@ use std::str::FromStr;
 pub struct Settings {
   pub legacy_server_port: u16,
   pub legacy_server_num_threads: usize,
-  pub legacy_connections_mode: bool,
   pub server_address: String,
   pub server_port: u16,
   pub num_walks: usize,
@@ -37,7 +36,6 @@ impl Default for Settings {
     Self {
       legacy_server_port: 10234,
       legacy_server_num_threads: 4,
-      legacy_connections_mode: true,
       server_address: "127.0.0.1".into(),
       server_port: 8080,
       num_walks: 10000,
@@ -98,10 +96,6 @@ pub fn load_from_env() -> Settings {
   load_var(
     "MERITRANK_LEGACY_SERVER_NUM_THREADS",
     &mut s.legacy_server_num_threads,
-  );
-  load_var(
-    "MERITRANK_LEGACY_CONNECTIONS_MODE",
-    &mut s.legacy_connections_mode,
   );
   load_var("MERITRANK_SERVER_ADDRESS", &mut s.server_address);
   load_var("MERITRANK_SERVER_PORT", &mut s.server_port);
