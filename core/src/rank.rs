@@ -3,6 +3,7 @@ use rand::random;
 
 use crate::constants::{ASSERT, EPSILON, OPTIMIZE_INVALIDATION};
 use crate::counter::Counter;
+use crate::errors::internal_fatal;
 use crate::errors::MeritRankError;
 use crate::graph::{Graph, NodeId, Weight};
 use crate::walk_storage::WalkStorage;
@@ -38,7 +39,9 @@ impl MeritRank {
       let new_walk_id = self.walks.get_next_free_walkid();
       let walk = match self.walks.get_walk_mut(new_walk_id) {
         Some(x) => x,
-        None => return Err(MeritRankError::InternalFatalError),
+        None => return Err(MeritRankError::InternalFatalError(Some(
+          internal_fatal::RANK_CALCULATE_GET_WALK_MUT,
+        ))),
       };
       assert_eq!(walk.len(), 0);
       walk.push(ego, true)?;
@@ -188,7 +191,9 @@ impl MeritRank {
         new_weight.abs()
           / (match self.graph.get_node_data(src) {
             Some(x) => x.abs_sum(),
-            None => return Err(MeritRankError::InternalFatalError),
+            None => return Err(MeritRankError::InternalFatalError(Some(
+              internal_fatal::RANK_SET_EDGE_GET_NODE_DATA_SRC,
+            ))),
           } + new_weight.abs()),
       );
     }
@@ -209,11 +214,15 @@ impl MeritRank {
       // Revert the counters associated with the affected walks, as if the walks never existed
       let walk = match self.walks.get_walk(*walk_id) {
         Some(x) => x,
-        None => return Err(MeritRankError::InternalFatalError),
+        None => return Err(MeritRankError::InternalFatalError(Some(
+          internal_fatal::RANK_SET_EDGE_GET_WALK,
+        ))),
       };
       let ego = match walk.first_node() {
         Some(x) => x,
-        None => return Err(MeritRankError::InternalFatalError),
+        None => return Err(MeritRankError::InternalFatalError(Some(
+          internal_fatal::RANK_SET_EDGE_FIRST_NODE,
+        ))),
       };
       self
         .pos_hits
@@ -233,7 +242,9 @@ impl MeritRank {
 
       let walk = match self.walks.get_walk_mut(*walk_id) {
         Some(x) => x,
-        None => return Err(MeritRankError::InternalFatalError),
+        None => return Err(MeritRankError::InternalFatalError(Some(
+          internal_fatal::RANK_SET_EDGE_GET_WALK_MUT,
+        ))),
       };
 
       let mut skip_continuation = false;
@@ -281,7 +292,9 @@ impl MeritRank {
       for (peer, count) in hits {
         let visits = match self.walks.get_visits_through_node(*peer) {
           Some(x) => x,
-          None => return Err(MeritRankError::InternalFatalError),
+          None => return Err(MeritRankError::InternalFatalError(Some(
+            internal_fatal::RANK_ASSERT_GET_VISITS,
+          ))),
         };
         let walks: Vec<_> = visits
           .iter()
@@ -298,7 +311,9 @@ impl MeritRank {
           .collect();
 
         if walks.len() != *count as usize {
-          return Err(MeritRankError::InternalFatalError);
+          return Err(MeritRankError::InternalFatalError(Some(
+            internal_fatal::RANK_ASSERT_POS_HITS_COUNT,
+          )));
         }
         // if !(*count == 0.0 || weight <= EPSILON || self.graph.is_connecting(*ego, *peer)) {
         //   return Err(MeritRankError::InternalFatalError);
@@ -321,7 +336,9 @@ impl MeritRank {
           .collect();
 
         if walks.len() != *count as usize {
-          return Err(MeritRankError::InternalFatalError);
+          return Err(MeritRankError::InternalFatalError(Some(
+            internal_fatal::RANK_ASSERT_NEG_HITS_COUNT,
+          )));
         }
         // if !(*count == 0.0 || weight <= EPSILON || self.graph.is_connecting(*ego, *peer)) {
         //   return Err(MeritRankError::InternalFatalError);

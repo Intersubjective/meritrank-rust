@@ -1,3 +1,4 @@
+use crate::errors::internal_fatal;
 use crate::graph::NodeId;
 use crate::MeritRankError;
 use tinyset::SetUsize;
@@ -91,7 +92,9 @@ impl RandomWalk {
     // direct self-loops are forbidden and should never happen.
     if let Some(prev) = self.nodes.last() {
       if *prev == node_id {
-        return Err(MeritRankError::InternalFatalError);
+        return Err(MeritRankError::InternalFatalError(Some(
+          internal_fatal::RANDOM_WALK_PUSH_SELF_LOOP,
+        )));
       }
     }
     self.nodes.push(node_id);
@@ -99,7 +102,9 @@ impl RandomWalk {
     // Update `negative_segment_start` based on `step_is_positive`
     if !step_is_positive {
       if !self.negative_segment_start.is_none() {
-        return Err(MeritRankError::InternalFatalError);
+        return Err(MeritRankError::InternalFatalError(Some(
+          internal_fatal::RANDOM_WALK_PUSH_NEG_SEGMENT,
+        )));
       }
       self.negative_segment_start = Some(index);
     }
@@ -133,7 +138,9 @@ impl RandomWalk {
     if self.negative_segment_start.is_some()
       && new_segment.negative_segment_start.is_some()
     {
-      return Err(MeritRankError::InternalFatalError);
+      return Err(MeritRankError::InternalFatalError(Some(
+        internal_fatal::RANDOM_WALK_EXTEND_TWO_NEG,
+      )));
     }
     if let Some(new_neg_start) = new_segment.negative_segment_start {
       self.negative_segment_start = Some(self.nodes.len() + new_neg_start);

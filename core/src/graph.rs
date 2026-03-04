@@ -1,6 +1,7 @@
 use indexmap::IndexMap;
 use integer_hasher::BuildIntHasher;
 
+use crate::errors::internal_fatal;
 use crate::errors::MeritRankError;
 use crate::RandomWalk;
 use log::error;
@@ -73,7 +74,9 @@ impl NodeData {
         let weights: Vec<Weight> = self.pos_edges.values().copied().collect();
         let wi = match WeightedIndex::new(weights) {
           Ok(x) => x,
-          Err(_) => return Err(MeritRankError::InternalFatalError),
+          Err(_) => return Err(MeritRankError::InternalFatalError(Some(
+            internal_fatal::GRAPH_NODEDATA_POS_WEIGHTED_INDEX,
+          ))),
         };
         self.pos_distr_cache = Some(wi);
       }
@@ -81,12 +84,16 @@ impl NodeData {
       // Use the cached distribution
       let cache = match self.pos_distr_cache.as_ref() {
         Some(x) => x,
-        None => return Err(MeritRankError::InternalFatalError),
+        None => return Err(MeritRankError::InternalFatalError(Some(
+          internal_fatal::GRAPH_NODEDATA_POS_DISTR_CACHE,
+        ))),
       };
       let index = cache.sample(&mut rng());
       let node_id = match self.pos_edges.keys().nth(index) {
         Some(x) => *x,
-        None => return Err(MeritRankError::InternalFatalError),
+        None => return Err(MeritRankError::InternalFatalError(Some(
+          internal_fatal::GRAPH_NODEDATA_POS_KEYS_NTH,
+        ))),
       };
       Ok(Some((node_id, true)))
     } else {
@@ -105,7 +112,9 @@ impl NodeData {
 
         let wi = match WeightedIndex::new(combined_weights) {
           Ok(x) => x,
-          Err(_) => return Err(MeritRankError::InternalFatalError),
+          Err(_) => return Err(MeritRankError::InternalFatalError(Some(
+            internal_fatal::GRAPH_NODEDATA_ABS_WEIGHTED_INDEX,
+          ))),
         };
         self.abs_distr_cache = Some(wi);
       }
@@ -113,7 +122,9 @@ impl NodeData {
       // Use the cached distribution
       let cache = match self.abs_distr_cache.as_ref() {
         Some(x) => x,
-        None => return Err(MeritRankError::InternalFatalError),
+        None => return Err(MeritRankError::InternalFatalError(Some(
+          internal_fatal::GRAPH_NODEDATA_ABS_DISTR_CACHE,
+        ))),
       };
       let index = cache.sample(&mut rng());
       self.get_node_at_index(index)
@@ -130,14 +141,18 @@ impl NodeData {
     if index < pos_len {
       let node_id = match self.pos_edges.keys().nth(index) {
         Some(x) => *x,
-        None => return Err(MeritRankError::InternalFatalError),
+        None => return Err(MeritRankError::InternalFatalError(Some(
+          internal_fatal::GRAPH_GET_NODE_AT_INDEX_POS,
+        ))),
       };
       Ok(Some((node_id, true)))
     } else {
       let neg_index = index - pos_len;
       let node_id = match self.neg_edges.keys().nth(neg_index) {
         Some(x) => *x,
-        None => return Err(MeritRankError::InternalFatalError),
+        None => return Err(MeritRankError::InternalFatalError(Some(
+          internal_fatal::GRAPH_GET_NODE_AT_INDEX_NEG,
+        ))),
       };
       Ok(Some((node_id, false)))
     }
@@ -187,7 +202,9 @@ impl Graph {
     }
     if self.edge_weight(from, to)?.is_some() {
       if self.remove_edge(from, to).is_err() {
-        return Err(MeritRankError::InternalFatalError);
+        return Err(MeritRankError::InternalFatalError(Some(
+          internal_fatal::GRAPH_SET_EDGE_REMOVE_FAILED,
+        )));
       }
     }
     if weight.is_nan() {
@@ -251,7 +268,7 @@ impl Graph {
     // Remove from inbound edge cache of the target node
     let dst_node = self
       .nodes
-      .get_mut(from)
+      .get_mut(to)
       .ok_or(MeritRankError::NodeNotFound)?;
     dst_node.inbound_edges.swap_remove(&from);
 
@@ -335,7 +352,9 @@ impl Graph {
     loop {
       let node_data = match self.get_node_data_mut(node) {
         Some(x) => x,
-        None => return Err(MeritRankError::InternalFatalError),
+        None => return Err(MeritRankError::InternalFatalError(Some(
+          internal_fatal::GRAPH_GENERATE_WALK_GET_NODE_DATA,
+        ))),
       };
       if rng.random::<f64>() > alpha {
         break;
@@ -370,7 +389,9 @@ impl Graph {
     let positive_only = walk.negative_segment_start.is_some();
     let start_node = match walk.last_node() {
       Some(x) => x,
-      None => return Err(MeritRankError::InternalFatalError),
+      None => return Err(MeritRankError::InternalFatalError(Some(
+        internal_fatal::GRAPH_CONTINUE_WALK_LAST_NODE,
+      ))),
     };
     let new_segment =
       self.generate_walk_segment(start_node, alpha, positive_only)?;

@@ -6,6 +6,7 @@ use std::collections::VecDeque;
 use integer_hasher::IntMap;
 
 use crate::constants::OPTIMIZE_INVALIDATION;
+use crate::errors::internal_fatal;
 use crate::graph::{EdgeId, NodeId, Weight};
 use crate::random_walk::RandomWalk;
 use crate::MeritRankError;
@@ -112,7 +113,9 @@ impl WalkStorage {
         self.unused_walks.push_back(walk_id);
         match self.walks.get_mut(walk_id) {
           Some(x) => x.clear(),
-          None => return Err(MeritRankError::InternalFatalError),
+          None => return Err(MeritRankError::InternalFatalError(Some(
+            internal_fatal::WALK_STORAGE_DROP_WALKS_GET_MUT,
+          ))),
         };
       }
     }
@@ -124,7 +127,9 @@ impl WalkStorage {
     for (node, visits) in self.visits.iter().enumerate() {
       for (walkid, pos) in visits.iter() {
         if self.walks[*walkid].nodes[*pos] != node {
-          return Err(MeritRankError::InternalFatalError);
+          return Err(MeritRankError::InternalFatalError(Some(
+            internal_fatal::WALK_STORAGE_ASSERT_VISITS,
+          )));
         }
       }
     }
@@ -153,14 +158,18 @@ impl WalkStorage {
         let (may_skip, new_pos) = decide_skip_invalidation(
           match self.get_walk(*walk_id) {
             Some(x) => x,
-            None => return Err(MeritRankError::InternalFatalError),
+            None => return Err(MeritRankError::InternalFatalError(Some(
+              internal_fatal::WALK_STORAGE_FIND_AFFECTED_GET_WALK,
+            ))),
           },
           *visit_pos,
           (
             invalidated_node,
             match dst_node {
               Some(x) => x,
-              None => return Err(MeritRankError::InternalFatalError),
+              None => return Err(MeritRankError::InternalFatalError(Some(
+                internal_fatal::WALK_STORAGE_FIND_AFFECTED_DST_NONE,
+              ))),
             },
           ),
           step_recalc_probability,
@@ -190,7 +199,9 @@ impl WalkStorage {
     // Split the walk and obtain the invalidated segment
     let walk = match self.walks.get_mut(*walk_id) {
       Some(x) => x,
-      None => return Err(MeritRankError::InternalFatalError),
+      None => return Err(MeritRankError::InternalFatalError(Some(
+        internal_fatal::WALK_STORAGE_SPLIT_GET_MUT,
+      ))),
     };
     let invalidated_segment = walk.split_from(cut_pos);
 
@@ -235,7 +246,9 @@ pub fn decide_skip_invalidation_on_edge_deletion(
   edge: EdgeId,
 ) -> Result<(bool, usize), MeritRankError> {
   if pos >= walk.len() {
-    return Err(MeritRankError::InternalFatalError);
+    return Err(MeritRankError::InternalFatalError(Some(
+      internal_fatal::WALK_DECIDE_SKIP_DELETION_POS,
+    )));
   }
 
   let (invalidated_node, dst_node) = edge;
@@ -271,7 +284,9 @@ where
   R: RngCore,
 {
   if pos >= walk.len() {
-    return Err(MeritRankError::InternalFatalError);
+    return Err(MeritRankError::InternalFatalError(Some(
+      internal_fatal::WALK_DECIDE_SKIP_ADDITION_POS,
+    )));
   }
 
   let (invalidated_node, _dst_node) = edge;

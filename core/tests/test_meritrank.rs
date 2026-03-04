@@ -211,6 +211,44 @@ mod tests {
   }
 
   #[test]
+  fn test_remove_edge_clears_destination_inbound_cache() {
+    let mut graph = Graph::new();
+    let a = graph.get_new_nodeid();
+    let b = graph.get_new_nodeid();
+
+    graph.set_edge(a, b, 1.0).unwrap();
+
+    let b_inbound: Vec<_> = graph
+      .get_node_data(b)
+      .unwrap()
+      .get_inbound_edges()
+      .collect();
+    assert_eq!(b_inbound, vec![(a, 1.0)], "B must have one inbound edge from A");
+
+    graph.remove_edge(a, b).unwrap();
+
+    let b_inbound_after: Vec<_> = graph
+      .get_node_data(b)
+      .unwrap()
+      .get_inbound_edges()
+      .collect();
+    assert!(
+      b_inbound_after.is_empty(),
+      "B's inbound cache must be empty after removing edge A -> B"
+    );
+
+    let a_outgoing: Vec<_> = graph
+      .get_node_data(a)
+      .unwrap()
+      .get_outgoing_edges()
+      .collect();
+    assert!(
+      !a_outgoing.iter().any(|&(dst, _)| dst == b),
+      "A must have no outgoing edge to B after removal"
+    );
+  }
+
+  #[test]
   fn test_get_inbound_edges_not_affected_by_outbound_changes() {
     let mut graph = Graph::new();
     let mut rng = rand::rng();

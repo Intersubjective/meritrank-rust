@@ -33,6 +33,16 @@ mod tests {
 
     let error = MeritRankError::RandomChoiceError;
     assert_eq!(error.to_string(), "Random choice error");
+
+    let error = MeritRankError::InternalFatalError(None);
+    assert_eq!(error.to_string(), "Internal fatal error");
+
+    let error =
+      MeritRankError::InternalFatalError(Some("rank::set_edge_ get_node_data(src) None"));
+    assert_eq!(
+      error.to_string(),
+      "Internal fatal error: rank::set_edge_ get_node_data(src) None"
+    );
   }
 
   #[test]
