@@ -7,7 +7,8 @@ use meritrank_service::rpc_sync::{read_response_sync, set_read_timeout, write_re
 
 use std::env::var;
 use std::error::Error;
-use std::net::TcpStream;
+use std::io;
+use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::{
   atomic::{AtomicU64, Ordering},
   LazyLock,
@@ -44,11 +45,31 @@ fn tcp_call(
   data: ReqData,
   timeout_msec: Option<u64>,
 ) -> Result<Response, Box<dyn Error + 'static>> {
-  let addr = strip_scheme(&SERVICE_URL);
+  let addr_str = strip_scheme(&SERVICE_URL);
   let timeout = timeout_msec.unwrap_or(*RECV_TIMEOUT_MSEC);
+  let timeout_dur = Duration::from_millis(timeout);
 
-  let mut stream =
-    TcpStream::connect_timeout(&addr.parse()?, Duration::from_millis(timeout))?;
+  // Resolve hostname:port (e.g. "meritrank:10234") so Docker hostnames work;
+  // .parse() only accepts numeric IPs and would fail with "invalid socket address syntax".
+  let addrs: Vec<_> = addr_str.to_socket_addrs()?.collect();
+  let mut last_err: Option<Box<dyn Error + 'static>> = None;
+  let mut stream = None;
+  for addr in &addrs {
+    match TcpStream::connect_timeout(addr, timeout_dur) {
+      Ok(s) => {
+        stream = Some(s);
+        break;
+      }
+      Err(e) => last_err = Some(e.into()),
+    }
+  }
+  let mut stream = stream.ok_or_else(|| {
+    let msg = last_err
+      .as_ref()
+      .map(|e| e.to_string())
+      .unwrap_or_else(|| "no socket addresses resolved".to_string());
+    Box::<dyn Error + 'static>::from(io::Error::new(io::ErrorKind::Other, msg))
+  })?;
 
   set_read_timeout(&mut stream, Some(timeout))?;
 
