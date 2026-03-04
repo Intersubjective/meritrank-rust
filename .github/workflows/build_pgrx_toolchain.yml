@@ -1,0 +1,21 @@
+name: Build pgrx toolchain image
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'psql-connector/Dockerfile.pgrx-toolchain'
+
+jobs:
+  build-toolchain:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Build toolchain image
+        run: docker build -t ghcr.io/intersubjective/pgrx-toolchain:pg17-pgrx0.17.0 -f psql-connector/Dockerfile.pgrx-toolchain .
+      - name: Push toolchain image
+        run: docker push ghcr.io/intersubjective/pgrx-toolchain:pg17-pgrx0.17.0

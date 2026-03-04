@@ -129,11 +129,15 @@ jobs:
     needs: [ test_core_oom, test_service ]
     if: success()
     runs-on: ubuntu-latest
+    permissions:
+      packages: read
     defaults:
       run:
         working-directory: ./psql-connector
     steps:
     - uses: actions/checkout@v4
+    - name: Log in to GHCR
+      run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
     - name: Build docker image
       run: |
         docker build -f ./Dockerfile ..

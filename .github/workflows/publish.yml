@@ -105,11 +105,15 @@ jobs:
     needs: [ test_core, test_service, test_psql_connector ]
     if: success()
     runs-on: ubuntu-latest
+    permissions:
+      packages: read
     defaults:
       run:
         working-directory: ./psql-connector
     steps:
     - uses: actions/checkout@v4
+    - name: Log in to GHCR
+      run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
     - name: Check version
       id: check_version
       shell: bash
