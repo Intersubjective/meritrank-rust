@@ -6,4 +6,5 @@ ENV RUSTFLAGS="-Ctarget-feature=-crt-static"
 ENV LIBCLANG_PATH=/usr/lib/llvm21/lib
 
 RUN cargo install --locked --version 0.17.0 cargo-pgrx
+ENV PATH="/root/.cargo/bin:$PATH"
 RUN cargo pgrx init --pg17 pg_config
