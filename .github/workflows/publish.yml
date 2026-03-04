@@ -58,7 +58,7 @@ jobs:
         export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10234
         chmod -R a+rwx /usr/local/share/postgresql/extension /usr/local/lib/postgresql 2>/dev/null || true
         unset PG_VERSION
-        cargo pgrx test
+        cargo pgrx test --runas postgres
   publish_service:
     needs: [ test_core, test_service, test_psql_connector ]
     if: success()
