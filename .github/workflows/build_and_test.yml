@@ -78,6 +78,10 @@ jobs:
     needs: [ test_core_oom, test_service ]
     if: success()
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/intersubjective/pgrx-toolchain:pg17-pgrx0.17.0
+    permissions:
+      packages: read
     env:
       RUST_BACKTRACE: "1"
     defaults:
@@ -85,20 +89,8 @@ jobs:
         working-directory: ./psql-connector
     steps:
     - uses: actions/checkout@v4
-    - name: Setup PostgreSQL 17
-      run: |
-        sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
-        sudo apt-get update
-        sudo apt-get install -y postgresql-17 postgresql-server-dev-17
-    - name: Prepare env
-      run: |
-        sudo su - root -c "echo \"export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10234\" >> /etc/environment"
     - name: Build the connector
-      run: |
-        cargo install --locked cargo-pgrx --version 0.17.0
-        cargo pgrx init --pg17 pg_config
-        cargo build
+      run: cargo build
     - name: Build and run the service
       working-directory: ./service
       run: |
@@ -111,7 +103,7 @@ jobs:
       run: |
         export RUST_TEST_THREADS=1
         export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10234
-        sudo chmod a+rwx /usr/share/postgresql/17/extension /usr/lib/postgresql/17/lib
+        chmod -R a+rwx /usr/local/share/postgresql/extension /usr/local/lib/postgresql 2>/dev/null || true
         cargo pgrx test
   test_docker_service:
     needs: [ test_core_oom, test_service ]

@@ -1,6 +1,6 @@
 FROM postgres:17-alpine
 
-RUN apk add rust cargo rustfmt jq cmake make gcc clang21 clang21-libclang musl-dev openssl-dev postgresql17-dev jq
+RUN apk add git rust cargo rustfmt jq cmake make gcc clang21 clang21-libclang musl-dev openssl-dev postgresql17-dev jq
 
 ENV RUSTFLAGS="-Ctarget-feature=-crt-static"
 ENV LIBCLANG_PATH=/usr/lib/llvm21/lib
