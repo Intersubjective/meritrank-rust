@@ -127,13 +127,19 @@ jobs:
         fi
         echo "SKIP=0" >> "$GITHUB_OUTPUT"
         echo "TAG=v$VER" >> "$GITHUB_ENV"
-    - name: Build docker image
+    - name: Set up Docker Buildx
       if: ${{ steps.check_version.outputs.SKIP == 0 }}
-      run: |
-        docker build -t vbulavintsev/postgres-tentura:$TAG -f ./Dockerfile ..
-    - name: Push docker image to Dockerhub
+      uses: docker/setup-buildx-action@v3
+    - name: Log in to Dockerhub
       if: ${{ steps.check_version.outputs.SKIP == 0 }}
-      shell: bash
-      run: |
-        docker login -u vbulavintsev -p ${{ secrets.DOCKERHUB_TOKEN }}
-        docker image push vbulavintsev/postgres-tentura:$TAG
+      run: docker login -u vbulavintsev -p ${{ secrets.DOCKERHUB_TOKEN }}
+    - name: Build and push docker image
+      if: ${{ steps.check_version.outputs.SKIP == 0 }}
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: psql-connector/Dockerfile
+        push: true
+        tags: vbulavintsev/postgres-tentura:${{ env.TAG }}
+        cache-from: type=gha,scope=psql-connector
+        cache-to: type=gha,mode=max,scope=psql-connector
