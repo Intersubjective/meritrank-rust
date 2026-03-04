@@ -277,13 +277,13 @@ impl AugGraph {
     indices: &mut HashMap<NodeId, NodeIndex>,
     ids: &mut HashMap<NodeIndex, NodeId>,
     im_graph: &mut DiGraph<NodeId, Weight>,
-  ) {
+  ) -> Vec<(NodeId, NodeId, Weight)> {
     log_trace!();
 
     let ego_to_focus =
       match perform_astar_search(&self.mr.graph, ego_id, focus_id) {
         Ok(path) => path,
-        Err(_) => return,
+        Err(_) => return vec![],
       };
 
     let mut edges = Vec::<(NodeId, NodeId, Weight)>::new();
@@ -337,14 +337,16 @@ impl AugGraph {
 
     log_verbose!("Add path to the graph.");
 
-    for (src, dst, weight) in edges {
-      if let std::collections::hash_map::Entry::Vacant(e) = indices.entry(src) {
-        let index = im_graph.add_node(src);
+    for (src, dst, weight) in &edges {
+      if let std::collections::hash_map::Entry::Vacant(e) = indices.entry(*src) {
+        let index = im_graph.add_node(*src);
         e.insert(index);
-        ids.insert(index, src);
+        ids.insert(index, *src);
       }
-      add_edge_if_valid(im_graph, indices, ids, src, dst, weight);
+      add_edge_if_valid(im_graph, indices, ids, *src, *dst, *weight);
     }
+
+    edges
   }
 
   pub fn all_outbound_neighbors_normalized(
@@ -466,25 +468,29 @@ impl AugGraph {
     match self.nodes.id_to_info.get(node) {
       Some(info) => match info.owner {
         Some(id) => Some(id),
-        None => Some(node),
+        None => {
+          if info.kind == NodeKind::Opinion {
+            self
+              .mr
+              .graph
+              .get_node_data(node)
+              .and_then(|data| data.inbound_edges.iter().next().map(|(&k, _)| k))
+          } else {
+            Some(node)
+          }
+        },
       },
       None => Some(node),
     }
   }
 
-  fn sort_paginate_and_format_graph_edges(
+  fn format_graph_edges(
     &self,
-    mut edge_ids: Vec<(NodeId, NodeId, Weight)>,
+    edges: Vec<(NodeId, NodeId, Weight)>,
     ego_id: NodeId,
-    index: u32,
-    count: u32,
   ) -> Vec<GraphResult> {
-    edge_ids.sort_by(|(_, _, a), (_, _, b)| b.abs().total_cmp(&a.abs()));
-
-    edge_ids
+    edges
       .into_iter()
-      .skip(index as usize)
-      .take(count as usize)
       .map(|(src_id, dst_id, weight_of_dst)| {
         let (score_value_of_dst, score_cluster_of_dst) =
           self.fetch_score(ego_id, dst_id);
@@ -513,17 +519,48 @@ impl AugGraph {
     ids: &HashMap<NodeIndex, NodeId>,
     im_graph: &DiGraph<NodeId, Weight>,
     ego_id: NodeId,
+    path_edges: Vec<(NodeId, NodeId, Weight)>,
     index: u32,
     count: u32,
   ) -> Vec<GraphResult> {
-    let unique_edges =
+    let mut unique_edges =
       extract_unique_edges_from_graph_data(indices, ids, im_graph);
-    self.sort_paginate_and_format_graph_edges(
-      unique_edges,
-      ego_id,
-      index,
-      count,
-    )
+
+    unique_edges.retain(|&(src, dst, _)| {
+      !path_edges
+        .iter()
+        .any(|&(p_src, p_dst, _)| src == p_src && dst == p_dst)
+    });
+
+    unique_edges.sort_by(|(_, _, a), (_, _, b)| b.abs().total_cmp(&a.abs()));
+
+    let path_length = path_edges.len();
+    let mut all_edges = path_edges;
+    all_edges.extend(unique_edges);
+
+    let paginated_edges = if (index as usize) <= path_length {
+      let path_remaining = path_length - (index as usize);
+      let mut result: Vec<_> = all_edges
+        [index as usize..path_length]
+        .to_vec();
+      let remaining_count = count.saturating_sub(path_remaining as u32);
+      result.extend(
+        all_edges[path_length..]
+          .iter()
+          .take(remaining_count as usize)
+          .cloned(),
+      );
+      result
+    } else {
+      all_edges[path_length..]
+        .iter()
+        .skip((index as usize).saturating_sub(path_length))
+        .take(count as usize)
+        .cloned()
+        .collect()
+    };
+
+    self.format_graph_edges(paginated_edges, ego_id)
   }
 
   pub fn read_graph(
@@ -550,8 +587,9 @@ impl AugGraph {
     let node_infos = self.nodes.id_to_info.clone();
     let force_read_graph_conn = self.settings.force_read_graph_conn;
 
-    if ego_id == focus_id {
+    let mut path_edges = if ego_id == focus_id {
       log_verbose!("Ego is same as focus");
+      vec![]
     } else {
       self.add_shortest_path_to_graph(
         &node_infos,
@@ -560,8 +598,8 @@ impl AugGraph {
         &mut indices,
         &mut ids,
         &mut im_graph,
-      );
-    }
+      )
+    };
 
     if force_read_graph_conn && !indices.contains_key(&ego_id) {
       add_edge_if_valid(
@@ -572,9 +610,12 @@ impl AugGraph {
         focus_id,
         1.0,
       );
+      path_edges.push((ego_id, focus_id, 1.0));
     }
 
-    let focus_neighbors = self.all_outbound_neighbors_normalized(focus_id);
+    let mut focus_neighbors = self.all_outbound_neighbors_normalized(focus_id);
+    focus_neighbors
+      .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
     self.add_focus_neighbor_connections(
       focus_id,
@@ -588,16 +629,15 @@ impl AugGraph {
 
     remove_self_references_from_im_graph(&mut im_graph, &indices);
 
-    let edges = self.collect_all_edges(
+    self.collect_all_edges(
       &indices,
       &ids,
       &im_graph,
       ego_id,
+      path_edges,
       index as u32,
       count as u32,
-    );
-
-    edges
+    )
   }
 
   pub fn fetch_neighbors(
@@ -1977,8 +2017,51 @@ mod tests {
     let res = read_graph_helper(&graph, "U1", "U2", false, 0, 10000);
 
     assert!(res.len() > 1);
-    for n in 1..res.len() {
-      assert!(res[n - 1].weight.abs() >= res[n].weight.abs());
+    assert_eq!(res[0].src, "U1");
+    assert_eq!(res[0].dst, "U2");
+    for n in 2..res.len() {
+      assert!(
+        res[n - 1].weight.abs() >= res[n].weight.abs(),
+        "focus neighbors must be sorted by weight descending"
+      );
+    }
+  }
+
+  #[test]
+  fn graph_path_visible_with_low_count_and_focus_neighbors_sorted() {
+    let mut graph = default_graph();
+
+    graph.set_edge("U0".into(), "U1".into(), 5.0, 0);
+    graph.set_edge("U1".into(), "U2".into(), 4.0, 0);
+    graph.set_edge("U2".into(), "U3".into(), 3.0, 0);
+    graph.set_edge("U3".into(), "U4".into(), 2.0, 0);
+    graph.set_edge("U3".into(), "U5".into(), 4.0, 0);
+    graph.set_edge("U3".into(), "U6".into(), 8.0, 0);
+
+    let res = read_graph_helper(&graph, "U0", "U3", false, 0, 2);
+
+    assert_eq!(res.len(), 3, "full path must appear even with count=2");
+    assert_eq!(res[0].src, "U0");
+    assert_eq!(res[0].dst, "U1");
+    assert_eq!(res[1].src, "U1");
+    assert_eq!(res[1].dst, "U2");
+    assert_eq!(res[2].src, "U2");
+    assert_eq!(res[2].dst, "U3");
+
+    let res = read_graph_helper(&graph, "U0", "U3", false, 0, 10);
+
+    let focus_idx = res.iter().position(|x| x.src == "U3").unwrap();
+    for i in focus_idx + 1..res.len().saturating_sub(1) {
+      assert!(
+        res[i].weight >= res[i + 1].weight,
+        "focus neighbors must be sorted by weight descending: {} -> {} ({}), {} -> {} ({})",
+        res[i].src,
+        res[i].dst,
+        res[i].weight,
+        res[i + 1].src,
+        res[i + 1].dst,
+        res[i + 1].weight
+      );
     }
   }
 
@@ -2281,6 +2364,42 @@ mod tests {
 
     assert_eq!(neighbors[0].ego, "U1");
     assert_eq!(neighbors[0].target, "O2");
+    assert_eq!(neighbors.len(), 1);
+  }
+
+  #[test]
+  fn neighbors_opinions_on_ego() {
+    let mut graph = default_graph();
+
+    graph.set_edge("U1".into(), "O12".into(), 1.0, 0);
+    graph.set_edge("O12".into(), "U1".into(), 1.0, 0);
+    graph.set_edge("O12".into(), "U2".into(), 1.0, 0);
+
+    graph.set_edge("U1".into(), "O13".into(), 1.0, 0);
+    graph.set_edge("O13".into(), "U1".into(), 1.0, 0);
+    graph.set_edge("O13".into(), "U3".into(), 1.0, 0);
+
+    graph.set_edge("U3".into(), "O31".into(), 1.0, 0);
+    graph.set_edge("O31".into(), "U3".into(), 1.0, 0);
+    graph.set_edge("O31".into(), "U1".into(), 1.0, 0);
+
+    let neighbors = read_neighbors_helper(
+      &graph,
+      "U1",
+      "U1",
+      NEIGHBORS_INBOUND,
+      "O",
+      false,
+      100.0,
+      false,
+      -100.0,
+      false,
+      0,
+      100,
+    );
+
+    assert_eq!(neighbors[0].ego, "U1");
+    assert_eq!(neighbors[0].target, "O31");
     assert_eq!(neighbors.len(), 1);
   }
 
