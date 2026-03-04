@@ -106,6 +106,7 @@ jobs:
         export RUST_TEST_THREADS=1
         export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10234
         chmod -R a+rwx /usr/local/share/postgresql/extension /usr/local/lib/postgresql 2>/dev/null || true
+        unset PG_VERSION
         cargo pgrx test
   test_docker_service:
     needs: [ test_core_oom, test_service ]
