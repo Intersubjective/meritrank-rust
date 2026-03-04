@@ -91,6 +91,8 @@ jobs:
         working-directory: ./psql-connector
     steps:
     - uses: actions/checkout@v4
+    - name: Ensure pgrx is initialized
+      run: cargo pgrx init --pg17 pg_config
     - name: Build the connector
       run: cargo build
     - name: Build and run the service
