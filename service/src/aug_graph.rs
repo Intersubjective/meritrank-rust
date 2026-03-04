@@ -1349,7 +1349,12 @@ impl AugGraph {
             .register_with_owner(&mut self.mr, src, src_kind, dst_id);
         Ok((src_id, dst_id))
       },
-      (Some(_src_kind), Some(_dst_kind)) => Err(AugGraphError::IncorrectNodeKinds(src, dst)),
+      (Some(NodeKind::User), Some(dst_kind)) => {
+        let src_id = self.nodes.register(&mut self.mr, src, NodeKind::User);
+        let dst_id = self.nodes.register(&mut self.mr, dst, dst_kind);
+        Ok((src_id, dst_id))
+      },
+      (Some(_), Some(_)) => Err(AugGraphError::IncorrectNodeKinds(src, dst)),
       _ => Err(AugGraphError::IncorrectNodeKinds(src, dst)),
     }
   }
