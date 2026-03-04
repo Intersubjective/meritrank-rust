@@ -84,6 +84,8 @@ jobs:
       packages: read
     env:
       RUST_BACKTRACE: "1"
+      # pgrx init ran as root in the toolchain image; GHA may set HOME elsewhere
+      PGRX_HOME: /root/.pgrx
     defaults:
       run:
         working-directory: ./psql-connector
