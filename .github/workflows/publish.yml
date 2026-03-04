@@ -52,6 +52,8 @@ jobs:
         export MERITRANK_SERVER_ADDRESS=127.0.0.1
         export MERITRANK_NUM_WALKS=500
         cargo run --release --bin meritrank_service >/dev/null 2>&1 &
+    - name: Install sudo (for cargo pgrx install --sudo in container)
+      run: apk add --no-cache sudo
     - name: Do the tests
       run: |
         export RUST_TEST_THREADS=1
