@@ -51,7 +51,7 @@ jobs:
       run: apk add --no-cache sudo netcat-openbsd
     - name: Do the tests
       run: |
-        (cd ../service && export MERITRANK_SERVER_PORT=10234 MERITRANK_SERVER_ADDRESS=127.0.0.1 MERITRANK_NUM_WALKS=500 && nohup ./target/release/meritrank_service >> /tmp/meritrank.log 2>&1) &
+        ( cd ../service && export MERITRANK_SERVER_PORT=10234 MERITRANK_SERVER_ADDRESS=127.0.0.1 MERITRANK_NUM_WALKS=500 && nohup ./target/release/meritrank_service >> /tmp/meritrank.log 2>&1 & )
         i=0; while [ $i -lt 30 ]; do nc -z 127.0.0.1 10234 && break; i=$((i+1)); sleep 1; done
         nc -z 127.0.0.1 10234 || (echo "Meritrank service did not start"; cat /tmp/meritrank.log 2>/dev/null; exit 1)
         export RUST_TEST_THREADS=1
