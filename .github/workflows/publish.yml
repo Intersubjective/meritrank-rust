@@ -42,8 +42,6 @@ jobs:
         working-directory: ./psql-connector
     steps:
     - uses: actions/checkout@v4
-    - name: Ensure pgrx is initialized
-      run: cargo pgrx init --pg17 pg_config
     - name: Build the connector
       run: cargo build
     - name: Build and run the service
@@ -59,7 +57,6 @@ jobs:
         export RUST_TEST_THREADS=1
         export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10234
         chmod -R a+rwx /usr/local/share/postgresql/extension /usr/local/lib/postgresql 2>/dev/null || true
-        cargo pgrx init --pg17 pg_config
         cargo pgrx test
   publish_service:
     needs: [ test_core, test_service, test_psql_connector ]

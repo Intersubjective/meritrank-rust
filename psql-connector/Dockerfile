@@ -1,9 +1,6 @@
 # syntax=docker/dockerfile:1
 FROM ghcr.io/intersubjective/pgrx-toolchain:pg17-pgrx0.17.0 AS connector
 
-# Toolchain image no longer runs pgrx init; package needs PGRX_HOME.
-RUN cargo pgrx init --pg17 pg_config
-
 WORKDIR /usr/project
 COPY . .
 
