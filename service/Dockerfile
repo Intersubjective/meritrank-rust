@@ -2,7 +2,27 @@ FROM rust:alpine AS compile
 RUN apk add cmake make gcc musl-dev
 
 WORKDIR /usr/project
+
+# --- Dependency cache layer ---
+COPY core/Cargo.toml core/Cargo.toml
+COPY service/Cargo.toml service/Cargo.toml
+
+RUN mkdir -p core/src service/src && \
+    echo "" > core/src/lib.rs && \
+    echo "" > service/src/lib.rs && \
+    echo "fn main() {}" > service/src/main.rs
+
+WORKDIR /usr/project/service
+RUN cargo build --release && \
+    rm -rf /usr/project/target/release/.fingerprint/meritrank_core-* \
+           /usr/project/target/release/.fingerprint/meritrank_service-* \
+           /usr/project/target/release/deps/libmeritrank* \
+           /usr/project/target/release/meritrank_service
+
+# --- Real source layer ---
+WORKDIR /usr/project
 COPY . .
+
 WORKDIR /usr/project/service
 RUN MERITRANK_NO_ASSERT=1 cargo build --release
 
