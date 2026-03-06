@@ -1,5 +1,6 @@
 # Table Of Contents
 - [MeritRank](#meritrank)
+  * [Batch loading (cold start)](#batch-loading-cold-start)
 - [How to Launch the Project with Docker](#how-to-launch-the-project-with-docker)
   * [Docker Installation](#docker-installation)
   * [One-Command Installation with Docker](#one-command-installation-with-docker)
@@ -31,6 +32,13 @@
 - [Core](core/README.md)
 - [Service](service/README.md)
 - [PSQL Connector](psql-connector/README.md)
+
+## Batch loading (cold start)
+
+After a service restart, loading many edges one-by-one with `mr_put_edge` can be slow. Use **batch loading** to send all edges in a single request:
+
+- **SQL:** `mr_bulk_load_edges(src_arr, dst_arr, weight_arr, context_arr, timeout_msec)` — see [PSQL Connector](psql-connector/README.md#batch-loading).
+- The service clears existing walks, loads the edges without computing walks, and blocks other requests until the load finishes. Walks are created lazily on first score/graph/neighbor reads per ego.
 
 # How to Launch the Project with Docker
 	

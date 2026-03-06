@@ -23,3 +23,12 @@ Rust [MeritRank engine](/core/README.md).
 - `MERITRANK_NUM_SCORE_QUANTILES` - default `100`
 - `MERITRANK_SLEEP_DURATION_AFTER_PUBLISH_MS` - default `10`
 - `MERITRANK_SUBGRAPH_QUEUE_CAPACITY` - default `1024`
+
+## Batch loading
+
+For cold start or backfill, the service supports **batch loading** of edges in a single request (`WriteBulkEdges`):
+
+- All existing subgraphs are reset; then edges are applied per context (user–user edges go to all contexts, others to their context and the aggregate).
+- The service **blocks** other read/write requests until the bulk load completes.
+- Walks are **not** computed during the load; they are created **lazily on first read** (scores, graph, neighbors, mutual scores) for each ego. This keeps bulk load fast and spreads computation to query time.
+- Use the PSQL function `mr_bulk_load_edges` from the [connector](psql-connector/README.md#batch-loading) to send parallel arrays of (src, dst, weight, context).
