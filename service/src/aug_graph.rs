@@ -6,10 +6,7 @@ use crate::utils::{log::*, quantiles::*};
 use crate::vsids::{Magnitude, VSIDSManager};
 
 use left_right::Absorb;
-use crate::data::Weight;
-use meritrank_core::graph::{Graph, NodeData, NodeId};
-use meritrank_core::rank::MeritRank;
-use meritrank_core::constants::EPSILON;
+use meritrank_core::{constants::EPSILON, Graph, MeritRank, NodeId, Weight};
 use moka::sync::Cache;
 use petgraph::graph::{DiGraph, NodeIndex};
 use simple_pagerank::Pagerank;
@@ -535,11 +532,7 @@ impl AugGraph {
         .any(|&(p_src, p_dst, _)| src == p_src && dst == p_dst)
     });
 
-    unique_edges.sort_by(
-      |(_, _, a): &(NodeId, NodeId, Weight), (_, _, b): &(NodeId, NodeId, Weight)| {
-        b.abs().total_cmp(&a.abs())
-      },
-    );
+    unique_edges.sort_by(|(_, _, a), (_, _, b)| b.abs().total_cmp(&a.abs()));
 
     let path_length = path_edges.len();
     let mut all_edges = path_edges;
@@ -655,7 +648,7 @@ impl AugGraph {
   ) -> Vec<(NodeInfo, Weight, NodeCluster)> {
     log_trace!("{} {} {:?}", ego_id, focus_id, dir);
 
-    let node_data: &NodeData = match self.mr.graph.get_node_data(focus_id) {
+    let node_data = match self.mr.graph.get_node_data(focus_id) {
       Some(data) => data,
       None => {
         log_warning!("Node not found: {}", focus_id);
@@ -1078,7 +1071,7 @@ impl AugGraph {
     rescale_factor: f64,
     must_rescale: bool,
   ) -> Weight {
-    let node_data: &NodeData = match self.mr.graph.get_node_data(src_id) {
+    let node_data = match self.mr.graph.get_node_data(src_id) {
       Some(x) => x,
       None => {
         log_error!("Unable to get node data.");
@@ -1089,7 +1082,7 @@ impl AugGraph {
     let (edges_to_modify, new_min_weight_from_scan) =
       node_data.get_outgoing_edges().fold(
         (Vec::new(), current_min_weight), // Use passed current_min_weight
-        |(mut to_modify, min): (Vec<(NodeId, Weight)>, Weight), (dest, weight): (NodeId, Weight)| {
+        |(mut to_modify, min), (dest, weight)| {
           let abs_weight = if must_rescale {
             weight.abs() / rescale_factor
           } else {
@@ -1465,7 +1458,7 @@ impl Absorb<AugGraphOp> for AugGraph {
             .mr
             .graph
             .get_node_data(src_id)
-            .map(|data: &NodeData| {
+            .map(|data| {
               data
                 .get_outgoing_edges()
                 .map(|(dst_id, _)| dst_id)
@@ -1498,7 +1491,7 @@ impl Absorb<AugGraphOp> for AugGraph {
 mod tests {
   use super::*;
 
-  use meritrank_core::graph::Graph;
+  use meritrank_core::Graph;
 
   #[test]
   fn node_registry() {

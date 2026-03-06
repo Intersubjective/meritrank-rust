@@ -4,27 +4,28 @@ RUN apk add cmake make gcc musl-dev
 WORKDIR /usr/project
 
 # --- Dependency cache layer ---
+COPY Cargo.toml Cargo.lock ./
 COPY core/Cargo.toml core/Cargo.toml
 COPY service/Cargo.toml service/Cargo.toml
+COPY psql-connector/Cargo.toml psql-connector/Cargo.toml
 
-RUN mkdir -p core/src service/src && \
+RUN mkdir -p core/src service/src psql-connector/src && \
     echo "" > core/src/lib.rs && \
     echo "" > service/src/lib.rs && \
-    echo "fn main() {}" > service/src/main.rs
+    echo "fn main() {}" > service/src/main.rs && \
+    echo "" > psql-connector/src/lib.rs && \
+    echo "fn main() {}" > psql-connector/src/pgrx_embed.rs
 
-WORKDIR /usr/project/service
-RUN cargo build --release && \
+RUN cargo build --release -p meritrank_service && \
     rm -rf /usr/project/target/release/.fingerprint/meritrank_core-* \
            /usr/project/target/release/.fingerprint/meritrank_service-* \
            /usr/project/target/release/deps/libmeritrank* \
            /usr/project/target/release/meritrank_service
 
 # --- Real source layer ---
-WORKDIR /usr/project
 COPY . .
 
-WORKDIR /usr/project/service
-RUN MERITRANK_NO_ASSERT=1 cargo build --release
+RUN MERITRANK_NO_ASSERT=1 cargo build --release -p meritrank_service
 
 FROM scratch
 EXPOSE 10234
@@ -47,4 +48,4 @@ ENV MERITRANK_SUBGRAPH_QUEUE_CAPACITY=1024
 
 WORKDIR /srv
 ENTRYPOINT [ "/srv/meritrank_service" ]
-COPY --from=compile /usr/project/service/target/release/meritrank_service meritrank_service
+COPY --from=compile /usr/project/target/release/meritrank_service meritrank_service

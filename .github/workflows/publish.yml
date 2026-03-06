@@ -6,27 +6,20 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RUST_BACKTRACE: "1"
-    defaults:
-      run:
-        working-directory: ./core
     steps:
     - uses: actions/checkout@v4
     - name: Run tests
-      run: |
-        cargo test -- --skip smoke_memory
+      run: cargo test -p meritrank_core -- --skip smoke_memory
   test_service:
     runs-on: ubuntu-latest
     env:
       RUST_BACKTRACE: "1"
-    defaults:
-      run:
-        working-directory: ./service
     steps:
     - uses: actions/checkout@v4
     - name: Run tests
       run: |
         export MERITRANK_NUM_WALKS=50
-        cargo test
+        cargo test -p meritrank_service
   test_psql_connector:
     runs-on: ubuntu-latest
     container:
@@ -35,18 +28,13 @@ jobs:
       packages: read
     env:
       RUST_BACKTRACE: "1"
-      # pgrx init ran as root in the toolchain image; GHA may set HOME elsewhere
       PGRX_HOME: /root/.pgrx
-    defaults:
-      run:
-        working-directory: ./psql-connector
     steps:
     - uses: actions/checkout@v4
     - name: Build the connector
-      run: cargo build
+      run: cargo build -p pgmer2
     - name: Build the service (release; server is started in Do the tests)
-      working-directory: ./service
-      run: cargo build --release
+      run: cargo build --release -p meritrank_service
     - name: Install sudo and netcat (for cargo pgrx and service port check)
       run: apk add --no-cache sudo netcat-openbsd
     - name: Configure passwordless sudo (avoid pgrx 'sudo cp' hanging non-interactively)
@@ -57,13 +45,13 @@ jobs:
         echo 'root ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers.d/nopasswd
         chmod 440 /etc/sudoers.d/nopasswd
     - name: Start meritrank service
-      working-directory: ./service
       run: |
         export MERITRANK_SERVER_PORT=10234 MERITRANK_SERVER_ADDRESS=127.0.0.1 MERITRANK_NUM_WALKS=500
         nohup ./target/release/meritrank_service >> /tmp/meritrank.log 2>&1 &
         i=0; while [ $i -lt 30 ]; do nc -z 127.0.0.1 10234 && break; i=$((i+1)); sleep 1; done
         nc -z 127.0.0.1 10234 || (echo "Meritrank service did not start"; cat /tmp/meritrank.log 2>/dev/null; exit 1)
     - name: Do the tests
+      working-directory: ./psql-connector
       run: |
         export RUST_TEST_THREADS=1
         export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10234
@@ -81,9 +69,6 @@ jobs:
     needs: [ test_core, test_service, test_psql_connector ]
     if: success()
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./service
     steps:
     - uses: actions/checkout@v4
     - name: Check version
@@ -106,8 +91,7 @@ jobs:
         echo "TAG=v$VER" >> "$GITHUB_ENV"
     - name: Build docker image
       if: ${{ steps.check_version.outputs.SKIP == 0 }}
-      run: |
-        docker build -t vbulavintsev/meritrank-service:$TAG -f ./Dockerfile ..
+      run: docker build -t vbulavintsev/meritrank-service:$TAG -f service/Dockerfile .
     - name: Push docker image to Dockerhub
       if: ${{ steps.check_version.outputs.SKIP == 0 }}
       shell: bash
@@ -120,9 +104,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       packages: read
-    defaults:
-      run:
-        working-directory: ./psql-connector
     steps:
     - uses: actions/checkout@v4
     - name: Log in to GHCR

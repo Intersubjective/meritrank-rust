@@ -1,9 +1,9 @@
 [package]
 name = "meritrank_core"
 version = "0.8.11"
-edition = "2021"
+edition.workspace = true
 description = "MeritRank algorithm library"
-license = "MIT"
+license.workspace = true
 
 [features]
 expensive_tests = []
@@ -11,7 +11,7 @@ expensive_tests = []
 [lib]
 name = "meritrank_core"
 path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [dependencies]
 rand = "0.9"

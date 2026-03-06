@@ -9,7 +9,7 @@ use crate::bloom_filter::{
 use crate::log::*;
 use crate::nodes::*;
 use crate::data::Weight;
-use meritrank_core::graph::NodeId; // NodeId and Weight added directly
+use meritrank_core::NodeId;
 
 pub fn write_log_level(log_level: u32) {
   log_command!("{}", log_level);

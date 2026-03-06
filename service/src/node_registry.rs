@@ -1,8 +1,7 @@
 use crate::data::*;
 use crate::utils::log::*;
 
-use meritrank_core::graph::NodeId;
-use meritrank_core::rank::MeritRank;
+use meritrank_core::{MeritRank, NodeId};
 
 use std::collections::HashMap;
 

@@ -2,9 +2,7 @@ use crate::data::*;
 use crate::node_registry::*;
 use crate::utils::{astar::*, log::*};
 
-use crate::data::Weight;
-use meritrank_core::constants::EPSILON;
-use meritrank_core::graph::{Graph, NodeId};
+use meritrank_core::{constants::EPSILON, Graph, NodeId, Weight};
 use petgraph::{
   graph::{DiGraph, NodeIndex},
   visit::EdgeRef,

@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 
 pub type NodeName = String;
 pub type NodeScore = f64;
-/// Edge/score weight type; matches meritrank_core's Weight (f64) for API compatibility.
-pub type Weight = f64;
+pub use meritrank_core::Weight;
 pub type NodeCluster = usize;
 pub type SubgraphName = String;
 

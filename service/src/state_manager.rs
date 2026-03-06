@@ -8,7 +8,6 @@ use crate::vsids::Magnitude;
 use dashmap::DashMap;
 use left_right::{Absorb, ReadHandleFactory, WriteHandle};
 use crate::data::Weight;
-use meritrank_core::graph::NodeData;
 use tokio::{sync::mpsc, task::JoinSet};
 
 use std::{thread, time::Duration};
@@ -368,7 +367,6 @@ impl MultiGraphProcessor {
 
         for (src_id, info) in aug_graph.nodes.id_to_info.iter().enumerate() {
           if let Some(data) = aug_graph.mr.graph.get_node_data(src_id) {
-            let data: &NodeData = data;
             let src_name = &info.name;
 
             for (dst_id, weight) in data.get_outgoing_edges() {
@@ -501,7 +499,6 @@ impl MultiGraphProcessor {
       edges.reserve(aug_graph.nodes.id_to_info.len() * 2);
       for (src_id, info) in aug_graph.nodes.id_to_info.iter().enumerate() {
         if let Some(data) = aug_graph.mr.graph.get_node_data(src_id) {
-          let data: &NodeData = data;
           let src_name = &info.name;
           for (dst_id, weight) in data.get_outgoing_edges() {
             match aug_graph.nodes.get_by_id(dst_id) {
