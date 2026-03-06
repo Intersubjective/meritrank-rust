@@ -8,7 +8,7 @@ WORKDIR /usr/project/psql-connector
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/usr/project/target \
     cargo pgrx package && \
-    cp -r target/release/pgmer2-pg17 /tmp/pgmer2-pg17
+    cp -r /usr/project/target/release/pgmer2-pg17 /tmp/pgmer2-pg17
 
 RUN sh generate_scripts.sh /tmp/pgmer2-pg17/usr/local/share/postgresql/extension
 
