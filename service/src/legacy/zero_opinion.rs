@@ -5,7 +5,8 @@
 //  ================================================
 
 use lru::LruCache;
-use meritrank_core::{constants::EPSILON, NodeId};
+use meritrank_core::constants::EPSILON;
+use meritrank_core::graph::NodeId;
 use simple_pagerank::Pagerank;
 use std::collections::HashMap;
 

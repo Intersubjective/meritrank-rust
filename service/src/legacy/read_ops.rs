@@ -1,6 +1,7 @@
 // service/src/read_ops.rs
 
-use meritrank_core::{constants::EPSILON, NodeId};
+use meritrank_core::constants::EPSILON;
+use meritrank_core::graph::NodeId;
 use petgraph::graph::{DiGraph, NodeIndex};
 use std::collections::HashMap;
 
@@ -13,7 +14,7 @@ use crate::subgraph::Subgraph;
 use crate::data::Weight; // Weight added directly
                             // use crate::bloom_filter::*; // Removed unused import
 use crate::astar::*; // For A*
-use meritrank_core::Graph; // For A*
+use meritrank_core::graph::Graph; // For A*
 use petgraph::visit::EdgeRef; // Added for edge.target() and edge.id()
 
 // Standalone functions first

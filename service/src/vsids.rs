@@ -1,5 +1,5 @@
 use crate::data::Weight;
-use meritrank_core::NodeId;
+use meritrank_core::graph::NodeId;
 
 use std::collections::HashMap;
 use std::env;
@@ -82,7 +82,7 @@ impl VSIDSManager {
     new_weight: Weight,
     new_magnitude: Magnitude,
   ) -> (Weight, Weight, Weight, Magnitude, f64) {
-    let (current_min, current_max, current_mag_scale) = self
+    let (current_min, current_max, current_mag_scale): (Weight, Weight, Magnitude) = self
       .min_max_weights
       .get(&src_id)
       .copied()
@@ -96,8 +96,8 @@ impl VSIDSManager {
 
     let current_scale_factor = self.bump_factor.powi(current_mag_scale as i32);
 
-    let mut updated_min = current_min.min(scaled_weight_abs);
-    let mut updated_max = current_max.max(scaled_weight_abs);
+    let mut updated_min: Weight = current_min.min(scaled_weight_abs);
+    let mut updated_max: Weight = current_max.max(scaled_weight_abs);
     let mut rescale_factor = 1.0;
     let mut updated_mag_scale = current_mag_scale;
     if scaled_weight_abs > self.rescale_threshold {
