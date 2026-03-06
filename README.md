@@ -45,10 +45,9 @@ If you'd like a shortcut that prepares everything in a single command, use the f
 ```bash
 sudo apt install docker.io git && \
 git clone https://github.com/Intersubjective/meritrank-rust.git && \
-cd meritrank-rust/service && \
-docker build -t mr-service -f ./Dockerfile .. && \
-cd ../psql-connector && \
-docker build -t mr-psql-connector -f ./Dockerfile .. && \
+cd meritrank-rust && \
+docker build -t mr-service -f service/Dockerfile . && \
+docker build -t mr-psql-connector -f psql-connector/Dockerfile . && \
 docker network create my-network && \
 docker run --network my-network -p 10234:10234 -e MERITRANK_SERVICE_URL=tcp://0.0.0.0:10234 --detach --name container1 mr-service && \
 docker run --network my-network -e POSTGRES_PASSWORD=postgres -e MERITRANK_SERVICE_URL=tcp://container1:10234 --detach --name container2 -p 5432:5432 mr-psql-connector:latest
@@ -62,15 +61,14 @@ Ensure you have `git` and `docker` installed before running these commands. Weâ€
 
 ```bash
 git clone https://github.com/Intersubjective/meritrank-rust.git
-cd meritrank-rust/service
-docker build -t mr-service -f ./Dockerfile ..
+cd meritrank-rust
+docker build -t mr-service -f service/Dockerfile .
 ```
 
 ### Building the `psql-connector`
 
 ```bash
-cd ../psql-connector
-docker build -t mr-psql-connector -f ./Dockerfile ..
+docker build -t mr-psql-connector -f psql-connector/Dockerfile .
 ```
 
 ## Creating a Network
@@ -140,11 +138,13 @@ git clone https://github.com/Intersubjective/meritrank-rust.git
 
 ### Launching the `service`
 
-To start the `service`, navigate to the directory and run:
+To start the `service`, from the repo root run:
 
 ```bash
-cd meritrank-rust/service && cargo run > log.txt 2>&1
+cd meritrank-rust && cargo run -p meritrank_service > log.txt 2>&1
 ```
+
+Or from the service directory: `cd meritrank-rust/service && cargo run > log.txt 2>&1`
 
 ### Initializing and Running `psql-connector` with pgrx
 
@@ -183,11 +183,11 @@ sudo apt-get install clang git
 
 ## Launching the `service`
 
-To start `meritrank-service-rust`, use:
+To start `meritrank-service-rust`, from the repo root use:
 
 ```bash
-cd meritrank-rust/service
-cargo run
+cd meritrank-rust
+cargo run -p meritrank_service
 ```
 
 ## Launching `psql-connector`

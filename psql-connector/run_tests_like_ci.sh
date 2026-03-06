@@ -32,14 +32,13 @@ run() {
 }
 
 echo "== Clean host-built artifacts (avoid rustc version mismatch)"
-run "cd /repo/psql-connector && cargo clean"
-run "cd /repo/service && cargo clean"
+run "cd /repo && cargo clean"
 
 echo "== Build the connector"
-run "cd /repo/psql-connector && cargo build"
+run "cd /repo && cargo build -p pgmer2"
 
 echo "== Build the service (release)"
-run "cd /repo/service && unset CARGO_TARGET_DIR && cargo build --release"
+run "cd /repo && cargo build --release -p meritrank_service"
 
 echo "== Install sudo and netcat-openbsd"
 run "apk add --no-cache sudo netcat-openbsd"
