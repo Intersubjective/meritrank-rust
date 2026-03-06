@@ -279,6 +279,26 @@ impl MultiGraphProcessor {
 
     if let Some(ego) = req.data.read_ego() {
       self.ensure_calculated(&req.subgraph, ego).await;
+      // Mutual scores need reverse_score (target's score for ego), so ensure all user nodes are calculated.
+      if let ReqData::ReadMutualScores(_) = &req.data {
+        let list = self.process_read(&req.subgraph, |aug_graph| {
+          Response::NodeList(ResNodeList {
+            nodes: aug_graph
+              .nodes
+              .id_to_info
+              .iter()
+              .map(|info| (info.name.clone(),))
+              .collect(),
+          })
+        });
+        if let Response::NodeList(ResNodeList { nodes }) = list {
+          for (name,) in nodes {
+            if node_kind_from_prefix(&name) == Some(NodeKind::User) && name != *ego {
+              self.ensure_calculated(&req.subgraph, &name).await;
+            }
+          }
+        }
+      }
     }
 
     match data {
