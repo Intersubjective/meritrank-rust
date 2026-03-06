@@ -235,7 +235,7 @@ fn null_context_is_sum() {
 
   let _ = crate::mr_put_edge(
     Some("B1"),
-    Some("B2"),
+    Some("U2"),
     Some(1.0),
     Some("X"),
     Some(-1),
@@ -243,29 +243,23 @@ fn null_context_is_sum() {
   .unwrap();
   let _ = crate::mr_put_edge(
     Some("B1"),
-    Some("B2"),
+    Some("U2"),
     Some(2.0),
     Some("Y"),
     Some(-1),
   )
   .unwrap();
 
-  // sleep(Duration::from_millis(100));
-  // let _ = crate::mr_sync(Some(1000)).unwrap();
+  let _ = crate::mr_sync(Some(1000)).unwrap();
 
-  // let res = crate::mr_edgelist(None).unwrap();
-
-  // let _n = res
-  //   .map(|x| {
-  //     let (ego, target, score) = x;
-  //     assert_eq!(ego, "B1");
-  //     assert_eq!(target, "B2");
-  //     assert!(score > 2.99);
-  //     assert!(score < 3.01);
-  //   })
-  //   .count();
-
-  // assert_eq!(n, 1);
+  let res = crate::mr_edgelist(None).unwrap();
+  let edges: Vec<_> = res.collect();
+  assert_eq!(edges.len(), 1);
+  let (ego, target, score) = &edges[0];
+  assert_eq!(ego, "B1");
+  assert_eq!(target, "U2");
+  // Null context is verbatim aggregate: last write wins (Y=2.0).
+  assert!(*score > 1.99 && *score < 2.01);
 }
 
 #[pg_test]
@@ -274,7 +268,7 @@ fn delete_contexted_edge() {
 
   let _ = crate::mr_put_edge(
     Some("B1"),
-    Some("B2"),
+    Some("U2"),
     Some(1.0),
     Some("X"),
     Some(-1),
@@ -282,31 +276,30 @@ fn delete_contexted_edge() {
   .unwrap();
   let _ = crate::mr_put_edge(
     Some("B1"),
-    Some("B2"),
+    Some("U2"),
     Some(2.0),
     Some("Y"),
     Some(-1),
   )
   .unwrap();
-  let _ = crate::mr_delete_edge(Some("B1"), Some("B2"), Some("X"), Some(-1))
+  let _ = crate::mr_delete_edge(Some("B1"), Some("U2"), Some("X"), Some(-1))
     .unwrap();
 
-  // sleep(Duration::from_millis(100));
-  // let _ = crate::mr_sync(Some(1000)).unwrap();
+  let _ = crate::mr_sync(Some(1000)).unwrap();
 
-  //  We should still have "Y" edge.
-  // let res = crate::mr_edgelist(None).unwrap();
-
-  // let _n = res
-  //   .map(|x| {
-  //     let (ego, target, score) = x;
-  //     assert_eq!(ego, "B1");
-  //     assert_eq!(target, "B2");
-  //     assert_eq!(score, 2.0);
-  //   })
-  //   .count();
-
-  // assert_eq!(n, 1);
+  let res = crate::mr_edgelist(None).unwrap();
+  let edges: Vec<_> = res.collect();
+  // Delete in X also zeros ""; expect no edges or one edge with weight 0.
+  assert!(
+    edges.is_empty()
+      || (edges.len() == 1 && (edges[0].2 - 0.0).abs() < 1e-6),
+    "expected no edges or single edge with weight 0, got {} edges",
+    edges.len()
+  );
+  if edges.len() == 1 {
+    assert_eq!(edges[0].0, "B1");
+    assert_eq!(edges[0].1, "U2");
+  }
 }
 
 #[pg_test]
@@ -314,17 +307,15 @@ fn delete_nodes() {
   let _ = crate::mr_reset().unwrap();
 
   let _ =
-    crate::mr_put_edge(Some("B1"), Some("B2"), Some(1.0), None, Some(-1))
+    crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None, Some(-1))
       .unwrap();
-  let _ = crate::mr_delete_node(Some("B1"), None, Some(-1)).unwrap();
-  let _ = crate::mr_delete_node(Some("B2"), None, Some(-1)).unwrap();
+  let _ = crate::mr_delete_node(Some("U1"), None, Some(-1)).unwrap();
+  let _ = crate::mr_delete_node(Some("U2"), None, Some(-1)).unwrap();
 
-  // sleep(Duration::from_millis(100));
   let _ = crate::mr_sync(Some(1000)).unwrap();
 
-  let _res = crate::mr_edgelist(None).unwrap();
-
-  // assert_eq!(res.count(), 0);
+  let res = crate::mr_edgelist(None).unwrap();
+  assert_eq!(res.count(), 0);
 }
 
 #[pg_test]
@@ -332,7 +323,7 @@ fn null_context_invariant() {
   let _ = crate::mr_reset().unwrap();
 
   let _ = crate::mr_put_edge(
-    Some("B1"),
+    Some("U1"),
     Some("B2"),
     Some(1.0),
     Some("X"),
@@ -340,7 +331,7 @@ fn null_context_invariant() {
   )
   .unwrap();
   let _ = crate::mr_put_edge(
-    Some("B1"),
+    Some("U1"),
     Some("B2"),
     Some(2.0),
     Some("Y"),
@@ -348,34 +339,25 @@ fn null_context_invariant() {
   )
   .unwrap();
 
-  // sleep(Duration::from_millis(100));
-  let _ = crate::mr_sync(Some(1000)).unwrap();
-
-  //  Delete and put back again.
-  let _ = crate::mr_delete_edge(Some("B1"), Some("B2"), Some("X"), Some(-1));
+  let _ = crate::mr_delete_edge(Some("U1"), Some("B2"), Some("X"), Some(-1));
   let _ = crate::mr_put_edge(
-    Some("B1"),
+    Some("U1"),
     Some("B2"),
     Some(1.0),
     Some("X"),
     Some(-1),
   );
 
-  // sleep(Duration::from_millis(100));
-  // let _ = crate::mr_sync(Some(1000)).unwrap();
+  let _ = crate::mr_sync(Some(1000)).unwrap();
 
-  // let res = crate::mr_edgelist(None).unwrap();
-
-  // let _n = res
-  //   .map(|x| {
-  //     let (ego, target, score) = x;
-  //     assert_eq!(ego, "B1");
-  //     assert_eq!(target, "B2");
-  //     assert_eq!(score, 3.0);
-  //   })
-  //   .count();
-
-  // assert_eq!(n, 1);
+  let res = crate::mr_edgelist(None).unwrap();
+  let edges: Vec<_> = res.collect();
+  assert_eq!(edges.len(), 1);
+  let (ego, target, score) = &edges[0];
+  assert_eq!(ego, "U1");
+  assert_eq!(target, "B2");
+  // Delete then re-add in X: "" ends with 1.0 (verbatim).
+  assert!(*score > 0.99 && *score < 1.01);
 }
 
 #[pg_test]

@@ -49,11 +49,22 @@ jobs:
       run: cargo build --release
     - name: Install sudo and netcat (for cargo pgrx and service port check)
       run: apk add --no-cache sudo netcat-openbsd
-    - name: Do the tests
+    - name: Configure passwordless sudo (avoid pgrx 'sudo cp' hanging non-interactively)
       run: |
-        ( cd ../service && export MERITRANK_SERVER_PORT=10234 MERITRANK_SERVER_ADDRESS=127.0.0.1 MERITRANK_NUM_WALKS=500 && nohup ./target/release/meritrank_service >> /tmp/meritrank.log 2>&1 & )
+        mkdir -p /etc/sudoers.d
+        echo 'Defaults !requiretty' > /etc/sudoers.d/nopasswd
+        echo 'Defaults env_keep += "MERITRANK_SERVICE_URL"' >> /etc/sudoers.d/nopasswd
+        echo 'root ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers.d/nopasswd
+        chmod 440 /etc/sudoers.d/nopasswd
+    - name: Start meritrank service
+      working-directory: ./service
+      run: |
+        export MERITRANK_SERVER_PORT=10234 MERITRANK_SERVER_ADDRESS=127.0.0.1 MERITRANK_NUM_WALKS=500
+        nohup ./target/release/meritrank_service >> /tmp/meritrank.log 2>&1 &
         i=0; while [ $i -lt 30 ]; do nc -z 127.0.0.1 10234 && break; i=$((i+1)); sleep 1; done
         nc -z 127.0.0.1 10234 || (echo "Meritrank service did not start"; cat /tmp/meritrank.log 2>/dev/null; exit 1)
+    - name: Do the tests
+      run: |
         export RUST_TEST_THREADS=1
         export MERITRANK_SERVICE_URL=tcp://127.0.0.1:10234
         mkdir -p /usr/local/share/postgresql/extension /usr/local/lib/postgresql
