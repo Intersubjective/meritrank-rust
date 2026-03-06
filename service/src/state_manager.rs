@@ -10,6 +10,8 @@ use left_right::{Absorb, ReadHandleFactory, WriteHandle};
 use crate::data::Weight;
 use tokio::{sync::mpsc, task::JoinSet};
 
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::{thread, time::Duration};
 
 pub const SYNC_SLEEP_PERIOD: u64 = 10;
@@ -26,6 +28,8 @@ pub type GraphProcessor = ConcurrentDataProcessor<AugGraph, AugGraphOp>;
 pub struct MultiGraphProcessor {
   pub subgraphs_map: DashMap<SubgraphName, GraphProcessor>,
   settings:          Settings,
+  loading:           AtomicBool,
+  internal_stamp:    AtomicU64,
 }
 
 impl<T, Op> ConcurrentDataProcessor<T, Op>
@@ -86,11 +90,17 @@ fn processing_loop<T, Op>(
 impl MultiGraphProcessor {
   pub fn new(settings: Settings) -> Self {
     let mgp = MultiGraphProcessor {
-      subgraphs_map: DashMap::new(),
+      subgraphs_map:  DashMap::new(),
       settings,
+      loading:        AtomicBool::new(false),
+      internal_stamp: AtomicU64::new(0),
     };
     mgp.insert_subgraph_if_does_not_exist(&String::new());
     mgp
+  }
+
+  fn next_stamp(&self) -> u64 {
+    self.internal_stamp.fetch_add(1, Ordering::SeqCst) + 1
   }
 
   pub fn get_tx_channel(
@@ -222,6 +232,33 @@ impl MultiGraphProcessor {
     }
   }
 
+  /// If the ego has no walks in this subgraph, send WriteCalculate and sync so the next read sees scores.
+  async fn ensure_calculated(
+    &self,
+    subgraph: &SubgraphName,
+    ego: &NodeName,
+  ) {
+    let needs_calc = self.process_read(subgraph, |aug_graph| {
+      match aug_graph.nodes.get_by_name(ego) {
+        Some(info) if !aug_graph.mr.get_personal_hits().contains_key(&info.id) => Response::Fail,
+        _ => Response::Ok,
+      }
+    });
+    if matches!(needs_calc, Response::Fail) {
+      let _ = self
+        .send_op(
+          subgraph,
+          AugGraphOp::WriteCalculate(OpWriteCalculate {
+            ego: ego.clone(),
+          }),
+        )
+        .await;
+      let stamp = self.next_stamp();
+      let _ = self.send_op(subgraph, AugGraphOp::Stamp(stamp)).await;
+      self.sync_future(stamp).await;
+    }
+  }
+
   pub async fn process_request(
     &self,
     req: &Request,
@@ -232,7 +269,17 @@ impl MultiGraphProcessor {
 
     log_trace!();
 
+    if self.loading.load(Ordering::SeqCst) {
+      if !matches!(&req.data, ReqData::WriteBulkEdges(_)) {
+        return Response::Fail;
+      }
+    }
+
     let data = req.data.clone();
+
+    if let Some(ego) = req.data.read_ego() {
+      self.ensure_calculated(&req.subgraph, ego).await;
+    }
 
     match data {
       ReqData::Stamp(value) => {
@@ -240,6 +287,75 @@ impl MultiGraphProcessor {
       },
       ReqData::WriteEdge(data) => {
         self.process_write_edge(&req.subgraph, &data).await
+      },
+      ReqData::WriteBulkEdges(data) => {
+        self.loading.store(true, Ordering::SeqCst);
+
+        self.subgraphs_map.clear();
+        self.insert_subgraph_if_does_not_exist(&String::new());
+
+        let mut contexts: HashSet<SubgraphName> = HashSet::new();
+        for edge in &data.edges {
+          if !edge.context.is_empty() {
+            contexts.insert(edge.context.clone());
+          }
+        }
+        for ctx in &contexts {
+          self.insert_subgraph_if_does_not_exist(ctx);
+        }
+
+        let mut user_user_edges: Vec<OpWriteEdge> = vec![];
+        let mut context_non_user_edges: HashMap<SubgraphName, Vec<OpWriteEdge>> =
+          HashMap::new();
+
+        for edge in data.edges {
+          let op = OpWriteEdge {
+            src:       edge.src,
+            dst:       edge.dst,
+            amount:    edge.amount,
+            magnitude: edge.magnitude,
+          };
+          let src_kind = node_kind_from_prefix(&op.src);
+          let dst_kind = node_kind_from_prefix(&op.dst);
+
+          if matches!(
+            (src_kind, dst_kind),
+            (Some(NodeKind::User), Some(NodeKind::User))
+          ) {
+            user_user_edges.push(op);
+          } else {
+            context_non_user_edges
+              .entry(edge.context)
+              .or_default()
+              .push(op);
+          }
+        }
+
+        let mut aggregate_edges = user_user_edges.clone();
+        for edges in context_non_user_edges.values() {
+          aggregate_edges.extend(edges.iter().cloned());
+        }
+        let _ = self
+          .send_op(&String::new(), AugGraphOp::BulkLoadEdges(aggregate_edges))
+          .await;
+
+        for ctx in &contexts {
+          let mut ctx_edges = user_user_edges.clone();
+          if let Some(specific) = context_non_user_edges.get(ctx) {
+            ctx_edges.extend(specific.iter().cloned());
+          }
+          let _ = self.send_op(ctx, AugGraphOp::BulkLoadEdges(ctx_edges)).await;
+        }
+
+        let stamp = self.next_stamp();
+        for ref_multi in self.subgraphs_map.iter() {
+          let name = ref_multi.key().clone();
+          let _ = self.send_op(&name, AugGraphOp::Stamp(stamp)).await;
+        }
+        self.sync_future(stamp).await;
+
+        self.loading.store(false, Ordering::SeqCst);
+        Response::Ok
       },
       ReqData::WriteCalculate(data) => {
         self
@@ -610,8 +726,9 @@ impl MultiGraphProcessor {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::data::{EdgeResult, ResEdges};
+  use crate::data::{EdgeResult, FilterOptions, OpReadScores, ResEdges, ResScores};
   use crate::data::Weight;
+  use std::sync::atomic::Ordering;
   use std::time::Duration;
 
   fn default_processor() -> MultiGraphProcessor {
@@ -868,6 +985,176 @@ mod tests {
     }).await;
     let edges = edges_from_response(response);
     assert_eq!(edges.len(), 0);
+  }
+
+  #[tokio::test]
+  async fn bulk_load_single_context() {
+    let proc = default_processor();
+    let edges = vec![
+      BulkEdge {
+        src:       "U1".into(),
+        dst:       "U2".into(),
+        amount:    1.0,
+        magnitude: 0,
+        context:   String::new(),
+      },
+      BulkEdge {
+        src:       "U1".into(),
+        dst:       "U3".into(),
+        amount:    2.0,
+        magnitude: 0,
+        context:   String::new(),
+      },
+    ];
+    let resp = proc
+      .process_request(&Request {
+        subgraph: String::new(),
+        data:     ReqData::WriteBulkEdges(OpWriteBulkEdges { edges }),
+      })
+      .await;
+    assert!(matches!(resp, Response::Ok));
+    let response = proc
+      .process_request(&Request {
+        subgraph: String::new(),
+        data:     ReqData::ReadEdges,
+      })
+      .await;
+    let loaded = edges_from_response(response);
+    assert_eq!(loaded.len(), 2);
+    let scores_resp = proc
+      .process_request(&Request {
+        subgraph: String::new(),
+        data:     ReqData::ReadScores(OpReadScores {
+          ego:           "U1".into(),
+          score_options: FilterOptions::default(),
+        }),
+      })
+      .await;
+    match scores_resp {
+      Response::Scores(ResScores { scores }) => assert!(!scores.is_empty()),
+      _ => panic!("expected scores"),
+    }
+  }
+
+  #[tokio::test]
+  async fn bulk_load_multi_context() {
+    let proc = default_processor();
+    let edges = vec![
+      BulkEdge {
+        src:       "U1".into(),
+        dst:       "U2".into(),
+        amount:    1.0,
+        magnitude: 0,
+        context:   String::new(),
+      },
+      BulkEdge {
+        src:       "U1".into(),
+        dst:       "B1".into(),
+        amount:    3.0,
+        magnitude: 0,
+        context:   "X".into(),
+      },
+    ];
+    let _ = proc
+      .process_request(&Request {
+        subgraph: String::new(),
+        data:     ReqData::WriteBulkEdges(OpWriteBulkEdges { edges }),
+      })
+      .await;
+    let agg = proc
+      .process_request(&Request {
+        subgraph: String::new(),
+        data:     ReqData::ReadEdges,
+      })
+      .await;
+    let agg_edges = edges_from_response(agg);
+    assert_eq!(agg_edges.len(), 2);
+    let ctx_x = proc
+      .process_request(&Request {
+        subgraph: "X".into(),
+        data:     ReqData::ReadEdges,
+      })
+      .await;
+    let x_edges = edges_from_response(ctx_x);
+    assert_eq!(x_edges.len(), 2);
+  }
+
+  #[tokio::test]
+  async fn bulk_load_lazy_calc_on_read() {
+    let proc = default_processor();
+    let edges = vec![BulkEdge {
+      src:       "U1".into(),
+      dst:       "U2".into(),
+      amount:    1.0,
+      magnitude: 0,
+      context:   String::new(),
+    }];
+    let _ = proc
+      .process_request(&Request {
+        subgraph: String::new(),
+        data:     ReqData::WriteBulkEdges(OpWriteBulkEdges { edges }),
+      })
+      .await;
+    let scores_resp = proc
+      .process_request(&Request {
+        subgraph: String::new(),
+        data:     ReqData::ReadScores(OpReadScores {
+          ego:           "U1".into(),
+          score_options: FilterOptions::default(),
+        }),
+      })
+      .await;
+    match scores_resp {
+      Response::Scores(ResScores { scores }) => {
+        assert!(!scores.is_empty());
+        assert!(scores.iter().any(|s| s.target == "U2" && s.score > 0.0));
+      },
+      _ => panic!("expected scores"),
+    }
+  }
+
+  #[tokio::test]
+  async fn bulk_load_blocks_reads() {
+    let proc = default_processor();
+    proc.loading.store(true, Ordering::SeqCst);
+    let response = proc
+      .process_request(&Request {
+        subgraph: String::new(),
+        data:     ReqData::ReadEdges,
+      })
+      .await;
+    proc.loading.store(false, Ordering::SeqCst);
+    assert!(matches!(response, Response::Fail));
+  }
+
+  #[tokio::test]
+  async fn normal_write_no_auto_calc() {
+    let proc = default_processor();
+    let _ = proc
+      .process_request(&Request {
+        subgraph: String::new(),
+        data:     ReqData::WriteEdge(OpWriteEdge {
+          src:       "U1".into(),
+          dst:       "U2".into(),
+          amount:    1.0,
+          magnitude: 0,
+        }),
+      })
+      .await;
+    sync(&proc).await;
+    let scores_resp = proc
+      .process_request(&Request {
+        subgraph: String::new(),
+        data:     ReqData::ReadScores(OpReadScores {
+          ego:           "U1".into(),
+          score_options: FilterOptions::default(),
+        }),
+      })
+      .await;
+    match scores_resp {
+      Response::Scores(ResScores { scores }) => assert!(!scores.is_empty()),
+      _ => panic!("expected scores from lazy calc"),
+    }
   }
 
   #[test]

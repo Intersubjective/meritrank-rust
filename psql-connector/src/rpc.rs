@@ -132,6 +132,19 @@ pub fn new_put_edge(
   expect_ok(resp)
 }
 
+pub fn new_bulk_load_edges(
+  edges: Vec<BulkEdge>,
+  timeout_msec: Option<u64>,
+) -> Result<&'static str, Box<dyn Error + 'static>> {
+  let timeout = timeout_msec.unwrap_or(120_000);
+  let resp = tcp_call(
+    "",
+    ReqData::WriteBulkEdges(OpWriteBulkEdges { edges }),
+    Some(timeout),
+  )?;
+  expect_ok(resp)
+}
+
 pub fn new_delete_edge(
   src: &str,
   dst: &str,

@@ -940,3 +940,115 @@ fn neighbors_inbound() {
   // assert_eq!(neighbors[0].0, "U1");
   // assert_eq!(neighbors[0].1, "U1");
 }
+
+#[pg_test]
+fn bulk_load_basic() {
+  let _ = crate::mr_reset().unwrap();
+  let _ = crate::mr_sync(Some(1000)).unwrap();
+
+  let res = crate::mr_bulk_load_edges(
+    vec!["U1".into(), "U1".into(), "U2".into()],
+    vec!["U2".into(), "U3".into(), "U3".into()],
+    vec![1.0, 2.0, 3.0],
+    vec!["".into(), "".into(), "".into()],
+    None,
+  );
+  assert!(res.is_ok());
+  let _ = crate::mr_sync(Some(1000)).unwrap();
+
+  let scores: Vec<_> = crate::mr_scores(
+    Some("U1"),
+    Some(false),
+    Some(""),
+    Some("U"),
+    None,
+    None,
+    None,
+    None,
+    Some(0),
+    Some(16),
+  )
+  .unwrap()
+  .collect();
+  assert!(!scores.is_empty());
+}
+
+#[pg_test]
+fn bulk_load_with_contexts() {
+  let _ = crate::mr_reset().unwrap();
+  let _ = crate::mr_sync(Some(1000)).unwrap();
+
+  let _ = crate::mr_bulk_load_edges(
+    vec!["U1".into(), "U1".into(), "U2".into()],
+    vec!["U2".into(), "U3".into(), "U3".into()],
+    vec![1.0, 2.0, 3.0],
+    vec!["".into(), "X".into(), "X".into()],
+    None,
+  )
+  .unwrap();
+  let _ = crate::mr_sync(Some(1000)).unwrap();
+
+  let agg: Vec<_> = crate::mr_edgelist(None).unwrap().collect();
+  assert_eq!(agg.len(), 3);
+  let ctx_x: Vec<_> = crate::mr_edgelist(Some("X")).unwrap().collect();
+  assert_eq!(ctx_x.len(), 3);
+}
+
+#[pg_test]
+fn bulk_load_then_scores() {
+  let _ = crate::mr_reset().unwrap();
+  let _ = crate::mr_sync(Some(1000)).unwrap();
+
+  let _ = crate::mr_bulk_load_edges(
+    vec!["U1".into(), "U2".into()],
+    vec!["U2".into(), "U3".into()],
+    vec![1.0, 2.0],
+    vec!["".into(), "".into()],
+    None,
+  )
+  .unwrap();
+  let _ = crate::mr_sync(Some(1000)).unwrap();
+
+  let scores: Vec<_> = crate::mr_scores(
+    Some("U1"),
+    Some(false),
+    Some(""),
+    Some("U"),
+    None,
+    None,
+    None,
+    None,
+    Some(0),
+    Some(16),
+  )
+  .unwrap()
+  .collect();
+  assert!(!scores.is_empty());
+  assert!(scores.iter().any(|r| r.1 == "U2" && r.2 > 0.0));
+}
+
+#[pg_test]
+fn bulk_load_replaces_state() {
+  let _ = crate::mr_reset().unwrap();
+  let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None, Some(-1))
+    .unwrap();
+  let _ = crate::mr_sync(Some(1000)).unwrap();
+
+  let before: Vec<_> = crate::mr_edgelist(None).unwrap().collect();
+  assert_eq!(before.len(), 1);
+
+  let _ = crate::mr_bulk_load_edges(
+    vec!["U1".into(), "U1".into()],
+    vec!["U3".into(), "U4".into()],
+    vec![1.0, 1.0],
+    vec!["".into(), "".into()],
+    None,
+  )
+  .unwrap();
+  let _ = crate::mr_sync(Some(1000)).unwrap();
+
+  let after: Vec<_> = crate::mr_edgelist(None).unwrap().collect();
+  assert_eq!(after.len(), 2);
+  assert!(after.iter().any(|e| e.1 == "U3"));
+  assert!(after.iter().any(|e| e.1 == "U4"));
+}

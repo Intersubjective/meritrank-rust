@@ -368,4 +368,11 @@ impl MeritRank {
   pub fn get_personal_hits(&self) -> &IntMap<NodeId, Counter> {
     &self.pos_hits
   }
+
+  /// Clears all walks and hit counters; graph structure is preserved. Used for bulk load cold start.
+  pub fn clear_walks(&mut self) {
+    self.walks.clear();
+    self.pos_hits.clear();
+    self.neg_hits.clear();
+  }
 }

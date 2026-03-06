@@ -4,9 +4,10 @@ mod types;
 #[cfg(any(test, feature = "pg_test"))]
 pub mod testing;
 
-use rpc::*;
+use meritrank_service::data::BulkEdge;
 use pgrx::iter::TableIterator;
 use pgrx::*;
+use rpc::*;
 use std::error::Error;
 use types::*;
 
@@ -29,6 +30,7 @@ DROP FUNCTION IF EXISTS mr_delete_edge;
 DROP FUNCTION IF EXISTS mr_delete_node;
 DROP FUNCTION IF EXISTS mr_log_level;
 DROP FUNCTION IF EXISTS mr_sync;
+DROP FUNCTION IF EXISTS mr_bulk_load_edges;
 "#,
   name = "bootstrap_raw",
   bootstrap,
@@ -373,6 +375,36 @@ fn mr_set_zero_opinion(
   let node = require(node, "node")?;
   let score = require(score, "score")?;
   new_set_zero_opinion(node, score, c)
+}
+
+#[pg_extern]
+fn mr_bulk_load_edges(
+  src_arr: Vec<String>,
+  dst_arr: Vec<String>,
+  weight_arr: Vec<f64>,
+  context_arr: Vec<String>,
+  timeout_msec: default!(Option<i64>, "120000"),
+) -> Result<&'static str, Box<dyn Error + 'static>> {
+  if src_arr.len() != dst_arr.len()
+    || src_arr.len() != weight_arr.len()
+    || src_arr.len() != context_arr.len()
+  {
+    return Err("All arrays must have the same length".into());
+  }
+  let edges: Vec<BulkEdge> = src_arr
+    .into_iter()
+    .zip(dst_arr)
+    .zip(weight_arr)
+    .zip(context_arr)
+    .map(|(((src, dst), amount), context)| BulkEdge {
+      src,
+      dst,
+      amount,
+      magnitude: 0,
+      context,
+    })
+    .collect();
+  new_bulk_load_edges(edges, timeout_u64(timeout_msec))
 }
 
 #[pg_extern]

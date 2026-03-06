@@ -80,6 +80,20 @@ pub struct OpWriteEdge {
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
+pub struct BulkEdge {
+  pub src:       NodeName,
+  pub dst:       NodeName,
+  pub amount:    Weight,
+  pub magnitude: u32,
+  pub context:   SubgraphName,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct OpWriteBulkEdges {
+  pub edges: Vec<BulkEdge>,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct OpWriteCalculate {
   pub ego: NodeName,
 }
@@ -148,6 +162,7 @@ pub struct OpWriteFetchNewEdges {
 #[derive(Debug, Encode, Decode, Clone)]
 pub enum AugGraphOp {
   WriteEdge(OpWriteEdge),
+  BulkLoadEdges(Vec<OpWriteEdge>),
   WriteCalculate(OpWriteCalculate),
   WriteZeroOpinion(OpWriteZeroOpinion),
   WriteReset,
@@ -239,6 +254,7 @@ pub struct ResNewEdges {
 pub enum ReqData {
   ReadScores(OpReadScores),
   WriteEdge(OpWriteEdge),
+  WriteBulkEdges(OpWriteBulkEdges),
   WriteCalculate(OpWriteCalculate),
   Stamp(u64),
   Sync(u64),
@@ -261,6 +277,21 @@ pub enum ReqData {
   WriteCreateContext,
   WriteNewEdgesFilter(OpWriteNewEdgesFilter),
   WriteFetchNewEdges(OpWriteFetchNewEdges),
+}
+
+impl ReqData {
+  /// Returns the ego for read operations that require walks (scores, graph, neighbors, mutual).
+  pub fn read_ego(&self) -> Option<&NodeName> {
+    use ReqData::*;
+    match self {
+      ReadScores(data) => Some(&data.ego),
+      ReadNodeScore(data) => Some(&data.ego),
+      ReadGraph(data) => Some(&data.ego),
+      ReadNeighbors(data) => Some(&data.ego),
+      ReadMutualScores(data) => Some(&data.ego),
+      _ => None,
+    }
+  }
 }
 
 #[derive(Debug, Clone, Encode, Decode)]

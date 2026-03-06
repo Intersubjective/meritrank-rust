@@ -87,6 +87,13 @@ impl WalkStorage {
     }
   }
 
+  /// Clears all walks and visit bookkeeping. Used for bulk load cold start.
+  pub fn clear(&mut self) {
+    self.visits.clear();
+    self.walks.clear();
+    self.unused_walks.clear();
+  }
+
   pub fn drop_walks_from_node(
     &mut self,
     node: NodeId,

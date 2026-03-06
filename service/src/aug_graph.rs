@@ -125,6 +125,16 @@ impl AugGraph {
     (score, cluster)
   }
 
+  /// Returns true if ego is a User node (valid for score/calculation).
+  /// Logs error and returns false if not; callers should return empty/fail.
+  fn ensure_ego_is_user(&self, ego_name: &str, ego_info: &NodeInfo) -> bool {
+    if ego_info.kind == NodeKind::User {
+      return true;
+    }
+    log_error!("Non-user node used as ego (rejected): {}", ego_name);
+    false
+  }
+
   pub fn read_scores(
     &self,
     data: OpReadScores,
@@ -135,8 +145,7 @@ impl AugGraph {
     let filter_options = data.score_options;
 
     if let Some(ego_info) = self.nodes.get_by_name(&ego) {
-      if ego_info.kind != NodeKind::User {
-        log_warning!("Trying to use non-user as ego {}", ego);
+      if !self.ensure_ego_is_user(&ego, ego_info) {
         return vec![];
       }
       let scores = self.fetch_all_scores(ego_info);
@@ -147,7 +156,8 @@ impl AugGraph {
         false,
       )
     } else {
-      log_error!("Ego not found: {:?}", ego);
+      // Ego not in this context's graph (no edges involving this user were written here).
+      log_warning!("Ego not found in context (no scores): {:?}", ego);
       vec![]
     }
   }
@@ -168,6 +178,10 @@ impl AugGraph {
         return vec![];
       },
     };
+
+    if !self.ensure_ego_is_user(&ego, ego_info) {
+      return vec![];
+    }
 
     let dst_id = match self.nodes.get_by_name(&dst) {
       Some(x) => x.id,
@@ -584,6 +598,12 @@ impl AugGraph {
         },
       };
 
+    if let Some(ego_info) = self.nodes.get_by_name(ego_str) {
+      if !self.ensure_ego_is_user(ego_str, ego_info) {
+        return vec![];
+      }
+    }
+
     let node_infos = self.nodes.id_to_info.clone();
     let force_read_graph_conn = self.settings.force_read_graph_conn;
 
@@ -715,6 +735,10 @@ impl AugGraph {
       },
     };
 
+    if !self.ensure_ego_is_user(ego, ego_info) {
+      return vec![];
+    }
+
     let ego_id = ego_info.id;
 
     let focus_id = match self.nodes.get_by_name(focus) {
@@ -776,9 +800,13 @@ impl AugGraph {
       },
     };
 
+    if !self.ensure_ego_is_user(&data.ego, ego_info) {
+      return vec![];
+    }
+
     let ego_id = ego_info.id;
 
-    let ranks = self.fetch_all_scores(&ego_info);
+    let ranks = self.fetch_all_scores(ego_info);
     let mut v = Vec::<ScoreResult>::new();
     v.reserve_exact(ranks.len());
 
@@ -1133,18 +1161,6 @@ impl AugGraph {
     match self.reg_owner_and_get_ids(src.clone(), dst.clone()) {
       Ok((src_id, dst_id)) => {
         self.set_edge_by_id(src_id, dst_id, amount, magnitude);
-
-        //  D1 (JOURNAL): auto-calculate for nodes that have never had walks
-        //  initialised. This ensures read_scores works immediately after a
-        //  put_edge + sync even when no explicit WriteCalculate was sent (new
-        //  TCP path). For nodes that already have walks, meritrank_core's
-        //  incremental set_edge_ update is sufficient.
-        if !self.mr.get_personal_hits().contains_key(&src_id) {
-          self.calculate(src);
-        }
-        if !self.mr.get_personal_hits().contains_key(&dst_id) {
-          self.calculate(dst);
-        }
       },
       Err(e) => match e {
         AugGraphError::SelfReference => {
@@ -1154,6 +1170,30 @@ impl AugGraph {
           log_error!("Incorrect node kinds combination {} -> {}.", s, d)
         },
       },
+    }
+  }
+
+  /// Bulk-load edges without creating walks. Clears walks first; VSIDS is not reset.
+  /// Used for cold start. Walks are created lazily on first read via ensure_calculated.
+  pub fn bulk_load_edges(
+    &mut self,
+    edges: Vec<OpWriteEdge>,
+  ) {
+    self.mr.clear_walks();
+    for edge in edges {
+      match self.reg_owner_and_get_ids(edge.src.clone(), edge.dst.clone()) {
+        Ok((src_id, dst_id)) => {
+          self.set_edge_by_id(src_id, dst_id, edge.amount, edge.magnitude);
+        },
+        Err(e) => match e {
+          AugGraphError::SelfReference => {
+            log_error!("Bulk load: self-reference skipped");
+          },
+          AugGraphError::IncorrectNodeKinds(s, d) => {
+            log_error!("Bulk load: bad node kinds {} -> {}, skipped", s, d);
+          },
+        },
+      }
     }
   }
 
@@ -1170,6 +1210,11 @@ impl AugGraph {
         return;
       },
     };
+
+    if kind != NodeKind::User {
+      log_error!("Non-user node used as ego for calculation (rejected): {:?}", ego);
+      return;
+    }
 
     let ego_id = self.nodes.register(&mut self.mr, ego, kind);
 
@@ -1423,6 +1468,9 @@ impl Absorb<AugGraphOp> for AugGraph {
         magnitude,
       }) => {
         self.set_edge(src.clone(), dst.clone(), *amount, *magnitude);
+      },
+      AugGraphOp::BulkLoadEdges(edges) => {
+        self.bulk_load_edges(std::mem::take(edges));
       },
       AugGraphOp::WriteCalculate(OpWriteCalculate {
         ego,
@@ -1692,6 +1740,8 @@ mod tests {
     graph.set_edge("U1".into(), "U3".into(), 1.0, 0);
     graph.set_edge("U2".into(), "U3".into(), 3.0, 0);
 
+    graph.calculate("U1".into());
+
     let res = read_scores(&graph, "U1", "U", false, 10.0, false, 0.0, false, 0, u32::MAX);
 
     assert_eq!(res.len(), 3);
@@ -1725,6 +1775,10 @@ mod tests {
     graph.set_edge("U2".into(), "U3".into(), 3.0, 0);
     graph.set_edge("U2".into(), "U1".into(), 4.0, 0);
     graph.set_edge("U3".into(), "U1".into(), -5.0, 0);
+
+    graph.calculate("U1".into());
+    graph.calculate("U2".into());
+    graph.calculate("U3".into());
 
     let res = read_scores(&graph, "U1", "U", false, 10.0, false, 0.0, false, 0, u32::MAX);
 
@@ -1765,6 +1819,8 @@ mod tests {
     graph.set_edge("U1".into(), "U3".into(), 1.0, 0);
     graph.set_edge("U2".into(), "U3".into(), 3.0, 0);
 
+    graph.calculate("U1".into());
+
     let res = read_scores(&graph, "U1", "U", false, 10.0, false, 0.0, false, 0, u32::MAX);
 
     assert!(res.len() > 1);
@@ -1780,6 +1836,8 @@ mod tests {
     graph.set_edge("U1".into(), "U2".into(), 1.0, 0);
     graph.set_edge("U1".into(), "U0".into(), 1.0, 0);
 
+    graph.calculate("U1".into());
+
     let res = read_scores(&graph, "U1", "U", true, 100.0, false, -100.0, false, 0, u32::MAX);
     let n = res.len();
     assert_eq!(n, 3);
@@ -1790,6 +1848,8 @@ mod tests {
     let mut graph = default_graph();
 
     graph.set_edge("B1".into(), "U1".into(), 3.0, 0);
+
+    graph.calculate("U1".into());
 
     let res = read_scores(&graph, "U1", "U", false, 10.0, false, 0.0, false, 0, u32::MAX);
 
@@ -1810,6 +1870,8 @@ mod tests {
     graph.set_edge("U1".into(), "U3".into(), 1.0, 0);
     graph.set_edge("U3".into(), "U2".into(), 3.0, 0);
 
+    graph.calculate("U1".into());
+
     let res = read_node_score_helper(&graph, "U1", "U2");
 
     assert_eq!(res.len(), 1);
@@ -1827,6 +1889,9 @@ mod tests {
     graph.set_edge("U1".into(), "U3".into(), 1.0, 0);
     graph.set_edge("U3".into(), "U2".into(), 3.0, 0);
     graph.set_edge("U2".into(), "U1".into(), 4.0, 0);
+
+    graph.calculate("U1".into());
+    graph.calculate("U2".into());
 
     let res = read_node_score_helper(&graph, "U1", "U2");
 
@@ -1851,6 +1916,10 @@ mod tests {
     graph.set_edge("U2".into(), "U3".into(), 4.0, 0);
     graph.set_edge("U3".into(), "U1".into(), 3.0, 0);
     graph.set_edge("U3".into(), "U2".into(), 2.0, 0);
+
+    graph.calculate("U1".into());
+    graph.calculate("U2".into());
+    graph.calculate("U3".into());
 
     let res = read_mutual_scores_helper(&graph, "U1");
 
@@ -1902,6 +1971,8 @@ mod tests {
     let dst_id = graph.nodes.get_by_name("U2").unwrap().id;
     graph.mr.set_edge(ego_id, dst_id, 0.0).unwrap();
 
+    graph.calculate("U1".into());
+
     let res = read_mutual_scores_helper(&graph, "U1");
 
     assert_eq!(res.len(), 1);
@@ -1918,6 +1989,8 @@ mod tests {
     let mut graph = default_graph();
 
     graph.set_edge("U1".into(), "U2".into(), 10.0, 0);
+
+    graph.calculate("U1".into());
 
     let res = read_mutual_scores_helper(&graph, "U1");
 
@@ -1973,6 +2046,8 @@ mod tests {
     graph.set_edge("U1".into(), "U3".into(), 1.0, 0);
     graph.set_edge("U2".into(), "U3".into(), 3.0, 0);
     graph.set_edge("U2".into(), "U1".into(), 4.0, 0);
+
+    graph.calculate("U1".into());
 
     let res = read_graph_helper(&graph, "U1", "U2", false, 0, 10000);
 
@@ -2133,6 +2208,8 @@ mod tests {
     graph.set_edge("U1".into(), "U5".into(), 3.0, 0);
     graph.set_edge("U2".into(), "U1".into(), 4.0, 0);
 
+    graph.calculate("U1".into());
+
     let res = read_scores(&graph, "U1", "", true, 100.0, false, -100.0, false, 0, u32::MAX);
 
     assert_eq!(res.len(), 5);
@@ -2166,6 +2243,8 @@ mod tests {
     graph.set_edge("U1".into(), "B5".into(), 3.0, 0);
     graph.set_edge("U1".into(), "B6".into(), 4.0, 0);
 
+    graph.calculate("U1".into());
+
     let res = read_scores(&graph, "U1", "B", true, 100.0, false, -100.0, false, 0, u32::MAX);
 
     assert_eq!(res.len(), 5);
@@ -2194,6 +2273,8 @@ mod tests {
     graph.set_edge("U2".into(), "U3".into(), 3.0, 0);
     graph.set_edge("U3".into(), "U1".into(), 4.0, 0);
 
+    graph.calculate("U1".into());
+
     let res = read_scores(&graph, "U1", "", true, 100.0, false, -100.0, false, 0, u32::MAX);
 
     assert_eq!(res.len(), 3);
@@ -2215,6 +2296,8 @@ mod tests {
     graph.set_edge("U1".into(), "B1".into(), 3.0, 0);
     graph.set_edge("U1".into(), "C1".into(), 4.0, 0);
 
+    graph.calculate("U1".into());
+
     let res = read_scores(&graph, "U1", "", true, 100.0, false, -100.0, false, 0, u32::MAX);
 
     assert_eq!(res.len(), 3);
@@ -2231,6 +2314,8 @@ mod tests {
     graph.set_edge("U1".into(), "U2".into(), 2.0, 0);
     graph.set_edge("U1".into(), "B1".into(), 3.0, 0);
     graph.set_edge("U1".into(), "C1".into(), 4.0, 0);
+
+    graph.calculate("U1".into());
 
     let res = read_scores(&graph, "U1", "U", true, 100.0, false, -100.0, false, 0, u32::MAX);
 
@@ -2456,6 +2541,7 @@ mod tests {
   fn set_zero_opinion_uncontexted() {
     let mut graph = default_graph_zero();
     graph.set_edge("U1".into(), "U2".into(), -5.0, 0);
+    graph.calculate("U1".into());
     let s0 = read_node_score_helper(&graph, "U1", "U2")[0].score;
 
     let u2_id = graph.nodes.get_by_name("U2").unwrap().id;
@@ -2463,6 +2549,8 @@ mod tests {
       graph.zero_opinion.resize(u2_id + 1, 0.0);
     }
     graph.zero_opinion[u2_id] = 10.0;
+
+    graph.calculate("U1".into());
 
     let s1 = read_node_score_helper(&graph, "U1", "U2")[0].score;
 
@@ -2482,6 +2570,8 @@ mod tests {
     graph.set_edge("U1".into(), "U2".into(), 3.0, 0);
     graph.set_edge("U1".into(), "U3".into(), 1.0, 20);
 
+    graph.calculate("U1".into());
+
     let u12 = read_node_score_helper(&graph, "U1", "U2");
     let u13 = read_node_score_helper(&graph, "U1", "U3");
 
@@ -2491,6 +2581,7 @@ mod tests {
     );
 
     graph.set_edge("U1".into(), "U4".into(), 1.0, 200);
+    graph.calculate("U1".into());
     let u12_final = read_node_score_helper(&graph, "U1", "U2");
     let u13_final = read_node_score_helper(&graph, "U1", "U3");
     assert!(
@@ -2559,6 +2650,9 @@ mod tests {
       graph_omit.set_edge(src.into(), dst.into(), weight, 0);
       graph_include.set_edge(src.into(), dst.into(), weight, 0);
     }
+
+    graph_omit.calculate("U1".into());
+    graph_include.calculate("U1".into());
 
     let scores_omit = read_scores(
       &graph_omit, "U1", "U", false, 100.0, false, -100.0, false, 0, u32::MAX,
