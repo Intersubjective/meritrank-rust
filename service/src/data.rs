@@ -5,11 +5,12 @@ use bincode::{Decode, Encode};
 pub const NEIGHBORS_ALL: i64 = 0;
 pub const NEIGHBORS_OUTBOUND: i64 = 1;
 pub const NEIGHBORS_INBOUND: i64 = 2;
-use meritrank_core::graph::Weight;
 use serde::{Deserialize, Serialize};
 
 pub type NodeName = String;
 pub type NodeScore = f64;
+/// Edge/score weight type; matches meritrank_core's Weight (f64) for API compatibility.
+pub type Weight = f64;
 pub type NodeCluster = usize;
 pub type SubgraphName = String;
 

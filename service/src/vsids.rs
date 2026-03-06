@@ -1,4 +1,4 @@
-use meritrank_core::graph::Weight;
+use crate::data::Weight;
 use meritrank_core::NodeId;
 
 use std::collections::HashMap;

@@ -1,7 +1,7 @@
 use crate::quantiles::calculate_quantiles_bounds;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
-use meritrank_core::graph::Weight;
+use crate::data::Weight;
 use meritrank_core::NodeId;
 use std::collections::HashMap;
 

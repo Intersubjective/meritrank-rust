@@ -6,7 +6,7 @@ use std::sync::Condvar;
 use std::sync::Mutex;
 use std::thread;
 
-pub use meritrank_core::graph::Weight;
+pub use crate::data::Weight;
 
 use crate::aug_multi_graph::*;
 use crate::log::*;
