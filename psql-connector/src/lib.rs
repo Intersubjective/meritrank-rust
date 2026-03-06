@@ -382,11 +382,13 @@ fn mr_bulk_load_edges(
   src_arr: Vec<String>,
   dst_arr: Vec<String>,
   weight_arr: Vec<f64>,
+  magnitude_arr: Vec<i64>,
   context_arr: Vec<String>,
   timeout_msec: default!(Option<i64>, "120000"),
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
   if src_arr.len() != dst_arr.len()
     || src_arr.len() != weight_arr.len()
+    || src_arr.len() != magnitude_arr.len()
     || src_arr.len() != context_arr.len()
   {
     return Err("All arrays must have the same length".into());
@@ -395,12 +397,13 @@ fn mr_bulk_load_edges(
     .into_iter()
     .zip(dst_arr)
     .zip(weight_arr)
+    .zip(magnitude_arr)
     .zip(context_arr)
-    .map(|(((src, dst), amount), context)| BulkEdge {
+    .map(|((((src, dst), amount), mag), context)| BulkEdge {
       src,
       dst,
       amount,
-      magnitude: 0,
+      magnitude: mag.try_into().unwrap_or(0),
       context,
     })
     .collect();

@@ -950,6 +950,7 @@ fn bulk_load_basic() {
     vec!["U1".into(), "U1".into(), "U2".into()],
     vec!["U2".into(), "U3".into(), "U3".into()],
     vec![1.0, 2.0, 3.0],
+    vec![0, 0, 0],
     vec!["".into(), "".into(), "".into()],
     None,
   );
@@ -982,6 +983,7 @@ fn bulk_load_with_contexts() {
     vec!["U1".into(), "U1".into(), "U2".into()],
     vec!["U2".into(), "U3".into(), "U3".into()],
     vec![1.0, 2.0, 3.0],
+    vec![0, 0, 0],
     vec!["".into(), "X".into(), "X".into()],
     None,
   )
@@ -1003,6 +1005,7 @@ fn bulk_load_then_scores() {
     vec!["U1".into(), "U2".into()],
     vec!["U2".into(), "U3".into()],
     vec![1.0, 2.0],
+    vec![0, 0],
     vec!["".into(), "".into()],
     None,
   )
@@ -1041,6 +1044,7 @@ fn bulk_load_replaces_state() {
     vec!["U1".into(), "U1".into()],
     vec!["U3".into(), "U4".into()],
     vec![1.0, 1.0],
+    vec![0, 0],
     vec!["".into(), "".into()],
     None,
   )

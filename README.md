@@ -37,7 +37,7 @@
 
 After a service restart, loading many edges one-by-one with `mr_put_edge` can be slow. Use **batch loading** to send all edges in a single request:
 
-- **SQL:** `mr_bulk_load_edges(src_arr, dst_arr, weight_arr, context_arr, timeout_msec)` — see [PSQL Connector](psql-connector/README.md#batch-loading).
+- **SQL:** `mr_bulk_load_edges(src_arr, dst_arr, weight_arr, magnitude_arr, context_arr, timeout_msec)` — see [PSQL Connector](psql-connector/README.md#batch-loading).
 - The service clears existing walks, loads the edges without computing walks, and blocks other requests until the load finishes. Walks are created lazily on first score/graph/neighbor reads per ego.
 
 # How to Launch the Project with Docker
