@@ -85,10 +85,12 @@ fn processing_loop<T, Op>(
 
 impl MultiGraphProcessor {
   pub fn new(settings: Settings) -> Self {
-    MultiGraphProcessor {
+    let mgp = MultiGraphProcessor {
       subgraphs_map: DashMap::new(),
       settings,
-    }
+    };
+    mgp.insert_subgraph_if_does_not_exist(&String::new());
+    mgp
   }
 
   pub fn get_tx_channel(
@@ -250,7 +252,11 @@ impl MultiGraphProcessor {
           .await
       },
       ReqData::WriteCreateContext => {
+        let is_new = !self.subgraphs_map.contains_key(&req.subgraph);
         self.insert_subgraph_if_does_not_exist(&req.subgraph);
+        if is_new {
+          self.seed_context_from_aggregate(&req.subgraph).await;
+        }
         Response::Ok
       },
       ReqData::WriteDeleteEdge(data) => {
@@ -267,9 +273,13 @@ impl MultiGraphProcessor {
           .await
       },
       ReqData::WriteDeleteNode(data) => {
-        self
-          .send_op(&req.subgraph, AugGraphOp::DeleteNode(data.node.clone()))
-          .await
+        let op = AugGraphOp::DeleteNode(data.node.clone());
+        let resp = self.send_op(&req.subgraph, op.clone()).await;
+        if matches!(resp, Response::Ok) {
+          let default_ctx = String::new();
+          let _ = self.send_op(&default_ctx, op).await;
+        }
+        resp
       },
       ReqData::WriteZeroOpinion(data) => {
         self
@@ -278,6 +288,7 @@ impl MultiGraphProcessor {
       },
       ReqData::WriteReset => {
         self.subgraphs_map.clear();
+        self.insert_subgraph_if_does_not_exist(&String::new());
         Response::Ok
       },
       ReqData::WriteRecalculateZero => {
@@ -429,7 +440,7 @@ impl MultiGraphProcessor {
     let src_kind_opt = node_kind_from_prefix(&data.src);
     let dst_kind_opt = node_kind_from_prefix(&data.dst);
 
-    match (src_kind_opt, dst_kind_opt) {
+    let response = match (src_kind_opt, dst_kind_opt) {
       (Some(NodeKind::User), Some(NodeKind::User)) => {
         self
           .process_user_to_user_edge(
@@ -460,18 +471,67 @@ impl MultiGraphProcessor {
         Response::Fail
       },
       _ => {
-        self
-          .send_op(
-            subgraph_name,
-            AugGraphOp::WriteEdge(OpWriteEdge {
-              src:       data.src.clone(),
-              dst:       data.dst.clone(),
-              amount:    data.amount,
-              magnitude: data.magnitude,
-            }),
-          )
-          .await
+        let op = AugGraphOp::WriteEdge(OpWriteEdge {
+          src:       data.src.clone(),
+          dst:       data.dst.clone(),
+          amount:    data.amount,
+          magnitude: data.magnitude,
+        });
+        let resp = self.send_op(subgraph_name, op.clone()).await;
+        if matches!(resp, Response::Ok) {
+          let default_ctx = String::new();
+          let _ = self.send_op(&default_ctx, op).await;
+        }
+        resp
       },
+    };
+    response
+  }
+
+  /// Seeds the given (new) context with user-user edges from the "" aggregate. Does not update tracking or "".
+  async fn seed_context_from_aggregate(
+    &self,
+    subgraph_name: &SubgraphName,
+  ) {
+    let default_ctx = String::new();
+    let response = self.process_read(&default_ctx, |aug_graph| {
+      let mut edges = vec![];
+      edges.reserve(aug_graph.nodes.id_to_info.len() * 2);
+      for (src_id, info) in aug_graph.nodes.id_to_info.iter().enumerate() {
+        if let Some(data) = aug_graph.mr.graph.get_node_data(src_id) {
+          let src_name = &info.name;
+          for (dst_id, weight) in data.get_outgoing_edges() {
+            match aug_graph.nodes.get_by_id(dst_id) {
+              Some(x) => edges.push(EdgeResult {
+                src: src_name.to_string(),
+                dst: x.name.clone(),
+                weight,
+              }),
+              None => log_error!("Node does not exist: {}", dst_id),
+            }
+          }
+        }
+      }
+      Response::Edges(ResEdges { edges })
+    });
+
+    if let Response::Edges(ResEdges { edges }) = response {
+      let tx = self.get_tx_channel(subgraph_name);
+      for edge in edges {
+        if node_kind_from_prefix(&edge.src) == Some(NodeKind::User)
+          && node_kind_from_prefix(&edge.dst) == Some(NodeKind::User)
+          && edge.weight != 0.0
+        {
+          let _ = tx
+            .send(AugGraphOp::WriteEdge(OpWriteEdge {
+              src:       edge.src,
+              dst:       edge.dst,
+              amount:    edge.weight,
+              magnitude: 0,
+            }))
+            .await;
+        }
+      }
     }
   }
 
@@ -550,6 +610,265 @@ impl MultiGraphProcessor {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::data::{EdgeResult, ResEdges};
+  use meritrank_core::Weight;
+  use std::time::Duration;
+
+  fn default_processor() -> MultiGraphProcessor {
+    MultiGraphProcessor::new(Settings::default())
+  }
+
+  async fn sync(proc: &MultiGraphProcessor) {
+    let _ = proc.process_request(&Request {
+      subgraph: String::new(),
+      data:     ReqData::Sync(1),
+    }).await;
+    tokio::time::sleep(Duration::from_millis(20)).await;
+  }
+
+  fn edges_from_response(response: Response) -> Vec<(String, String, Weight)> {
+    match response {
+      Response::Edges(ResEdges { edges }) => edges
+        .into_iter()
+        .map(|e: EdgeResult| (e.src, e.dst, e.weight))
+        .collect(),
+      _ => vec![],
+    }
+  }
+
+  #[tokio::test]
+  async fn context_aggregate_null_context_last_write_wins() {
+    // Verbatim aggregate: "" receives each edge write as-is; last write wins for same (src, dst).
+    let proc = default_processor();
+    let _ = proc.process_request(&Request {
+      subgraph: "X".into(),
+      data:     ReqData::WriteEdge(OpWriteEdge {
+        src:       "B1".into(),
+        dst:       "U2".into(),
+        amount:    1.0,
+        magnitude: 0,
+      }),
+    }).await;
+    let _ = proc.process_request(&Request {
+      subgraph: "Y".into(),
+      data:     ReqData::WriteEdge(OpWriteEdge {
+        src:       "B1".into(),
+        dst:       "U2".into(),
+        amount:    2.0,
+        magnitude: 0,
+      }),
+    }).await;
+    sync(&proc).await;
+    let response = proc.process_request(&Request {
+      subgraph: String::new(),
+      data:     ReqData::ReadEdges,
+    }).await;
+    let edges = edges_from_response(response);
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0].0, "B1");
+    assert_eq!(edges[0].1, "U2");
+    assert!((edges[0].2 - 2.0).abs() < 1e-6, "expected weight ~2.0 (last write wins), got {}", edges[0].2);
+  }
+
+  #[tokio::test]
+  async fn context_aggregate_null_context_contains_all_users() {
+    let proc = default_processor();
+    let _ = proc.process_request(&Request {
+      subgraph: "X".into(),
+      data:     ReqData::WriteEdge(OpWriteEdge {
+        src:       "U1".into(),
+        dst:       "U2".into(),
+        amount:    1.0,
+        magnitude: 0,
+      }),
+    }).await;
+    let _ = proc.process_request(&Request {
+      subgraph: "Y".into(),
+      data:     ReqData::WriteEdge(OpWriteEdge {
+        src:       "U1".into(),
+        dst:       "U3".into(),
+        amount:    2.0,
+        magnitude: 0,
+      }),
+    }).await;
+    sync(&proc).await;
+    let response = proc.process_request(&Request {
+      subgraph: String::new(),
+      data:     ReqData::ReadEdges,
+    }).await;
+    let edges = edges_from_response(response);
+    let expected = vec![
+      ("U1".to_string(), "U2".to_string(), 1.0),
+      ("U1".to_string(), "U3".to_string(), 2.0),
+    ];
+    assert_eq!(edges.len(), expected.len());
+    for exp in &expected {
+      assert!(edges.iter().any(|e| e.0 == exp.0 && e.1 == exp.1 && (e.2 - exp.2).abs() < 1e-9));
+    }
+  }
+
+  #[tokio::test]
+  async fn context_aggregate_delete_contexted_edge() {
+    // Verbatim: deleting from X sends WriteEdge(0) to ""; edge is removed or zeroed in "".
+    let proc = default_processor();
+    let _ = proc.process_request(&Request {
+      subgraph: "X".into(),
+      data:     ReqData::WriteEdge(OpWriteEdge {
+        src:       "B1".into(),
+        dst:       "U2".into(),
+        amount:    1.0,
+        magnitude: 0,
+      }),
+    }).await;
+    let _ = proc.process_request(&Request {
+      subgraph: "Y".into(),
+      data:     ReqData::WriteEdge(OpWriteEdge {
+        src:       "B1".into(),
+        dst:       "U2".into(),
+        amount:    2.0,
+        magnitude: 0,
+      }),
+    }).await;
+    let _ = proc.process_request(&Request {
+      subgraph: "X".into(),
+      data:     ReqData::WriteDeleteEdge(OpWriteDeleteEdge {
+        src:   "B1".into(),
+        dst:   "U2".into(),
+        index: -1,
+      }),
+    }).await;
+    sync(&proc).await;
+    let response = proc.process_request(&Request {
+      subgraph: String::new(),
+      data:     ReqData::ReadEdges,
+    }).await;
+    let edges = edges_from_response(response);
+    // After verbatim delete, "" has WriteEdge(0); graph may omit zero-weight edges from ReadEdges.
+    assert!(edges.is_empty() || (edges.len() == 1 && (edges[0].2 - 0.0).abs() < 1e-6),
+      "expected no edges or single edge with weight 0, got {} edges", edges.len());
+  }
+
+  #[tokio::test]
+  async fn context_aggregate_null_context_invariant() {
+    // Verbatim: delete from X (sends 0 to ""), then re-add 1.0 from X; "" ends with 1.0.
+    let proc = default_processor();
+    let _ = proc.process_request(&Request {
+      subgraph: "X".into(),
+      data:     ReqData::WriteEdge(OpWriteEdge {
+        src:       "B1".into(),
+        dst:       "U2".into(),
+        amount:    1.0,
+        magnitude: 0,
+      }),
+    }).await;
+    let _ = proc.process_request(&Request {
+      subgraph: "Y".into(),
+      data:     ReqData::WriteEdge(OpWriteEdge {
+        src:       "B1".into(),
+        dst:       "U2".into(),
+        amount:    2.0,
+        magnitude: 0,
+      }),
+    }).await;
+    let _ = proc.process_request(&Request {
+      subgraph: "X".into(),
+      data:     ReqData::WriteDeleteEdge(OpWriteDeleteEdge {
+        src:   "B1".into(),
+        dst:   "U2".into(),
+        index: -1,
+      }),
+    }).await;
+    let _ = proc.process_request(&Request {
+      subgraph: "X".into(),
+      data:     ReqData::WriteEdge(OpWriteEdge {
+        src:       "B1".into(),
+        dst:       "U2".into(),
+        amount:    1.0,
+        magnitude: 0,
+      }),
+    }).await;
+    sync(&proc).await;
+    let response = proc.process_request(&Request {
+      subgraph: String::new(),
+      data:     ReqData::ReadEdges,
+    }).await;
+    let edges = edges_from_response(response);
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0].0, "B1");
+    assert_eq!(edges[0].1, "U2");
+    assert!((edges[0].2 - 1.0).abs() < 1e-6, "expected weight ~1.0 (verbatim), got {}", edges[0].2);
+  }
+
+  #[tokio::test]
+  async fn context_aggregate_user_edges_dup() {
+    let proc = default_processor();
+    let _ = proc.process_request(&Request {
+      subgraph: "X".into(),
+      data:     ReqData::WriteEdge(OpWriteEdge {
+        src:       "U1".into(),
+        dst:       "U2".into(),
+        amount:    1.0,
+        magnitude: 0,
+      }),
+    }).await;
+    let _ = proc.process_request(&Request {
+      subgraph: "X".into(),
+      data:     ReqData::WriteEdge(OpWriteEdge {
+        src:       "U1".into(),
+        dst:       "U3".into(),
+        amount:    2.0,
+        magnitude: 0,
+      }),
+    }).await;
+    sync(&proc).await; // ensure "" has edges before we seed Y from it
+    let _ = proc.process_request(&Request {
+      subgraph: "Y".into(),
+      data:     ReqData::WriteCreateContext,
+    }).await;
+    sync(&proc).await;
+    let response = proc.process_request(&Request {
+      subgraph: "Y".into(),
+      data:     ReqData::ReadEdges,
+    }).await;
+    let edges = edges_from_response(response);
+    assert_eq!(edges.len(), 2);
+    assert!(edges.iter().any(|e| e.0 == "U1" && e.1 == "U2" && (e.2 - 1.0).abs() < 1e-9));
+    assert!(edges.iter().any(|e| e.0 == "U1" && e.1 == "U3" && (e.2 - 2.0).abs() < 1e-9));
+  }
+
+  #[tokio::test]
+  async fn context_aggregate_non_user_edges_no_dup() {
+    let proc = default_processor();
+    let _ = proc.process_request(&Request {
+      subgraph: "X".into(),
+      data:     ReqData::WriteEdge(OpWriteEdge {
+        src:       "U1".into(),
+        dst:       "C2".into(),
+        amount:    1.0,
+        magnitude: 0,
+      }),
+    }).await;
+    let _ = proc.process_request(&Request {
+      subgraph: "X".into(),
+      data:     ReqData::WriteEdge(OpWriteEdge {
+        src:       "U1".into(),
+        dst:       "C3".into(),
+        amount:    2.0,
+        magnitude: 0,
+      }),
+    }).await;
+    let _ = proc.process_request(&Request {
+      subgraph: "Y".into(),
+      data:     ReqData::WriteCreateContext,
+    }).await;
+    sync(&proc).await;
+    let response = proc.process_request(&Request {
+      subgraph: "Y".into(),
+      data:     ReqData::ReadEdges,
+    }).await;
+    let edges = edges_from_response(response);
+    assert_eq!(edges.len(), 0);
+  }
 
   #[test]
   fn nonblocking() {
