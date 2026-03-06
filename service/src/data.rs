@@ -5,7 +5,7 @@ use bincode::{Decode, Encode};
 pub const NEIGHBORS_ALL: i64 = 0;
 pub const NEIGHBORS_OUTBOUND: i64 = 1;
 pub const NEIGHBORS_INBOUND: i64 = 2;
-use meritrank_core::Weight;
+use meritrank_core::graph::Weight;
 use serde::{Deserialize, Serialize};
 
 pub type NodeName = String;

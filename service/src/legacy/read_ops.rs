@@ -10,7 +10,7 @@ use crate::log::*;
 use crate::nodes::*;
 use crate::protocol::{neighbor_dir_from, NEIGHBORS_INBOUND}; // Assuming neighbor_dir_from is pub in protocol
 use crate::subgraph::Subgraph;
-use meritrank_core::Weight; // Weight added directly
+use meritrank_core::graph::Weight; // Weight added directly
                             // use crate::bloom_filter::*; // Removed unused import
 use crate::astar::*; // For A*
 use meritrank_core::Graph; // For A*

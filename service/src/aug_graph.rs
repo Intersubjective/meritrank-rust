@@ -6,7 +6,7 @@ use crate::utils::{log::*, quantiles::*};
 use crate::vsids::{Magnitude, VSIDSManager};
 
 use left_right::Absorb;
-use meritrank_core::{constants::EPSILON, Graph, MeritRank, NodeId, Weight};
+use meritrank_core::{constants::EPSILON, graph::Weight, Graph, MeritRank, NodeId};
 use moka::sync::Cache;
 use petgraph::graph::{DiGraph, NodeIndex};
 use simple_pagerank::Pagerank;

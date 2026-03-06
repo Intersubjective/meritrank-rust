@@ -11,7 +11,7 @@ use crate::state_manager::*;
 use crate::write_ops;
 use std::time::SystemTime;
 
-pub use meritrank_core::Weight;
+pub use meritrank_core::graph::Weight;
 
 fn request_from_command(command: &Command) -> Request {
   match command.id.as_str() {

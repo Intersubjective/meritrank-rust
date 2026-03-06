@@ -7,7 +7,7 @@ use crate::vsids::Magnitude;
 
 use dashmap::DashMap;
 use left_right::{Absorb, ReadHandleFactory, WriteHandle};
-use meritrank_core::Weight;
+use meritrank_core::graph::Weight;
 use tokio::{sync::mpsc, task::JoinSet};
 
 use std::{thread, time::Duration};
@@ -611,7 +611,7 @@ impl MultiGraphProcessor {
 mod tests {
   use super::*;
   use crate::data::{EdgeResult, ResEdges};
-  use meritrank_core::Weight;
+  use meritrank_core::graph::Weight;
   use std::time::Duration;
 
   fn default_processor() -> MultiGraphProcessor {

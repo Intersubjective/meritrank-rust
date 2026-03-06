@@ -1,5 +1,5 @@
 use lru::LruCache;
-use meritrank_core::{constants::EPSILON, MeritRank, NodeId, Weight};
+use meritrank_core::{constants::EPSILON, graph::Weight, MeritRank, NodeId};
 
 use crate::constants::*;
 use crate::log::*;
