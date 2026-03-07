@@ -67,7 +67,7 @@ impl VSIDSManager {
     let bump_factor = env::var("VSIDS_BUMP")
       .ok()
       .and_then(|v| v.parse().ok())
-      .unwrap_or(1.111_111);
+      .unwrap_or(1.03);
     Self {
       min_max_weights: HashMap::with_capacity(100),
       bump_factor,
