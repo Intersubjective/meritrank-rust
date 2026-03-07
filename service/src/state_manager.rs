@@ -12,9 +12,8 @@ use tokio::{sync::mpsc, task::JoinSet};
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::{thread, time::Duration};
-
-pub const SYNC_SLEEP_PERIOD: u64 = 10;
+use std::sync::Arc;
+use std::thread;
 
 pub struct ConcurrentDataProcessor<T, Op> {
   #[allow(unused)]
@@ -30,6 +29,7 @@ pub struct MultiGraphProcessor {
   settings:          Settings,
   loading:           AtomicBool,
   internal_stamp:    AtomicU64,
+  publish_notify:    Arc<tokio::sync::Notify>,
 }
 
 impl<T, Op> ConcurrentDataProcessor<T, Op>
@@ -41,15 +41,15 @@ where
     t: T,
     sleep: u64,
     queue_len: usize,
+    publish_notify: Arc<tokio::sync::Notify>,
   ) -> Self {
     let (writer, reader) = left_right::new_from_empty::<T, Op>(t);
     let (tx, rx) = mpsc::channel::<Op>(queue_len);
-    let loop_thread = thread::spawn(move || processing_loop(writer, rx, sleep));
+    let loop_thread = thread::spawn(move || processing_loop(writer, rx, sleep, publish_notify));
     ConcurrentDataProcessor {
       processing_thread:   loop_thread,
       op_sender:           tx,
       data_reader_factory: reader.factory(),
-      // _phantom:            PhantomData,
     }
   }
 
@@ -67,13 +67,13 @@ fn processing_loop<T, Op>(
   mut writer: WriteHandle<T, Op>,
   mut rx_ops_queue: mpsc::Receiver<Op>,
   sleep: u64,
+  publish_notify: Arc<tokio::sync::Notify>,
 ) where
   T: 'static + Send + Sync + Absorb<Op>,
   Op: 'static + Send,
 {
   while let Some(op) = rx_ops_queue.blocking_recv() {
     writer.append(op);
-    //println!("Ops: {}", rx_ops_queue.len());
     // Note that left-right is not really eventually-consistent,
     // but instead strong-consistent. This means that in case of
     // high load on reading, publish() will block readers until all
@@ -84,16 +84,18 @@ fn processing_loop<T, Op>(
     // 2. implement a truly eventually-consistent version of left-right that never blocks (arc-swap)
     thread::sleep(std::time::Duration::from_millis(sleep));
     writer.publish();
+    publish_notify.notify_waiters();
   }
 }
 
 impl MultiGraphProcessor {
   pub fn new(settings: Settings) -> Self {
     let mgp = MultiGraphProcessor {
-      subgraphs_map:  DashMap::new(),
+      subgraphs_map:   DashMap::new(),
       settings,
-      loading:        AtomicBool::new(false),
-      internal_stamp: AtomicU64::new(0),
+      loading:         AtomicBool::new(false),
+      internal_stamp:  AtomicU64::new(0),
+      publish_notify:  Arc::new(tokio::sync::Notify::new()),
     };
     mgp.insert_subgraph_if_does_not_exist(&String::new());
     mgp
@@ -120,6 +122,7 @@ impl MultiGraphProcessor {
             AugGraph::new(self.settings.clone()),
             self.settings.sleep_duration_after_publish_ms,
             self.settings.subgraph_queue_capacity,
+            self.publish_notify.clone(),
           )
         })())
         .op_sender
@@ -197,31 +200,21 @@ impl MultiGraphProcessor {
     &self,
     stamp: u64,
   ) {
-    //  NOTE: Duplicated logic with `sync_blocking`.
-
     log_trace!();
 
     for ref_multi in self.subgraphs_map.iter() {
       let subgraph = ref_multi.value();
-      let op_sender = subgraph.op_sender.clone();
-
-      let _ = op_sender.send(AugGraphOp::Stamp(stamp)).await;
+      let _ = subgraph.op_sender.clone().send(AugGraphOp::Stamp(stamp)).await;
     }
 
-    let mut done = false;
+    loop {
+      let notified = self.publish_notify.notified();
 
-    while !done {
-      tokio::time::sleep(Duration::from_millis(SYNC_SLEEP_PERIOD)).await;
-
-      done = true;
-
+      let mut done = true;
       for ref_multi in self.subgraphs_map.iter() {
-        let subgraph_name = ref_multi.key();
-
-        let res = self.process_read(&subgraph_name, |aug_graph| {
+        let res = self.process_read(ref_multi.key(), |aug_graph| {
           Response::Stamp(aug_graph.stamp)
         });
-
         if let Response::Stamp(x) = res {
           if x < stamp {
             done = false;
@@ -229,7 +222,16 @@ impl MultiGraphProcessor {
           }
         }
       }
+
+      if done {
+        break;
+      }
+
+      notified.await;
     }
+
+    // Ensure reader view sees the published state (left_right visibility across writer/reader threads).
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
   }
 
   /// If the ego has no walks in this subgraph, send WriteCalculate and sync so the next read sees scores.
@@ -686,6 +688,7 @@ impl MultiGraphProcessor {
           AugGraph::new(self.settings.clone()),
           self.settings.sleep_duration_after_publish_ms,
           self.settings.subgraph_queue_capacity,
+          self.publish_notify.clone(),
         )
       })());
   }
@@ -1211,7 +1214,7 @@ mod tests {
     }
 
     let processor =
-      ConcurrentDataProcessor::<MyDataType, TestOp>::new(MyDataType(0), 0, 10);
+      ConcurrentDataProcessor::<MyDataType, TestOp>::new(MyDataType(0), 0, 10, Arc::new(tokio::sync::Notify::new()));
     processor.op_sender.blocking_send(TestOp(1)).unwrap();
     processor.op_sender.blocking_send(TestOp(1)).unwrap();
     processor.op_sender.blocking_send(TestOp(1)).unwrap();

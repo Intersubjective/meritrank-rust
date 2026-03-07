@@ -1030,3 +1030,57 @@ fn omit_neg_edges_scores_setting() {
     "U2 should not have a score when negative edges are omitted"
   );
 }
+
+/// omit_neg_edges_scores with read_mutual_scores: nodes with a direct negative
+/// edge from ego must be excluded when the setting is true.
+#[test]
+fn omit_neg_edges_scores_mutual_scores() {
+  let mut graph_omit = AugGraph::new(Settings {
+    num_walks:              200,
+    zero_opinion_num_walks: 100,
+    omit_neg_edges_scores:  true,
+    ..Settings::default()
+  });
+  let mut graph_include = AugGraph::new(Settings {
+    num_walks:              200,
+    zero_opinion_num_walks: 100,
+    omit_neg_edges_scores:  false,
+    ..Settings::default()
+  });
+
+  // Ego U1: negative edge to U2, positive to U3. U3->U2 so U2 is reachable.
+  let edges = vec![
+    ("U1", "U2", -1.0),
+    ("U1", "U3", 1.0),
+    ("U3", "U2", 1.0),
+  ];
+  for (src, dst, weight) in &edges {
+    graph_omit.set_edge((*src).into(), (*dst).into(), *weight, 0);
+    graph_include.set_edge((*src).into(), (*dst).into(), *weight, 0);
+  }
+
+  graph_omit.calculate("U1".into());
+  graph_include.calculate("U1".into());
+
+  let mutual_omit = read_mutual_scores_helper(&graph_omit, "U1");
+  let mutual_include = read_mutual_scores_helper(&graph_include, "U1");
+
+  let targets_omit: std::collections::HashSet<_> =
+    mutual_omit.iter().map(|s| s.target.as_str()).collect();
+  let targets_include: std::collections::HashSet<_> =
+    mutual_include.iter().map(|s| s.target.as_str()).collect();
+
+  assert!(
+    !targets_omit.contains("U2"),
+    "With omit_neg_edges_scores=true, U2 (negative edge from ego) must not appear in mutual_scores"
+  );
+  assert!(
+    targets_omit.contains("U3"),
+    "With omit_neg_edges_scores=true, U3 (positive edge from ego) must appear in mutual_scores"
+  );
+  assert!(
+    targets_include.contains("U3"),
+    "With omit_neg_edges_scores=false, U3 must appear in mutual_scores"
+  );
+  // With omit_neg=false, U2 may still not appear if its score is <= 0 (we only show positive forward scores)
+}

@@ -344,16 +344,26 @@ impl AugGraph {
 
         // Filter out nodes that have a direct negative edge from ego
         if self.settings.omit_neg_edges_scores {
-          scores
+          let before = scores.len();
+          let (kept, dropped): (Vec<_>, Vec<_>) = scores
             .into_iter()
-            .filter(|(dst_id, _)| {
-              // Check if there's a direct edge and if it's negative
+            .partition(|(dst_id, _)| {
               match self.mr.graph.edge_weight(ego_id, *dst_id) {
-                Ok(Some(weight)) => weight > 0.0, // Keep only positive edges
-                _ => true, // Keep if no direct edge exists
+                Ok(Some(weight)) => weight > 0.0,
+                _ => true,
               }
-            })
-            .collect()
+            });
+          if !dropped.is_empty() {
+            log_trace!(
+              "omit_neg_edges_scores: ego_id={} before={} kept={} dropped={} dropped_ids={:?}",
+              ego_id,
+              before,
+              kept.len(),
+              dropped.len(),
+              dropped.iter().map(|(id, _)| *id).collect::<Vec<_>>()
+            );
+          }
+          kept
         } else {
           scores
         }
