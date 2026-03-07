@@ -89,6 +89,31 @@ fn load_var<T>(
     });
 }
 
+/// Load zero opinion factor; must be in [0.0, 1.0]. Invalid values are rejected and default is kept.
+fn load_zero_opinion_factor(val: &mut f64) {
+  const NAME: &str = "MERITRANK_ZERO_OPINION_FACTOR";
+  const MIN: f64 = 0.0;
+  const MAX: f64 = 1.0;
+  if let Ok(s) = var(NAME) {
+    match s.parse::<f64>() {
+      Ok(x) if x >= MIN && x <= MAX => *val = x,
+      Ok(x) => {
+        log_error!(
+          "{} must be in [{}, {}], got {}; using default {}",
+          NAME,
+          MIN,
+          MAX,
+          x,
+          *val
+        );
+      },
+      Err(_) => {
+        log_error!("Failed to parse {} as float: {:?}", NAME, s);
+      },
+    }
+  }
+}
+
 pub fn load_from_env() -> Settings {
   let mut s = Settings::default();
 
@@ -105,7 +130,7 @@ pub fn load_from_env() -> Settings {
     &mut s.zero_opinion_num_walks,
   );
   load_var("MERITRANK_TOP_NODES_LIMIT", &mut s.top_nodes_limit);
-  load_var("MERITRANK_ZERO_OPINION_FACTOR", &mut s.zero_opinion_factor);
+  load_zero_opinion_factor(&mut s.zero_opinion_factor);
   load_var(
     "MERITRANK_SCORE_CLUSTERS_CACHE_SIZE",
     &mut s.score_clusters_cache_size,
