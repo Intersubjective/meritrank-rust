@@ -5,6 +5,7 @@
 use meritrank_service::data::*;
 use meritrank_service::rpc_sync::{read_response_sync, set_read_timeout, write_request_sync};
 
+use std::cell::RefCell;
 use std::env::var;
 use std::error::Error;
 use std::io;
@@ -14,6 +15,10 @@ use std::sync::{
   LazyLock,
 };
 use std::time::Duration;
+
+thread_local! {
+  static CONN: RefCell<Option<TcpStream>> = RefCell::new(None);
+}
 
 //  D5 (JOURNAL): reuse MERITRANK_SERVICE_URL, default changes to port 8080.
 //  The tcp:// prefix is stripped before connecting.
@@ -40,47 +45,72 @@ fn strip_scheme(url: &str) -> &str {
   }
 }
 
+fn get_or_reconnect(timeout: Duration) -> io::Result<TcpStream> {
+  CONN.with(|cell| {
+    let mut opt = cell.borrow_mut();
+    if let Some(ref stream) = *opt {
+      if let Ok(cloned) = stream.try_clone() {
+        return Ok(cloned);
+      }
+      *opt = None;
+    }
+    let addr_str = strip_scheme(&SERVICE_URL);
+    let addrs: Vec<_> = addr_str.to_socket_addrs()?.collect();
+    let mut last_err = None;
+    for addr in &addrs {
+      match TcpStream::connect_timeout(addr, timeout) {
+        Ok(s) => {
+          let cloned = s
+            .try_clone()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+          *opt = Some(cloned);
+          return Ok(s);
+        },
+        Err(e) => last_err = Some(e),
+      }
+    }
+    Err(last_err.unwrap_or_else(|| {
+      io::Error::new(io::ErrorKind::Other, "no addresses resolved")
+    }))
+  })
+}
+
+fn invalidate_conn() {
+  CONN.with(|cell| {
+    *cell.borrow_mut() = None;
+  });
+}
+
 fn tcp_call(
   subgraph: &str,
   data: ReqData,
   timeout_msec: Option<u64>,
 ) -> Result<Response, Box<dyn Error + 'static>> {
-  let addr_str = strip_scheme(&SERVICE_URL);
   let timeout = timeout_msec.unwrap_or(*RECV_TIMEOUT_MSEC);
   let timeout_dur = Duration::from_millis(timeout);
-
-  // Resolve hostname:port (e.g. "meritrank:10234") so Docker hostnames work;
-  // .parse() only accepts numeric IPs and would fail with "invalid socket address syntax".
-  let addrs: Vec<_> = addr_str.to_socket_addrs()?.collect();
-  let mut last_err: Option<Box<dyn Error + 'static>> = None;
-  let mut stream = None;
-  for addr in &addrs {
-    match TcpStream::connect_timeout(addr, timeout_dur) {
-      Ok(s) => {
-        stream = Some(s);
-        break;
-      }
-      Err(e) => last_err = Some(e.into()),
-    }
-  }
-  let mut stream = stream.ok_or_else(|| {
-    let msg = last_err
-      .as_ref()
-      .map(|e| e.to_string())
-      .unwrap_or_else(|| "no socket addresses resolved".to_string());
-    Box::<dyn Error + 'static>::from(io::Error::new(io::ErrorKind::Other, msg))
-  })?;
-
-  set_read_timeout(&mut stream, Some(timeout))?;
 
   let req = Request {
     subgraph: subgraph.to_string(),
     data,
   };
 
-  write_request_sync(&mut stream, &req)?;
-  let resp = read_response_sync(&mut stream)?;
-  Ok(resp)
+  let result = (|| -> io::Result<Response> {
+    let mut stream = get_or_reconnect(timeout_dur)?;
+    set_read_timeout(&mut stream, Some(timeout))?;
+    write_request_sync(&mut stream, &req)?;
+    read_response_sync(&mut stream)
+  })();
+
+  match result {
+    Ok(resp) => Ok(resp),
+    Err(_) => {
+      invalidate_conn();
+      let mut stream = get_or_reconnect(timeout_dur)?;
+      set_read_timeout(&mut stream, Some(timeout))?;
+      write_request_sync(&mut stream, &req)?;
+      Ok(read_response_sync(&mut stream)?)
+    },
+  }
 }
 
 fn expect_ok(resp: Response) -> Result<&'static str, Box<dyn Error + 'static>> {

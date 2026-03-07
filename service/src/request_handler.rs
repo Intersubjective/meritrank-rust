@@ -107,25 +107,18 @@ pub async fn run_server(
     let processor_cloned = Arc::clone(&processor);
 
     tokio::spawn(async move {
-      log_trace!("read request");
+      loop {
+        let req = match read_request(&mut stream).await {
+          Ok(x) => x,
+          Err(_) => break,
+        };
 
-      let req = match read_request(&mut stream).await {
-        Ok(x) => x,
-        Err(e) => {
-          log_error!("Failed to read the request: {}", e);
-          return;
-        },
-      };
+        let response = processor_cloned.process_request(&req).await;
 
-      let response = processor_cloned.process_request(&req).await;
-
-      match write_response(&mut stream, response).await {
-        Ok(_) => {},
-        Err(e) => {
-          log_error!("Failed to write the response: {}", e);
-          return;
-        },
-      };
+        if write_response(&mut stream, response).await.is_err() {
+          break;
+        }
+      }
     });
   }
 
@@ -223,8 +216,6 @@ mod tests {
       },
     )
     .await;
-
-    let mut stream = connect_to(8082).await;
     let _ = roundtrip(
       &mut stream,
       Request {
@@ -233,8 +224,6 @@ mod tests {
       },
     )
     .await;
-
-    let mut stream = connect_to(8082).await;
     let scores = roundtrip(
       &mut stream,
       Request {
@@ -285,8 +274,6 @@ mod tests {
       },
     )
     .await;
-
-    let mut stream = connect_to(8083).await;
     let _ = roundtrip(
       &mut stream,
       Request {
@@ -295,8 +282,6 @@ mod tests {
       },
     )
     .await;
-
-    let mut stream = connect_to(8083).await;
     let _ = roundtrip(
       &mut stream,
       Request {
@@ -305,8 +290,6 @@ mod tests {
       },
     )
     .await;
-
-    let mut stream = connect_to(8083).await;
     let scores = roundtrip(
       &mut stream,
       Request {
