@@ -15,17 +15,19 @@ pub struct NodeInfo {
 
 #[derive(Clone)]
 pub struct NodeRegistry {
-  pub name_to_id: HashMap<NodeName, NodeId>,
-  pub id_to_info: Vec<NodeInfo>,
-  pub next_id:    NodeId,
+  pub name_to_id:   HashMap<NodeName, NodeId>,
+  pub id_to_info:   Vec<NodeInfo>,
+  pub kind_to_ids:  HashMap<NodeKind, Vec<NodeId>>,
+  pub next_id:      NodeId,
 }
 
 impl NodeRegistry {
   pub fn new() -> Self {
     Self {
-      name_to_id: HashMap::new(),
-      id_to_info: Vec::new(),
-      next_id:    0,
+      name_to_id:  HashMap::new(),
+      id_to_info:  Vec::new(),
+      kind_to_ids: HashMap::new(),
+      next_id:     0,
     }
   }
 
@@ -54,6 +56,7 @@ impl NodeRegistry {
     };
     self.name_to_id.insert(name, id);
     self.id_to_info.push(info);
+    self.kind_to_ids.entry(kind).or_default().push(id);
 
     id
   }
@@ -84,6 +87,7 @@ impl NodeRegistry {
     };
     self.name_to_id.insert(name, id);
     self.id_to_info.push(info);
+    self.kind_to_ids.entry(kind).or_default().push(id);
 
     id
   }
@@ -108,14 +112,8 @@ impl NodeRegistry {
   pub fn nodes_by_kind(
     &self,
     kind: NodeKind,
-  ) -> Vec<NodeId> {
-    self
-      .id_to_info
-      .iter()
-      .enumerate()
-      .filter(|(_, info)| info.kind == kind)
-      .map(|(id, _)| id)
-      .collect()
+  ) -> &[NodeId] {
+    self.kind_to_ids.get(&kind).map(Vec::as_slice).unwrap_or(&[])
   }
 }
 

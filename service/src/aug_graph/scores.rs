@@ -15,7 +15,7 @@ impl AugGraph {
   ) -> super::ClusterGroupBounds {
     log_trace!("{} {:?}", ego, kind);
     let node_ids = self.nodes.nodes_by_kind(kind);
-    let bounds = self.calculate_score_clusters_bounds(ego, kind, &*node_ids);
+    let bounds = self.calculate_score_clusters_bounds(ego, kind, node_ids);
     self
       .cached_score_clusters
       .insert((ego, kind), bounds.clone());

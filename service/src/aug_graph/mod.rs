@@ -139,5 +139,10 @@ mod tests {
     // Test non-existent entries
     assert_eq!(registry.get_by_id(2), None);
     assert_eq!(registry.get_by_name("Bob"), None);
+
+    // Test nodes_by_kind (index by kind)
+    assert_eq!(registry.nodes_by_kind(NodeKind::User), &[0]);
+    assert_eq!(registry.nodes_by_kind(NodeKind::Comment), &[1]);
+    assert!(registry.nodes_by_kind(NodeKind::Beacon).is_empty());
   }
 }
