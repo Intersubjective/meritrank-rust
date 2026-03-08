@@ -117,6 +117,7 @@ fn expect_ok(resp: Response) -> Result<&'static str, Box<dyn Error + 'static>> {
   match resp {
     Response::Ok => Ok("Ok"),
     Response::Fail => Err("Service returned Fail".into()),
+    Response::NotImplemented => Err("meritrank: operation not implemented".into()),
     other => Err(format!("Unexpected response: {:?}", other).into()),
   }
 }
@@ -234,6 +235,22 @@ pub fn new_sync(
   expect_ok(resp)
 }
 
+pub fn new_reset_stats(
+) -> Result<&'static str, Box<dyn Error + 'static>> {
+  let resp = tcp_call("", ReqData::ResetStats, Some(*RECV_TIMEOUT_MSEC))?;
+  expect_ok(resp)
+}
+
+pub fn new_get_stats(
+) -> Result<ResStats, Box<dyn Error + 'static>> {
+  let resp = tcp_call("", ReqData::GetStats, Some(*RECV_TIMEOUT_MSEC))?;
+  match resp {
+    Response::Stats(s) => Ok(s),
+    Response::Fail => Err("Service returned Fail".into()),
+    other => Err(format!("Unexpected response: {:?}", other).into()),
+  }
+}
+
 pub fn new_zerorec(
   timeout_msec: Option<u64>
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
@@ -252,12 +269,11 @@ pub fn new_recalculate_clustering(
   expect_ok(resp)
 }
 
-//  D10 (JOURNAL): new edges filter stubs — server returns empty.
+//  D10 (JOURNAL): server returns NotImplemented for new edges filter; connector reports as error.
 pub fn new_set_new_edges_filter(
   src: &str,
   filter: Vec<u8>,
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-  // FIXME: not implemented in new server (returns Ok with no effect)
   let resp = tcp_call(
     "",
     ReqData::WriteNewEdgesFilter(OpWriteNewEdgesFilter {
@@ -266,7 +282,10 @@ pub fn new_set_new_edges_filter(
     }),
     Some(*RECV_TIMEOUT_MSEC),
   )?;
-  expect_ok(resp)
+  match resp {
+    Response::NotImplemented => Err("meritrank: set_new_edges_filter not implemented".into()),
+    _ => expect_ok(resp),
+  }
 }
 
 // ================================================================
@@ -456,7 +475,6 @@ pub fn new_mutual_scores(
 pub fn new_get_new_edges_filter(
   src: &str
 ) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
-  // FIXME: not implemented in new server (returns empty bytes)
   match tcp_call(
     "",
     ReqData::ReadNewEdgesFilter(OpReadNewEdgesFilter {
@@ -465,7 +483,8 @@ pub fn new_get_new_edges_filter(
     Some(*RECV_TIMEOUT_MSEC),
   )? {
     Response::NewEdgesFilter(r) => Ok(r.bytes),
-    Response::Fail => Ok(vec![]),
+    Response::NotImplemented => Err("meritrank: get_new_edges_filter not implemented".into()),
+    Response::Fail => Err("Service returned Fail".into()),
     other => Err(format!("Unexpected response: {:?}", other).into()),
   }
 }
@@ -474,7 +493,6 @@ pub fn new_fetch_new_edges(
   src: &str,
   prefix: &str,
 ) -> Result<Vec<(String, String, f64, f64, i32, i32)>, Box<dyn Error + 'static>> {
-  // FIXME: not implemented in new server (returns empty list)
   match tcp_call(
     "",
     ReqData::WriteFetchNewEdges(OpWriteFetchNewEdges {
@@ -498,7 +516,8 @@ pub fn new_fetch_new_edges(
         })
         .collect(),
     ),
-    Response::Fail => Ok(vec![]),
+    Response::NotImplemented => Err("meritrank: fetch_new_edges not implemented".into()),
+    Response::Fail => Err("Service returned Fail".into()),
     other => Err(format!("Unexpected response: {:?}", other).into()),
   }
 }

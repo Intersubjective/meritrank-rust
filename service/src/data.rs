@@ -250,6 +250,18 @@ pub struct ResNewEdges {
   pub new_edges: Vec<NewEdgeResult>,
 }
 
+/// Stats snapshot returned by GetStats (same shape as ProcessorStats snapshot).
+#[derive(Debug, Clone, Default, Encode, Decode, Serialize, Deserialize)]
+pub struct ResStats {
+  pub pending:   usize,
+  pub median_us: u64,
+  pub p95_us:    u64,
+  pub p99_us:    u64,
+  pub min_us:    u64,
+  pub max_us:    u64,
+  pub count:     usize,
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 pub enum ReqData {
   ReadScores(OpReadScores),
@@ -258,6 +270,9 @@ pub enum ReqData {
   WriteCalculate(OpWriteCalculate),
   Stamp(u64),
   Sync(u64),
+
+  ResetStats,
+  GetStats,
 
   //  Legacy requests
   ReadNodeList,
@@ -306,6 +321,7 @@ pub struct Request {
 pub enum Response {
   Ok,
   Fail,
+  NotImplemented,
   Stamp(u64),
   Scores(ResScores),
   NodeList(ResNodeList),
@@ -314,4 +330,5 @@ pub enum Response {
   Connections(ResConnections),
   Edges(ResEdges),
   NewEdges(ResNewEdges),
+  Stats(ResStats),
 }

@@ -383,6 +383,36 @@ impl MultiGraphProcessor {
     }
 
     match data {
+      ReqData::ResetStats => {
+        if let Some(s) = &self.stats {
+          s.reset();
+        }
+        Response::Ok
+      },
+      ReqData::GetStats => {
+        let snap = self
+          .stats
+          .as_ref()
+          .map(|s| s.snapshot())
+          .unwrap_or(crate::processor_stats::StatsSnapshot {
+            pending:    0,
+            median_us:  0,
+            p95_us:     0,
+            p99_us:     0,
+            min_us:     0,
+            max_us:     0,
+            count:      0,
+          });
+        Response::Stats(ResStats {
+          pending:   snap.pending,
+          median_us: snap.median_us,
+          p95_us:    snap.p95_us,
+          p99_us:    snap.p99_us,
+          min_us:    snap.min_us,
+          max_us:    snap.max_us,
+          count:     snap.count,
+        })
+      },
       ReqData::Stamp(value) => {
         self.send_op(&req.subgraph, AugGraphOp::Stamp(value)).await
       },
@@ -519,26 +549,13 @@ impl MultiGraphProcessor {
           .await
       },
       ReqData::WriteFetchNewEdges(_) => {
-        self.process_read(&req.subgraph, |_| {
-          log_warning!("Fetch new edges request ignored!");
-          Response::NewEdges(ResNewEdges {
-            new_edges: vec![],
-          })
-        })
+        self.process_read(&req.subgraph, |_| Response::NotImplemented)
       },
       ReqData::WriteNewEdgesFilter(_) => {
-        self.process_read(&req.subgraph, |_| {
-          log_warning!("New edges filter request ignored!");
-          Response::Ok
-        })
+        self.process_read(&req.subgraph, |_| Response::NotImplemented)
       },
       ReqData::ReadNewEdgesFilter(_) => {
-        self.process_read(&req.subgraph, |_| {
-          log_warning!("New edges filter request ignored!");
-          Response::NewEdgesFilter(ResNewEdgesFilter {
-            bytes: vec![],
-          })
-        })
+        self.process_read(&req.subgraph, |_| Response::NotImplemented)
       },
       ReqData::ReadScores(data) => {
         self.process_read(&req.subgraph, |aug_graph| {

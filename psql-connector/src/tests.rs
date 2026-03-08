@@ -741,88 +741,46 @@ fn mutual_scores() {
 
 #[pg_test]
 fn new_edges_fetch() {
-  let _ = crate::mr_reset().unwrap();
-
-  let _ =
-    crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None, Some(-1))
-      .unwrap();
-
-  let _n = crate::mr_fetch_new_edges(Some("U1"), Some("B"))
-    .unwrap()
-    .count();
-
-  // assert_eq!(n, 0);
-
-  let _ =
-    crate::mr_put_edge(Some("U1"), Some("B3"), Some(2.0), None, Some(-1))
-      .unwrap();
-  let _ =
-    crate::mr_put_edge(Some("U2"), Some("B4"), Some(3.0), None, Some(-1))
-      .unwrap();
-
-  // sleep(Duration::from_millis(100));
-  let _ = crate::mr_sync(Some(1000)).unwrap();
-
-  let res = crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap();
-
-  let _beacons: Vec<_> = res.collect();
-
-  // assert_eq!(beacons.len(), 2);
-  // assert_eq!(beacons[0].1, "B3");
-  // assert_eq!(beacons[1].1, "B4");
-
-  // assert_eq!(
-  //   crate::mr_fetch_new_edges(Some("U1"), Some("B"))
-  //     .unwrap()
-  //     .count(),
-  //   0
-  // );
+  // mr_fetch_new_edges is not implemented in the new server; it returns a proper error.
+  match crate::mr_fetch_new_edges(Some("U1"), Some("B")) {
+    Err(e) => assert!(
+      e.to_string().contains("not implemented"),
+      "expected not implemented error, got: {}",
+      e
+    ),
+    Ok(_) => panic!("expected mr_fetch_new_edges to return not implemented error"),
+  }
 }
 
 #[pg_test]
 fn new_edges_filter() {
-  let _ = crate::mr_reset().unwrap();
+  // get/set new_edges_filter and fetch_new_edges are not implemented in the new server.
+  match crate::mr_get_new_edges_filter(Some("U1")) {
+    Err(e) => assert!(
+      e.to_string().contains("not implemented"),
+      "get_new_edges_filter: expected not implemented error, got: {}",
+      e
+    ),
+    Ok(_) => panic!("expected mr_get_new_edges_filter to return not implemented error"),
+  }
 
-  let _ =
-    crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None, Some(-1))
-      .unwrap();
+  match crate::mr_set_new_edges_filter(Some("U1"), Some(vec![0u8; 0])) {
+    Err(e) => assert!(
+      e.to_string().contains("not implemented"),
+      "set_new_edges_filter: expected not implemented error, got: {}",
+      e
+    ),
+    Ok(_) => panic!("expected mr_set_new_edges_filter to return not implemented error"),
+  }
 
-  let _n = crate::mr_fetch_new_edges(Some("U1"), Some("B"))
-    .unwrap()
-    .count();
-
-  // assert_eq!(n, 0);
-
-  let _ =
-    crate::mr_put_edge(Some("U1"), Some("B3"), Some(2.0), None, Some(-1))
-      .unwrap();
-  let _ =
-    crate::mr_put_edge(Some("U2"), Some("B4"), Some(3.0), None, Some(-1))
-      .unwrap();
-  let _ = crate::mr_sync(Some(1000)).unwrap();
-
-  let filter: Vec<u8> = crate::mr_get_new_edges_filter(Some("U1")).unwrap();
-
-  let res = crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap();
-
-  let _beacons: Vec<_> = res.collect();
-
-  // assert_eq!(beacons.len(), 2);
-  // assert_eq!(beacons[0].1, "B3");
-  // assert_eq!(beacons[1].1, "B4");
-
-  let _ = crate::mr_set_new_edges_filter(Some("U1"), Some(filter)).unwrap();
-
-  // sleep(Duration::from_millis(100));
-  let _ = crate::mr_sync(Some(1000)).unwrap();
-
-  let res = crate::mr_fetch_new_edges(Some("U1"), Some("B")).unwrap();
-
-  let _beacons: Vec<_> = res.collect();
-
-  // assert_eq!(beacons.len(), 2);
-  // assert_eq!(beacons[0].1, "B3");
-  // assert_eq!(beacons[1].1, "B4");
+  match crate::mr_fetch_new_edges(Some("U1"), Some("B")) {
+    Err(e) => assert!(
+      e.to_string().contains("not implemented"),
+      "fetch_new_edges: expected not implemented error, got: {}",
+      e
+    ),
+    Ok(_) => panic!("expected mr_fetch_new_edges to return not implemented error"),
+  }
 }
 
 #[pg_test]
@@ -1055,4 +1013,29 @@ fn bulk_load_replaces_state() {
   assert_eq!(after.len(), 2);
   assert!(after.iter().any(|e| e.1 == "U3"));
   assert!(after.iter().any(|e| e.1 == "U4"));
+}
+
+#[pg_test]
+fn stats_reset_and_read() {
+  let _ = crate::mr_reset().unwrap();
+  let _ = crate::mr_sync(Some(1000)).unwrap();
+  crate::new_reset_stats().unwrap();
+  let _ = crate::mr_put_edge(Some("U1"), Some("U2"), Some(1.0), None, Some(-1))
+    .unwrap();
+  let _ = crate::mr_sync(Some(1000)).unwrap();
+  let s = crate::new_get_stats().unwrap();
+  assert!(s.count <= 50_000);
+  assert!(s.median_us <= 2_000_000);
+  assert!(s.pending <= 10_000);
+}
+
+#[pg_test]
+fn stats_read_after_reset() {
+  crate::new_reset_stats().unwrap();
+  let s = crate::new_get_stats().unwrap();
+  assert_eq!(s.pending, 0);
+  assert_eq!(s.count, 0);
+  assert_eq!(s.median_us, 0);
+  assert_eq!(s.p95_us, 0);
+  assert_eq!(s.p99_us, 0);
 }

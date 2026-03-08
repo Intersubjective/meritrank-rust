@@ -167,13 +167,14 @@ when building `OpWriteDeleteEdge` and `OpWriteDeleteNode`.
 
 ### D10 — New edges filter
 
-**Context**: `WriteFetchNewEdges`, `WriteNewEdgesFilter`, `ReadNewEdgesFilter` are already
-stubs in the new server (return empty / Ok with a warning).
+**Context**: `WriteFetchNewEdges`, `WriteNewEdgesFilter`, `ReadNewEdgesFilter` are stubs
+in the new server.
 
-**Decision**: Keep as stubs.  The connector functions `mr_fetch_new_edges`,
-`mr_set_new_edges_filter`, `mr_get_new_edges_filter` will call the new TCP server and get
-empty results.  Add `// FIXME: not implemented in new server` comments in both the server
-and the connector.
+**Decision**: Server returns `Response::NotImplemented` for these three operations (no
+silent success or empty payload). The connector maps `NotImplemented` to `Err(...)` so
+`mr_fetch_new_edges`, `mr_set_new_edges_filter`, and `mr_get_new_edges_filter` raise a
+PostgreSQL ERROR with a clear "not implemented" message instead of silently returning
+empty data or Ok.
 
 ---
 
