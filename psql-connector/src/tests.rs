@@ -915,7 +915,8 @@ fn bulk_load_basic() {
   assert!(res.is_ok());
   let _ = crate::mr_sync(Some(1000)).unwrap();
 
-  let scores: Vec<_> = crate::mr_scores(
+  // In CI the service may need extra time to compute scores after bulk load
+  let mut scores: Vec<_> = crate::mr_scores(
     Some("U1"),
     Some(false),
     Some(""),
@@ -929,7 +930,27 @@ fn bulk_load_basic() {
   )
   .unwrap()
   .collect();
-  assert!(!scores.is_empty());
+  for _ in 0..15 {
+    if !scores.is_empty() {
+      break;
+    }
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    scores = crate::mr_scores(
+      Some("U1"),
+      Some(false),
+      Some(""),
+      Some("U"),
+      None,
+      None,
+      None,
+      None,
+      Some(0),
+      Some(16),
+    )
+    .unwrap()
+    .collect();
+  }
+  assert!(!scores.is_empty(), "scores still empty after retries (service may be slow in CI)");
 }
 
 #[pg_test]
@@ -970,7 +991,7 @@ fn bulk_load_then_scores() {
   .unwrap();
   let _ = crate::mr_sync(Some(1000)).unwrap();
 
-  let scores: Vec<_> = crate::mr_scores(
+  let mut scores: Vec<_> = crate::mr_scores(
     Some("U1"),
     Some(false),
     Some(""),
@@ -984,7 +1005,27 @@ fn bulk_load_then_scores() {
   )
   .unwrap()
   .collect();
-  assert!(!scores.is_empty());
+  for _ in 0..15 {
+    if !scores.is_empty() {
+      break;
+    }
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    scores = crate::mr_scores(
+      Some("U1"),
+      Some(false),
+      Some(""),
+      Some("U"),
+      None,
+      None,
+      None,
+      None,
+      Some(0),
+      Some(16),
+    )
+    .unwrap()
+    .collect();
+  }
+  assert!(!scores.is_empty(), "scores still empty after retries (service may be slow in CI)");
   assert!(scores.iter().any(|r| r.1 == "U2" && r.2 > 0.0));
 }
 

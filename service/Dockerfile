@@ -9,10 +9,11 @@ COPY core/Cargo.toml core/Cargo.toml
 COPY service/Cargo.toml service/Cargo.toml
 COPY psql-connector/Cargo.toml psql-connector/Cargo.toml
 
-RUN mkdir -p core/src service/src psql-connector/src && \
+RUN mkdir -p core/src service/src service/bin psql-connector/src && \
     echo "" > core/src/lib.rs && \
     echo "" > service/src/lib.rs && \
     echo "fn main() {}" > service/src/main.rs && \
+    echo "fn main() {}" > service/bin/load_test.rs && \
     echo "" > psql-connector/src/lib.rs && \
     echo "fn main() {}" > psql-connector/src/pgrx_embed.rs
 
