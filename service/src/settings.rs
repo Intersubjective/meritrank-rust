@@ -27,7 +27,7 @@ pub struct Settings {
   pub num_score_quantiles: usize,
   // pub cache_capacity: u64,
   // pub cache_ttl: u64,
-  pub sleep_duration_after_publish_ms: u64,
+  pub min_ops_before_swap: usize,
   pub subgraph_queue_capacity: usize,
 }
 
@@ -49,7 +49,7 @@ impl Default for Settings {
       omit_neg_edges_scores: false,
       force_read_graph_conn: false,
       num_score_quantiles: 100,
-      sleep_duration_after_publish_ms: 10,
+      min_ops_before_swap: 1,
       subgraph_queue_capacity: 1024,
     }
   }
@@ -154,8 +154,8 @@ pub fn load_from_env() -> Settings {
   );
   load_var("MERITRANK_NUM_SCORE_QUANTILES", &mut s.num_score_quantiles);
   load_var(
-    "MERITRANK_SLEEP_DURATION_AFTER_PUBLISH_MS",
-    &mut s.sleep_duration_after_publish_ms,
+    "MERITRANK_MIN_OPS_BEFORE_SWAP",
+    &mut s.min_ops_before_swap,
   );
   load_var(
     "MERITRANK_SUBGRAPH_QUEUE_CAPACITY",

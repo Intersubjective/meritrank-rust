@@ -15,6 +15,8 @@ pub static WARNING: AtomicBool = AtomicBool::new(true);
 pub static INFO: AtomicBool = AtomicBool::new(true);
 pub static VERBOSE: AtomicBool = AtomicBool::new(false);
 pub static TRACE: AtomicBool = AtomicBool::new(false);
+/// Command/ops logging (read_scores, apply_op, etc.). Off by default so perf tests are not affected.
+pub static CMD: AtomicBool = AtomicBool::new(false);
 
 static LOG_MUTEX: Mutex<()> = Mutex::new(());
 
@@ -122,14 +124,29 @@ macro_rules! log_trace {
 #[macro_export]
 macro_rules! log_command {
   () => {
-    if INFO.load(Ordering::Relaxed) {
+    if CMD.load(Ordering::Relaxed) {
       log_with_time(format!("CMD {}", $crate::log_func_name!()));
     }
   };
 
   ($($arg:expr),+) => {
-    if INFO.load(Ordering::Relaxed) {
+    if CMD.load(Ordering::Relaxed) {
       log_with_time(format!("CMD {}: {}", $crate::log_func_name!(), format!($($arg),*)));
     }
   };
+}
+
+/// Enable or disable CMD (read/write ops) logging. Used so perf tests don't log by default.
+pub fn set_log_cmd(enabled: bool) {
+  CMD.store(enabled, Ordering::Relaxed);
+}
+
+/// If MERITRANK_LOG_CMD is set to 1 or true, enable CMD logging (for optional verbose perf runs).
+pub fn init_log_cmd_from_env() {
+  if let Ok(v) = std::env::var("MERITRANK_LOG_CMD") {
+    CMD.store(
+      v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("yes"),
+      Ordering::Relaxed,
+    );
+  }
 }

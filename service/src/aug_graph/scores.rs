@@ -317,7 +317,7 @@ impl AugGraph {
         self.with_zero_opinion(dst_id, score)
       },
       Err(e) => {
-        log_error!("Failed to get node score: {}", e);
+        log_trace!("Failed to get node score: {}", e);
         0.0
       },
     }
@@ -369,7 +369,7 @@ impl AugGraph {
         }
       },
       Err(e) => {
-        log_error!("{}", e);
+        log_trace!("{}", e);
         vec![]
       },
     }

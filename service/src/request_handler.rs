@@ -137,7 +137,7 @@ mod tests {
   fn test_settings(port: u16) -> Settings {
     Settings {
       server_port: port,
-      sleep_duration_after_publish_ms: 0,
+      min_ops_before_swap: 1,
       ..Settings::default()
     }
   }

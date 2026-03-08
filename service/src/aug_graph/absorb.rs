@@ -1,25 +1,20 @@
 use crate::data::*;
 use crate::utils::log::*;
 
-use left_right::Absorb;
 use meritrank_core::NodeId;
 
 use super::AugGraph;
 
-impl Absorb<AugGraphOp> for AugGraph {
-  fn absorb_first(
+impl AugGraph {
+  /// Apply a single operation to this graph (immutable ref to op; used by double-buffered processor).
+  pub fn apply_op(
     &mut self,
-    op: &mut AugGraphOp,
-    _: &Self,
+    op: &AugGraphOp,
   ) {
     log_command!("{:?}", op);
 
-    //  FIXME: Pass strings by reference, no clones!
-
     match op {
       AugGraphOp::WriteReset => {
-        // NOTE: This doesn't actually get called, because reset
-        //       is implemented on the multi-graph level.
         *self = AugGraph::new(self.settings.clone());
       },
       AugGraphOp::WriteEdge(OpWriteEdge {
@@ -31,7 +26,7 @@ impl Absorb<AugGraphOp> for AugGraph {
         self.set_edge(src.clone(), dst.clone(), *amount, *magnitude);
       },
       AugGraphOp::BulkLoadEdges(edges) => {
-        self.bulk_load_edges(std::mem::take(edges));
+        self.bulk_load_edges(edges.clone());
       },
       AugGraphOp::WriteCalculate(OpWriteCalculate {
         ego,
@@ -60,7 +55,6 @@ impl Absorb<AugGraphOp> for AugGraph {
         log_warning!("Recalculate clustering is ignored!")
       },
       AugGraphOp::DeleteNode(node) => {
-        //  D2 (JOURNAL): zero all outgoing edges from the node.
         if let Some(src_info) = self.nodes.get_by_name(node) {
           let src_id = src_info.id;
           let dst_ids: Vec<NodeId> = self
@@ -86,12 +80,5 @@ impl Absorb<AugGraphOp> for AugGraph {
       },
       AugGraphOp::Stamp(value) => self.stamp = *value,
     }
-  }
-
-  fn sync_with(
-    &mut self,
-    first: &Self,
-  ) {
-    *self = first.clone()
   }
 }

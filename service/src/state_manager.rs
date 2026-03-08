@@ -5,8 +5,9 @@ use crate::settings::*;
 use crate::utils::log::*;
 use crate::vsids::Magnitude;
 
+use arc_swap::ArcSwap;
 use dashmap::DashMap;
-use left_right::{Absorb, ReadHandleFactory, WriteHandle};
+use parking_lot::RwLock;
 use crate::data::Weight;
 use tokio::{sync::mpsc, task::JoinSet};
 
@@ -14,15 +15,37 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
+use std::time::Instant;
 
-pub struct ConcurrentDataProcessor<T, Op> {
-  #[allow(unused)]
-  processing_thread:       thread::JoinHandle<()>,
-  pub op_sender:           mpsc::Sender<Op>,
-  pub data_reader_factory: ReadHandleFactory<T>,
+use crate::processor_stats::ProcessorStats;
+
+/// Sends each op to both write channels (fan-out) for double-buffered eventual consistency.
+#[derive(Clone)]
+pub struct FanoutSender {
+  tx_a: mpsc::Sender<AugGraphOp>,
+  tx_b: mpsc::Sender<AugGraphOp>,
 }
 
-pub type GraphProcessor = ConcurrentDataProcessor<AugGraph, AugGraphOp>;
+impl FanoutSender {
+  pub async fn send(
+    &self,
+    op: AugGraphOp,
+  ) -> Result<(), mpsc::error::SendError<AugGraphOp>> {
+    let op2 = op.clone();
+    self.tx_a.send(op).await?;
+    self.tx_b.send(op2).await?;
+    Ok(())
+  }
+}
+
+pub struct ConcurrentDataProcessor {
+  #[allow(unused)]
+  processing_thread: thread::JoinHandle<()>,
+  pub op_sender:     FanoutSender,
+  pub shared:        Arc<ArcSwap<RwLock<AugGraph>>>,
+}
+
+pub type GraphProcessor = ConcurrentDataProcessor;
 
 pub struct MultiGraphProcessor {
   pub subgraphs_map: DashMap<SubgraphName, GraphProcessor>,
@@ -30,61 +53,118 @@ pub struct MultiGraphProcessor {
   loading:           AtomicBool,
   internal_stamp:    AtomicU64,
   publish_notify:    Arc<tokio::sync::Notify>,
+  pub stats:         Option<Arc<ProcessorStats>>,
 }
 
-impl<T, Op> ConcurrentDataProcessor<T, Op>
-where
-  T: 'static + Send + Sync + Clone + Absorb<Op>,
-  Op: 'static + Send,
-{
+fn processing_loop(
+  copy_a: Arc<RwLock<AugGraph>>,
+  copy_b: Arc<RwLock<AugGraph>>,
+  write_rx_a: mpsc::Receiver<AugGraphOp>,
+  write_rx_b: mpsc::Receiver<AugGraphOp>,
+  shared: Arc<ArcSwap<RwLock<AugGraph>>>,
+  publish_notify: Arc<tokio::sync::Notify>,
+  min_ops_before_swap: usize,
+  stats: Option<Arc<ProcessorStats>>,
+) {
+  let mut front_arc = copy_a;
+  let mut back_arc = copy_b;
+  let mut front_rx = write_rx_a;
+  let mut back_rx = write_rx_b;
+
+  shared.store(Arc::clone(&front_arc));
+  let mut back_guard = back_arc.write();
+
+  let apply_one = |guard: &mut parking_lot::RwLockWriteGuard<'_, AugGraph>, op: &AugGraphOp, st: &Option<Arc<ProcessorStats>>, record_stats: bool| {
+    let start = Instant::now();
+    guard.apply_op(op);
+    if record_stats {
+      if let Some(s) = st {
+        s.record_applied(start.elapsed());
+      }
+    }
+  };
+
+  loop {
+    let mut applied = 0usize;
+    while applied < min_ops_before_swap {
+      let op = match back_rx.blocking_recv() {
+        Some(o) => o,
+        None => return,
+      };
+      apply_one(&mut back_guard, &op, &stats, true);
+      applied += 1;
+      while let Ok(op) = back_rx.try_recv() {
+        apply_one(&mut back_guard, &op, &stats, true);
+        applied += 1;
+      }
+    }
+
+    drop(back_guard);
+    shared.store(Arc::clone(&back_arc));
+    publish_notify.notify_waiters();
+
+    std::mem::swap(&mut front_arc, &mut back_arc);
+    std::mem::swap(&mut front_rx, &mut back_rx);
+
+    back_guard = back_arc.write();
+    let mut drained = 0usize;
+    while let Ok(op) = back_rx.try_recv() {
+      apply_one(&mut back_guard, &op, &stats, false);
+      drained += 1;
+    }
+    if drained >= min_ops_before_swap {
+      drop(back_guard);
+      shared.store(Arc::clone(&back_arc));
+      publish_notify.notify_waiters();
+      std::mem::swap(&mut front_arc, &mut back_arc);
+      std::mem::swap(&mut front_rx, &mut back_rx);
+      back_guard = back_arc.write();
+    }
+  }
+}
+
+impl ConcurrentDataProcessor {
   pub fn new(
-    t: T,
-    sleep: u64,
+    initial: AugGraph,
     queue_len: usize,
+    min_ops_before_swap: usize,
     publish_notify: Arc<tokio::sync::Notify>,
+    stats: Option<Arc<ProcessorStats>>,
   ) -> Self {
-    let (writer, reader) = left_right::new_from_empty::<T, Op>(t);
-    let (tx, rx) = mpsc::channel::<Op>(queue_len);
-    let loop_thread = thread::spawn(move || processing_loop(writer, rx, sleep, publish_notify));
+    let copy_a = Arc::new(RwLock::new(initial.clone()));
+    let copy_b = Arc::new(RwLock::new(initial));
+    let shared = Arc::new(ArcSwap::new(Arc::clone(&copy_a)));
+
+    let (tx_a, write_rx_a) = mpsc::channel(queue_len);
+    let (tx_b, write_rx_b) = mpsc::channel(queue_len);
+    let op_sender = FanoutSender { tx_a, tx_b };
+
+    let shared_clone = Arc::clone(&shared);
+    let notify_clone = Arc::clone(&publish_notify);
+    let loop_thread = thread::spawn(move || {
+      processing_loop(
+        copy_a,
+        copy_b,
+        write_rx_a,
+        write_rx_b,
+        shared_clone,
+        notify_clone,
+        min_ops_before_swap,
+        stats,
+      );
+    });
+
     ConcurrentDataProcessor {
-      processing_thread:   loop_thread,
-      op_sender:           tx,
-      data_reader_factory: reader.factory(),
+      processing_thread: loop_thread,
+      op_sender,
+      shared,
     }
   }
 
-  //  FIXME: Used in testing.
   #[allow(unused)]
   pub fn shutdown(self) -> thread::Result<()> {
-    // Drop the sender, which will close the channel
     drop(self.op_sender);
-    // Join the thread
     self.processing_thread.join()
-  }
-}
-
-fn processing_loop<T, Op>(
-  mut writer: WriteHandle<T, Op>,
-  mut rx_ops_queue: mpsc::Receiver<Op>,
-  sleep: u64,
-  publish_notify: Arc<tokio::sync::Notify>,
-) where
-  T: 'static + Send + Sync + Absorb<Op>,
-  Op: 'static + Send,
-{
-  while let Some(op) = rx_ops_queue.blocking_recv() {
-    writer.append(op);
-    // Note that left-right is not really eventually-consistent,
-    // but instead strong-consistent. This means that in case of
-    // high load on reading, publish() will block readers until all
-    // the _reading_ operations are finished, and then all the operations
-    // are applied in the correct order.
-    // There are two ways to handle this:
-    // 1. sleep a bit on the write execution thread to allow the readers to flush
-    // 2. implement a truly eventually-consistent version of left-right that never blocks (arc-swap)
-    thread::sleep(std::time::Duration::from_millis(sleep));
-    writer.publish();
-    publish_notify.notify_waiters();
   }
 }
 
@@ -96,6 +176,23 @@ impl MultiGraphProcessor {
       loading:         AtomicBool::new(false),
       internal_stamp:  AtomicU64::new(0),
       publish_notify:  Arc::new(tokio::sync::Notify::new()),
+      stats:           None,
+    };
+    mgp.insert_subgraph_if_does_not_exist(&String::new());
+    mgp
+  }
+
+  pub fn new_with_stats(
+    settings: Settings,
+    stats: Arc<ProcessorStats>,
+  ) -> Self {
+    let mgp = MultiGraphProcessor {
+      subgraphs_map:   DashMap::new(),
+      settings,
+      loading:         AtomicBool::new(false),
+      internal_stamp:  AtomicU64::new(0),
+      publish_notify:  Arc::new(tokio::sync::Notify::new()),
+      stats:           Some(stats),
     };
     mgp.insert_subgraph_if_does_not_exist(&String::new());
     mgp
@@ -108,7 +205,7 @@ impl MultiGraphProcessor {
   pub fn get_tx_channel(
     &self,
     subgraph_name: &SubgraphName,
-  ) -> mpsc::Sender<AugGraphOp> {
+  ) -> FanoutSender {
     log_trace!();
 
     match self.subgraphs_map.get(subgraph_name) {
@@ -120,9 +217,10 @@ impl MultiGraphProcessor {
           log_trace!("Create subgraph");
           GraphProcessor::new(
             AugGraph::new(self.settings.clone()),
-            self.settings.sleep_duration_after_publish_ms,
             self.settings.subgraph_queue_capacity,
+            self.settings.min_ops_before_swap,
             self.publish_notify.clone(),
+            self.stats.clone(),
           )
         })())
         .op_sender
@@ -135,10 +233,11 @@ impl MultiGraphProcessor {
     subgraph_name: &SubgraphName,
     op: AugGraphOp,
   ) -> Response {
-    //  NOTE: Duplicated logic with `send_op_blocking`.
-
     log_trace!();
 
+    if let Some(s) = &self.stats {
+      s.record_enqueue();
+    }
     if self.get_tx_channel(subgraph_name).send(op).await.is_ok() {
       Response::Ok
     } else {
@@ -167,24 +266,9 @@ impl MultiGraphProcessor {
       },
     };
 
-    let reader_handle = subgraph.data_reader_factory.handle();
-    log_trace!("Obtained reader handle for subgraph: {:?}", subgraph_name);
-
-    let guard = match reader_handle.enter() {
-      Some(guard) => {
-        log_trace!(
-          "Successfully entered reader handle for subgraph: {:?}",
-          subgraph_name
-        );
-        guard
-      },
-      None => {
-        log_warning!("Failed to enter reader handle for subgraph: {:?}. WriteHandle might have been dropped.", subgraph_name);
-        return Response::Fail;
-      },
-    };
-
-    let aug_graph: &AugGraph = &*guard;
+    let arc = subgraph.shared.load_full();
+    let rw_guard = arc.read();
+    let aug_graph: &AugGraph = &*rw_guard;
     log_trace!(
       "Successfully accessed AugGraph for subgraph: {:?}",
       subgraph_name
@@ -212,14 +296,12 @@ impl MultiGraphProcessor {
 
       let mut done = true;
       for ref_multi in self.subgraphs_map.iter() {
-        let res = self.process_read(ref_multi.key(), |aug_graph| {
-          Response::Stamp(aug_graph.stamp)
-        });
-        if let Response::Stamp(x) = res {
-          if x < stamp {
-            done = false;
-            break;
-          }
+        let sub = ref_multi.value();
+        let arc = sub.shared.load_full();
+        let s = arc.read().stamp;
+        if s < stamp {
+          done = false;
+          break;
         }
       }
 
@@ -229,9 +311,6 @@ impl MultiGraphProcessor {
 
       notified.await;
     }
-
-    // Ensure reader view sees the published state (left_right visibility across writer/reader threads).
-    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
   }
 
   /// If the ego has no walks in this subgraph, send WriteCalculate and sync so the next read sees scores.
@@ -686,9 +765,10 @@ impl MultiGraphProcessor {
         log_trace!("Create subgraph");
         GraphProcessor::new(
           AugGraph::new(self.settings.clone()),
-          self.settings.sleep_duration_after_publish_ms,
           self.settings.subgraph_queue_capacity,
+          self.settings.min_ops_before_swap,
           self.publish_notify.clone(),
+          self.stats.clone(),
         )
       })());
   }
@@ -1165,7 +1245,7 @@ mod tests {
       })
       .await;
     sync(&proc).await;
-    let scores_resp = proc
+    let mut scores_resp = proc
       .process_request(&Request {
         subgraph: String::new(),
         data:     ReqData::ReadScores(OpReadScores {
@@ -1174,55 +1254,52 @@ mod tests {
         }),
       })
       .await;
+    for _ in 0..9 {
+      if let Response::Scores(ResScores { scores }) = &scores_resp {
+        if !scores.is_empty() {
+          return;
+        }
+      }
+      tokio::time::sleep(Duration::from_millis(20)).await;
+      scores_resp = proc
+        .process_request(&Request {
+          subgraph: String::new(),
+          data:     ReqData::ReadScores(OpReadScores {
+            ego:           "U1".into(),
+            score_options: FilterOptions::default(),
+          }),
+        })
+        .await;
+    }
     match scores_resp {
-      Response::Scores(ResScores { scores }) => assert!(!scores.is_empty()),
-      _ => panic!("expected scores from lazy calc"),
+      Response::Scores(ResScores { scores }) => assert!(!scores.is_empty(), "expected scores from lazy calc"),
+      other => panic!("expected scores, got {:?}", other),
     }
   }
 
-  #[test]
-  fn nonblocking() {
-    use left_right::Absorb;
+  #[tokio::test]
+  async fn nonblocking() {
+    let notify = Arc::new(tokio::sync::Notify::new());
+    let proc = GraphProcessor::new(
+      AugGraph::new(Settings::default()),
+      10,
+      1,
+      Arc::clone(&notify),
+      None,
+    );
+    let _ = proc.op_sender.send(AugGraphOp::Stamp(1)).await;
+    let _ = proc.op_sender.send(AugGraphOp::Stamp(2)).await;
+    let _ = proc.op_sender.send(AugGraphOp::Stamp(3)).await;
 
-    // Define a simple wrapper for i32 that implements Absorb
-    #[derive(Clone)]
-    pub struct MyDataType(i32);
-
-    struct TestOp(i32);
-
-    impl Absorb<TestOp> for MyDataType {
-      fn absorb_first(
-        &mut self,
-        operation: &mut TestOp,
-        _: &Self,
-      ) {
-        self.0 += operation.0;
+    for _ in 0..20 {
+      let n = notify.notified();
+      let s = proc.shared.load().read().stamp;
+      if s >= 3 {
+        break;
       }
-      fn absorb_second(
-        &mut self,
-        operation: TestOp,
-        _: &Self,
-      ) {
-        self.0 += operation.0;
-      }
-      fn sync_with(
-        &mut self,
-        first: &Self,
-      ) {
-        *self = first.clone();
-      }
+      n.await;
     }
-
-    let processor =
-      ConcurrentDataProcessor::<MyDataType, TestOp>::new(MyDataType(0), 0, 10, Arc::new(tokio::sync::Notify::new()));
-    processor.op_sender.blocking_send(TestOp(1)).unwrap();
-    processor.op_sender.blocking_send(TestOp(1)).unwrap();
-    processor.op_sender.blocking_send(TestOp(1)).unwrap();
-    thread::sleep(Duration::from_millis(10));
-    let handle = processor.data_reader_factory.handle();
-    assert_eq!(handle.enter().unwrap().0, 3);
-    processor
-      .shutdown()
-      .expect("Failed to shutdown processing loop");
+    assert_eq!(proc.shared.load().read().stamp, 3);
+    proc.shutdown().ok();
   }
 }
