@@ -61,8 +61,9 @@ fn encoding_response() {
 }
 
 #[test]
-fn no_assert() {
-  assert!(!meritrank_core::constants::ASSERT);
+fn asserts_on_in_dev_and_test_builds() {
+  // In test builds we expect consistency checks to run (standard Rust behavior).
+  assert!(meritrank_core::constants::ASSERT);
 }
 
 #[test]

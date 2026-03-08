@@ -25,7 +25,7 @@ RUN cargo build --release -p meritrank_service && \
 # --- Real source layer ---
 COPY . .
 
-RUN MERITRANK_NO_ASSERT=1 cargo build --release -p meritrank_service
+RUN cargo build --release -p meritrank_service
 
 FROM scratch
 EXPOSE 10234

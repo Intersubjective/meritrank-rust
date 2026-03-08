@@ -17,23 +17,15 @@ impl AugGraph {
   ) {
     log_trace!();
 
-    let (
-      new_weight_scaled,
-      mut new_min_weight, // This will be potentially updated by the helper
-      new_max_weight,
-      new_mag_scale,
-      rescale_factor,
-    ) = self.vsids.scale_weight(src_id, amount, magnitude);
+    let (new_weight_scaled, rescale_factor, new_max_weight, updated_min) =
+      self.vsids.apply_edge_update(src_id, amount, magnitude);
 
     let edge_deletion_threshold = new_max_weight * self.vsids.deletion_ratio;
-    // let can_delete_at_least_one_edge = new_min_weight <= edge_deletion_threshold;
     let must_rescale = rescale_factor > 1.0;
 
-    //  FIXME: This condition doesn't allow to create new edges at all.
-    // if can_delete_at_least_one_edge || must_rescale {
-    new_min_weight = self.apply_edge_rescales_and_deletions(
+    let new_min_weight = self.apply_edge_rescales_and_deletions(
       src_id,
-      new_min_weight, // Pass current new_min_weight
+      updated_min,
       edge_deletion_threshold,
       rescale_factor,
       must_rescale,
@@ -61,11 +53,7 @@ impl AugGraph {
         new_weight_scaled
       );
     }
-    self
-      .vsids
-      .min_max_weights
-      .insert(src_id, (new_min_weight, new_max_weight, new_mag_scale));
-    // }
+    self.vsids.finish_edge_update(src_id, new_min_weight);
   }
 
   fn apply_edge_rescales_and_deletions(

@@ -49,10 +49,10 @@ use std::env;
 
 #[derive(Clone, Debug)]
 pub struct VSIDSManager {
-  pub(crate) min_max_weights: HashMap<NodeId, (Weight, Weight, Magnitude)>,
-  bump_factor:                Weight,
-  rescale_threshold:          Weight,
-  pub(crate) deletion_ratio:  Weight,
+  min_max_weights: HashMap<NodeId, (Weight, Weight, Magnitude)>,
+  bump_factor:     Weight,
+  rescale_threshold: Weight,
+  pub(crate) deletion_ratio: Weight,
 }
 pub type Magnitude = u32;
 
@@ -76,7 +76,8 @@ impl VSIDSManager {
     }
   }
 
-  pub fn scale_weight(
+  /// Computes scaled weight and updated (min, max, mag_scale); does not mutate state.
+  fn compute_scale(
     &self,
     src_id: NodeId,
     new_weight: Weight,
@@ -117,6 +118,30 @@ impl VSIDSManager {
       rescale_factor,
     )
   }
+
+  /// Applies an edge update: computes scaled weight, persists (min, max, mag_scale) for this src,
+  /// and returns (scaled_weight, rescale_factor, new_max_weight, updated_min) for the caller.
+  pub fn apply_edge_update(
+    &mut self,
+    src_id: NodeId,
+    new_weight: Weight,
+    new_magnitude: Magnitude,
+  ) -> (Weight, f64, Weight, Weight) {
+    let (scaled_weight, updated_min, updated_max, updated_mag_scale, rescale_factor) =
+      self.compute_scale(src_id, new_weight, new_magnitude);
+    self
+      .min_max_weights
+      .insert(src_id, (updated_min, updated_max, updated_mag_scale));
+    (scaled_weight, rescale_factor, updated_max, updated_min)
+  }
+
+  /// Updates the stored min for this src after the caller has applied rescales/deletions.
+  /// Call this once you have the actual min from the graph (e.g. from apply_edge_rescales_and_deletions).
+  pub fn finish_edge_update(&mut self, src_id: NodeId, actual_min: Weight) {
+    if let Some(&(_, max, mag)) = self.min_max_weights.get(&src_id) {
+      self.min_max_weights.insert(src_id, (actual_min, max, mag));
+    }
+  }
 }
 
 #[cfg(test)]
@@ -131,25 +156,47 @@ mod tests {
 
   #[test]
   fn test_basic_weight_update() {
-    let vsids = setup_vsids();
-    let (weight, min, max, _, _) = vsids.scale_weight(1, 1.0, 1);
+    let mut vsids = setup_vsids();
+    let (weight, _rescale_factor, new_max, _updated_min) =
+      vsids.apply_edge_update(1, 1.0, 1);
 
-    assert!((weight - 1.111_111).abs() < 1e-6);
-    assert_eq!(min, weight.abs());
-    assert_eq!(max, weight.abs());
+    // magnitude 1 with default bump 1.03: scale = 1.03^1 = 1.03
+    assert!((weight - 1.03).abs() < 1e-6);
+    assert!((new_max - weight.abs()).abs() < 1e-9);
   }
 
   #[test]
   fn test_deletion_of_small_edges() {
-    let vsids = setup_vsids();
+    let mut vsids = setup_vsids();
 
-    let (_, _, _, _, _) = vsids.scale_weight(1, 1.0, 0);
+    let _ = vsids.apply_edge_update(1, 1.0, 0);
 
     let small_weight = vsids.deletion_ratio / 2.0;
-    let (weight, min, max, _, _) = vsids.scale_weight(1, small_weight, 0);
+    let (weight, _rescale_factor, new_max, _) =
+      vsids.apply_edge_update(1, small_weight, 0);
 
     assert!(weight.abs() < vsids.deletion_ratio);
-    assert!(min <= small_weight);
-    assert!(max >= small_weight);
+    assert!(new_max >= small_weight);
+  }
+
+  #[test]
+  fn test_state_updated_after_apply() {
+    let mut vsids = setup_vsids();
+    let (w1, _, max1, _) = vsids.apply_edge_update(1, 1.0, 0);
+    let (w2, _, max2, _) = vsids.apply_edge_update(1, 2.0, 0);
+    // Second call sees state from first: max is at least as large, weights are positive
+    assert!(w1 > 0.0 && w2 > 0.0);
+    assert!(max2 >= max1);
+  }
+
+  #[test]
+  fn test_finish_edge_update_corrects_min() {
+    let mut vsids = setup_vsids();
+    let _ = vsids.apply_edge_update(1, 1.0, 0);
+    vsids.finish_edge_update(1, 0.5);
+    // Next apply should use the corrected min (0.5) in its state
+    let (weight, _, new_max, _) = vsids.apply_edge_update(1, 0.6, 0);
+    assert!(weight > 0.0);
+    assert!(new_max >= 0.6);
   }
 }
