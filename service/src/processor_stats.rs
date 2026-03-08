@@ -32,6 +32,14 @@ impl ProcessorStats {
     }
   }
 
+  /// Reset stats: clear samples and pending count (e.g. after warmup, before load phase).
+  pub fn reset(&self) {
+    self.ops_pending.store(0, Ordering::Relaxed);
+    if let Ok(mut g) = self.samples.lock() {
+      g.clear();
+    }
+  }
+
   /// Call when an op is enqueued (e.g. in send_op).
   pub fn record_enqueue(&self) {
     self.ops_pending.fetch_add(1, Ordering::Relaxed);

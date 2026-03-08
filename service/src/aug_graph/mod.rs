@@ -50,7 +50,7 @@ impl AugGraph {
         .build();
 
     AugGraph {
-      mr: MeritRank::new(Graph::new()),
+      mr: MeritRank::new(Graph::new(), settings.num_walks),
       nodes: NodeRegistry::new(),
       settings: settings.clone(),
       zero_opinion: Vec::new(),
@@ -103,7 +103,7 @@ mod tests {
 
   #[test]
   fn node_registry() {
-    let mut mr = MeritRank::new(Graph::new());
+    let mut mr = MeritRank::new(Graph::new(), 10000);
 
     let mut registry = NodeRegistry::new();
 

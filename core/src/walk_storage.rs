@@ -1,11 +1,11 @@
 use rand::rng;
 use rand::rand_core::RngCore;
 use rand::Rng;
-use std::collections::VecDeque;
 
 use integer_hasher::IntMap;
 
 use crate::constants::OPTIMIZE_INVALIDATION;
+use crate::counter::Counter;
 use crate::errors::internal_fatal;
 use crate::graph::{EdgeId, NodeId, Weight};
 use crate::random_walk::RandomWalk;
@@ -14,20 +14,32 @@ use crate::MeritRankError;
 pub type WalkId = usize;
 
 /// Represents a storage container for walks in the MeritRank graph.
+/// Each ego owns a fixed-size contiguous block of walk slots.
 #[derive(Clone)]
 pub struct WalkStorage {
-  visits:       Vec<IntMap<WalkId, usize>>,
-  walks:        Vec<RandomWalk>,
-  unused_walks: VecDeque<WalkId>,
+  visits:         Vec<IntMap<WalkId, usize>>,
+  walks:          Vec<RandomWalk>,
+  walks_per_ego:  usize,
+  ego_blocks:     IntMap<NodeId, WalkId>,
 }
 
 impl WalkStorage {
-  pub fn new() -> Self {
+  pub fn new(walks_per_ego: usize) -> Self {
     WalkStorage {
-      visits:       Vec::new(),
-      walks:        Vec::new(),
-      unused_walks: VecDeque::new(),
+      visits:        Vec::new(),
+      walks:         Vec::new(),
+      walks_per_ego,
+      ego_blocks:    IntMap::default(),
     }
+  }
+
+  pub fn walks_per_ego(&self) -> usize {
+    self.walks_per_ego
+  }
+
+  /// Returns the start walk ID for the given ego's block, if any.
+  pub fn get_block_start(&self, ego: NodeId) -> Option<WalkId> {
+    self.ego_blocks.get(&ego).copied()
   }
 
   pub fn get_walk(
@@ -55,15 +67,73 @@ impl WalkStorage {
     self.visits.get(node_id)
   }
 
-  pub fn get_next_free_walkid(&mut self) -> WalkId {
-    match self.unused_walks.pop_front() {
-      Some(id) => id,
-      None => {
-        let id = self.walks.len() as WalkId;
-        self.walks.push(RandomWalk::new());
-        id
-      },
+  /// Ensures the given ego has a block of walk slots; returns the start index.
+  pub fn ensure_block_for_ego(
+    &mut self,
+    ego: NodeId,
+  ) -> Result<WalkId, MeritRankError> {
+    if let Some(&start) = self.ego_blocks.get(&ego) {
+      return Ok(start);
     }
+    let start = self.walks.len() as WalkId;
+    for _ in 0..self.walks_per_ego {
+      self.walks.push(RandomWalk::new());
+    }
+    self.ego_blocks.insert(ego, start);
+    Ok(start)
+  }
+
+  /// Clears all walks in the ego's block: decrements counters, removes from visits, clears walk storage.
+  pub fn clear_block_for_ego(
+    &mut self,
+    ego: NodeId,
+    start_id: WalkId,
+    pos_hits: &mut IntMap<NodeId, Counter>,
+    neg_hits: &mut IntMap<NodeId, Counter>,
+  ) -> Result<(), MeritRankError> {
+    for i in 0..self.walks_per_ego {
+      let walk_id = start_id + i;
+      let (pos_nodes, neg_nodes, node_positions) = {
+        let walk = match self.walks.get(walk_id) {
+          Some(w) => w,
+          None => {
+            return Err(MeritRankError::InternalFatalError(Some(
+              internal_fatal::WALK_STORAGE_SPLIT_GET_MUT,
+            )));
+          },
+        };
+        if walk.is_empty() {
+          continue;
+        }
+        (
+          walk.positive_subsegment().copied().collect::<Vec<_>>(),
+          walk.negative_subsegment().copied().collect::<Vec<_>>(),
+          walk
+            .get_nodes()
+            .iter()
+            .enumerate()
+            .map(|(pos, &node)| (node, pos))
+            .collect::<Vec<_>>(),
+        )
+      };
+      pos_hits
+        .entry(ego)
+        .or_default()
+        .decrement_unique_counts(&pos_nodes);
+      neg_hits
+        .entry(ego)
+        .or_default()
+        .decrement_unique_counts(&neg_nodes);
+      for (node, _pos) in node_positions {
+        if let Some(visits) = self.visits.get_mut(node) {
+          visits.remove(&walk_id);
+        }
+      }
+      if let Some(walk) = self.walks.get_mut(walk_id) {
+        walk.clear();
+      }
+    }
+    Ok(())
   }
 
   pub fn update_walk_bookkeeping(
@@ -91,43 +161,7 @@ impl WalkStorage {
   pub fn clear(&mut self) {
     self.visits.clear();
     self.walks.clear();
-    self.unused_walks.clear();
-  }
-
-  pub fn drop_walks_from_node(
-    &mut self,
-    node: NodeId,
-  ) -> Result<(), MeritRankError> {
-    // Check if there are any visits for the given node
-    if let Some(visits_for_node) = self.visits.get_mut(node) {
-      // Identify the walks that start from the given node (i.e., position is 0)
-      let walkids_to_remove: Vec<WalkId> = visits_for_node
-        .iter()
-        .filter_map(|(key, &pos)| if pos == 0 { Some(*key) } else { None })
-        .collect();
-
-      // Remove the identified walks
-      for walk_id in walkids_to_remove {
-        // Safely get the walk to remove using the walk_id
-        if let Some(walk_to_remove) = self.walks.get(walk_id) {
-          // Iterate over the nodes in the walk and remove the walk_id from their visits
-          for node in walk_to_remove.iter() {
-            if let Some(visits) = self.visits.get_mut(*node) {
-              visits.remove(&walk_id);
-            }
-          }
-        }
-        self.unused_walks.push_back(walk_id);
-        match self.walks.get_mut(walk_id) {
-          Some(x) => x.clear(),
-          None => return Err(MeritRankError::InternalFatalError(Some(
-            internal_fatal::WALK_STORAGE_DROP_WALKS_GET_MUT,
-          ))),
-        };
-      }
-    }
-
-    Ok(())
+    self.ego_blocks.clear();
   }
 
   pub fn assert_visits_consistency(&self) -> Result<(), MeritRankError> {

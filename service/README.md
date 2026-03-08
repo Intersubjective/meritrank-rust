@@ -21,8 +21,9 @@ Rust [MeritRank engine](/core/README.md).
   Useful for demo purposes.
 - `MERITRANK_FORCE_READ_GRAPH_CONN` - default `false`
 - `MERITRANK_NUM_SCORE_QUANTILES` - default `100`
-- `MERITRANK_SLEEP_DURATION_AFTER_PUBLISH_MS` - default `10`
+- `MERITRANK_MIN_OPS_BEFORE_SWAP` - default `1`
 - `MERITRANK_SUBGRAPH_QUEUE_CAPACITY` - default `1024`
+- `MERITRANK_COLLECT_STATS` - default `false`. When set to `true`, the service collects ops queue length and per-op processing time (for load testing and tuning). When enabled, use the protocol commands **ResetStats** (e.g. after warmup) and **GetStats** (to read pending count, median/p95/p99/min/max/count in µs). Stats are off by default in production.
 
 ## Batch loading
 

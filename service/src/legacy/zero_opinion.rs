@@ -56,7 +56,6 @@ impl Subgraph {
   pub fn reduced_graph(
     &mut self,
     infos: &[NodeInfo],
-    num_walks: usize,
   ) -> Vec<(NodeId, NodeId, Weight)> {
     log_trace!();
 
@@ -94,7 +93,7 @@ impl Subgraph {
     }
 
     for id in users.iter() {
-      match self.meritrank_data.calculate(*id, num_walks) {
+      match self.meritrank_data.calculate(*id) {
         Ok(_) => {},
         Err(e) => log_error!("{}", e),
       };
@@ -140,11 +139,10 @@ impl Subgraph {
     &mut self,
     infos: &[NodeInfo],
     top_nodes_limit: usize,
-    num_walks: usize,
   ) -> Vec<(NodeId, f64)> {
     log_trace!();
 
-    let reduced = self.reduced_graph(infos, num_walks);
+    let reduced = self.reduced_graph(infos);
 
     if reduced.is_empty() {
       log_error!("Reduced graph is empty");
@@ -182,20 +180,15 @@ impl Subgraph {
     res
   }
 
-  pub fn recalculate_all_users(
-    &mut self,
-    infos: &[NodeInfo],
-    num_walk: usize,
-  ) {
-    log_trace!("{}", num_walk);
+  pub fn recalculate_all_users(&mut self, infos: &[NodeInfo]) {
+    log_trace!();
 
     for id in 0..infos.len() {
       if (id % 100) == 90 {
         log_verbose!("{}%", (id * 100) / infos.len());
       }
       if infos[id].kind == Some(NodeKind::User) {
-        // Updated comparison
-        match self.meritrank_data.calculate(id, num_walk) {
+        match self.meritrank_data.calculate(id) {
           Ok(_) => {},
           Err(e) => log_error!("{}", e),
         };
@@ -214,15 +207,11 @@ impl AugMultiGraph {
       //  Save the current state of the graph
       let data_bak = subgraph.meritrank_data.clone();
 
-      subgraph.recalculate_all_users(&infos, 0);
-      let nodes = subgraph.top_nodes(
-        &infos,
-        self.settings.top_nodes_limit,
-        self.settings.zero_opinion_num_walks,
-      );
+      subgraph.recalculate_all_users(&infos);
+      let nodes = subgraph.top_nodes(&infos, self.settings.top_nodes_limit);
 
       //  Drop all walks and make sure to empty caches.
-      subgraph.recalculate_all_users(&infos, 0);
+      subgraph.recalculate_all_users(&infos);
       subgraph.cached_scores = LruCache::new(self.settings.scores_cache_size);
       subgraph.cached_walks = LruCache::new(self.settings.walks_cache_size);
 

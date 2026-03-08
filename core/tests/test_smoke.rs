@@ -31,8 +31,8 @@ mod tests {
   use crate::utils::read_edges_from_csv;
   use std::time::SystemTime;
 
-  pub fn load_graph_from_csv(filename: &str) -> MeritRank {
-    let mut rank = MeritRank::new(Graph::new());
+  pub fn load_graph_from_csv(filename: &str, walks_per_ego: usize) -> MeritRank {
+    let mut rank = MeritRank::new(Graph::new(), walks_per_ego);
     let mut max_node_id = 0;
     for edge in read_edges_from_csv(filename) {
       while edge.src >= max_node_id || edge.dst >= max_node_id {
@@ -49,9 +49,9 @@ mod tests {
   #[test]
   fn smoke_perf_with_zero() {
     let numwalks = 100;
-    let mut rank = load_graph_from_csv("tests/graph_with_zero.csv");
+    let mut rank = load_graph_from_csv("tests/graph_with_zero.csv", numwalks);
     for ego in IDS {
-      rank.calculate(*ego as NodeId, numwalks).unwrap();
+      rank.calculate(*ego as NodeId).unwrap();
     }
     let begin = SystemTime::now();
     let get_time =
@@ -71,9 +71,9 @@ mod tests {
   #[test]
   fn smoke_memory() {
     let numwalks = 10000;
-    let mut rank = load_graph_from_csv("tests/graph_with_zero.csv");
+    let mut rank = load_graph_from_csv("tests/graph_with_zero.csv", numwalks);
     for ego in IDS {
-      rank.calculate(*ego as NodeId, numwalks).unwrap();
+      rank.calculate(*ego as NodeId).unwrap();
     }
   }
 }

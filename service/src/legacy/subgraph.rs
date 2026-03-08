@@ -50,9 +50,8 @@ impl Subgraph {
       if old_ego != ego {
         log_verbose!("Drop walks {}", old_ego);
 
-        // HACK!!!
-        // We "drop" the walks by recalculating the node with 0.
-        match self.meritrank_data.calculate(old_ego, 0) {
+        // Clear the evicted ego's walk block and counters (no new walks run).
+        match self.meritrank_data.clear_ego(old_ego) {
           Ok(()) => {},
           Err(e) => {
             log_error!("{}", e);
@@ -207,7 +206,7 @@ impl Subgraph {
     log_trace!("{} {} {}", ego_id, self.num_walks, zero_opinion_factor);
 
     if !self.cache_walk_get(ego_id) {
-      match self.meritrank_data.calculate(ego_id, self.num_walks) {
+      match self.meritrank_data.calculate(ego_id) {
         Ok(()) => {
           self.cache_walk_add(ego_id);
         },
@@ -263,7 +262,7 @@ impl Subgraph {
     );
 
     if !self.cache_walk_get(ego_id) {
-      if let Err(e) = self.meritrank_data.calculate(ego_id, self.num_walks) {
+      if let Err(e) = self.meritrank_data.calculate(ego_id) {
         log_error!("Failed to calculate: {}", e);
         return 0.0;
       }
