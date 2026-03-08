@@ -912,6 +912,9 @@ fn vsids_write_edge() {
     num_walks: 500,
     ..Settings::default()
   });
+  // Test expects magnitude-20 to scale 1.0 above 3.0 (bump^20 > 3 => bump > ~1.056).
+  // Default bump is 1.03; set explicitly so the test is self-contained and not env-dependent.
+  graph.vsids.bump_factor = 1.06;
 
   graph.set_edge("U1".into(), "U4".into(), 3.0, 0);
   graph.set_edge("U1".into(), "U2".into(), 3.0, 0);

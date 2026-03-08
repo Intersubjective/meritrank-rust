@@ -50,7 +50,7 @@ use std::env;
 #[derive(Clone, Debug)]
 pub struct VSIDSManager {
   min_max_weights: HashMap<NodeId, (Weight, Weight, Magnitude)>,
-  bump_factor:     Weight,
+  pub bump_factor: Weight,
   rescale_threshold: Weight,
   pub(crate) deletion_ratio: Weight,
 }
