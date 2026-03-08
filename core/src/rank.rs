@@ -18,32 +18,51 @@ pub struct MeritRank {
 }
 
 impl MeritRank {
-  pub fn new(graph: Graph) -> Self {
+  pub fn new(graph: Graph, walks_per_ego: usize) -> Self {
     Self {
       graph,
-      walks: WalkStorage::new(),
+      walks: WalkStorage::new(walks_per_ego),
       pos_hits: IntMap::default(),
       neg_hits: IntMap::default(),
       alpha: 0.85,
     }
   }
 
-  pub fn calculate(
-    &mut self,
-    ego: NodeId,
-    num_walks: usize,
-  ) -> Result<(), MeritRankError> {
-    self.walks.drop_walks_from_node(ego)?;
+  /// Clears the ego's walk block and counters without running new walks. Used when evicting an ego from cache.
+  pub fn clear_ego(&mut self, ego: NodeId) -> Result<(), MeritRankError> {
+    if let Some(start_id) = self.walks.get_block_start(ego) {
+      self.walks.clear_block_for_ego(
+        ego,
+        start_id,
+        &mut self.pos_hits,
+        &mut self.neg_hits,
+      )?;
+    }
+    self.pos_hits.remove(&ego);
+    self.neg_hits.remove(&ego);
+    Ok(())
+  }
 
-    for _ in 0..num_walks {
-      let new_walk_id = self.walks.get_next_free_walkid();
-      let walk = match self.walks.get_walk_mut(new_walk_id) {
+  pub fn calculate(&mut self, ego: NodeId) -> Result<(), MeritRankError> {
+    let start_id = self.walks.ensure_block_for_ego(ego)?;
+    self.walks.clear_block_for_ego(
+      ego,
+      start_id,
+      &mut self.pos_hits,
+      &mut self.neg_hits,
+    )?;
+
+    let walks_per_ego = self.walks.walks_per_ego();
+    for i in 0..walks_per_ego {
+      let walk_id = start_id + i;
+      let walk = match self.walks.get_walk_mut(walk_id) {
         Some(x) => x,
-        None => return Err(MeritRankError::InternalFatalError(Some(
-          internal_fatal::RANK_CALCULATE_GET_WALK_MUT,
-        ))),
+        None => {
+          return Err(MeritRankError::InternalFatalError(Some(
+            internal_fatal::RANK_CALCULATE_GET_WALK_MUT,
+          )));
+        },
       };
-      assert_eq!(walk.len(), 0);
       walk.push(ego, true)?;
 
       self.graph.continue_walk(walk, self.alpha)?;
@@ -59,7 +78,7 @@ impl MeritRank {
         .or_default()
         .increment_unique_counts(walk.negative_subsegment());
 
-      self.walks.update_walk_bookkeeping(new_walk_id, 0);
+      self.walks.update_walk_bookkeeping(walk_id, 0);
     }
     if ASSERT {
       self.walks.assert_visits_consistency()?;

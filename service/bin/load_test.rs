@@ -3,7 +3,8 @@
 
 use meritrank_service::data::{
   BulkEdge, FilterOptions, NodeKind, OpReadMutualScores, OpReadScores, OpWriteBulkEdges,
-  OpWriteCalculate, OpWriteDeleteNode, OpWriteEdge, ReqData, Request, Response, ResNodeList,
+  OpWriteCalculate, OpWriteDeleteNode, OpWriteEdge, ReqData, Request, ResNodeList, ResStats,
+  Response,
 };
 use meritrank_service::node_registry::node_kind_from_prefix;
 use meritrank_service::processor_stats::ProcessorStats;
@@ -21,7 +22,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-const DEFAULT_EDGES_PATH: &str = "testdata/edges.csv";
+/// Default: connector testdata (larger, more realistic). Override with MERITRANK_LOAD_TEST_EDGES.
+const DEFAULT_EDGES_PATH: &str = "../psql-connector/testdata/edges.csv";
 const PHASE_DURATION_SECS: u64 = 20;
 const STATS_INTERVAL_MS: u64 = 1000;
 const CLIENT_STATS_INTERVAL: Duration = Duration::from_secs(1);
@@ -29,6 +31,36 @@ const MAX_STATS_SAMPLES: usize = 50_000;
 const READ_WRITE_RATIO: (u32, u32) = (100, 1);
 /// Max client op queue length; oldest ops are dropped when over this.
 const CLIENT_QUEUE_CAP: usize = 10_000;
+/// Default number of egos to keep in walk cache when in eviction mode (system under eviction pressure).
+const DEFAULT_EVICTION_CACHE_SIZE: usize = 20;
+
+/// Load test mode: default (unlimited walk cache) or eviction (small cache, constant eviction pressure).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LoadTestMode {
+  Default,
+  Eviction,
+}
+
+fn load_test_mode() -> LoadTestMode {
+  match env::var("MERITRANK_LOAD_TEST_MODE").as_deref() {
+    Ok("eviction") => LoadTestMode::Eviction,
+    _ => LoadTestMode::Default,
+  }
+}
+
+fn eviction_cache_size() -> usize {
+  env::var("MERITRANK_LOAD_TEST_EVICTION_CACHE_SIZE")
+    .ok()
+    .and_then(|s| s.parse().ok())
+    .unwrap_or(DEFAULT_EVICTION_CACHE_SIZE)
+}
+
+fn phase_duration_secs() -> u64 {
+  env::var("MERITRANK_LOAD_TEST_PHASE_SECS")
+    .ok()
+    .and_then(|s| s.parse().ok())
+    .unwrap_or(PHASE_DURATION_SECS)
+}
 
 #[derive(Debug, Clone, serde::Deserialize)]
 struct CsvEdge {
@@ -85,11 +117,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   let edges = load_edges_from_csv(&path)?;
   println!("Loaded {} edges from {}", edges.len(), path.display());
 
-  let settings = Settings {
-    num_walks:               10_000,
-    zero_opinion_num_walks:  1_000,
-    ..Settings::default()
+  let mode = load_test_mode();
+  let eviction_cache = eviction_cache_size();
+  let settings = match mode {
+    LoadTestMode::Default => Settings {
+      num_walks: 10_000,
+      ..Settings::default()
+    },
+    LoadTestMode::Eviction => Settings {
+      num_walks:         10_000,
+      walks_cache_size:  eviction_cache,
+      ..Settings::default()
+    },
   };
+  match mode {
+    LoadTestMode::Default => println!("Mode: default (unlimited walk cache)"),
+    LoadTestMode::Eviction => println!(
+      "Mode: eviction (walks_cache_size={}, constant eviction pressure)",
+      eviction_cache
+    ),
+  }
 
   let stats = Arc::new(ProcessorStats::new(MAX_STATS_SAMPLES));
   let processor = Arc::new(MultiGraphProcessor::new_with_stats(
@@ -174,10 +221,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   }
   // Single sync point: wait until all user calculations are applied and visible before any reads.
   let warmup_stamp = 2u64;
+  let _ = processor
+    .process_request(&Request {
+      subgraph: String::new(),
+      data:     ReqData::Stamp(warmup_stamp),
+    })
+    .await;
   processor.sync_future(warmup_stamp).await;
   // Brief delay so the swapped front is fully visible to readers before we start load phases.
   tokio::time::sleep(Duration::from_millis(500)).await;
-  println!("Warmup (10k walks per user) done; all user nodes synced.");
+  let _ = processor
+    .process_request(&Request {
+      subgraph: String::new(),
+      data:     ReqData::ResetStats,
+    })
+    .await;
+  println!("Warmup (10k walks per user) done; all user nodes synced; stats reset.");
 
   let stats_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("load_test_stats.csv");
   let mut file = OpenOptions::new()
@@ -215,8 +274,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   ];
 
   for phase_cfg in phases {
-    println!("Phase: {}", phase_cfg.name);
-    let phase_duration = Duration::from_secs(PHASE_DURATION_SECS);
+    let phase_name = match mode {
+      LoadTestMode::Eviction => format!("eviction_{}", phase_cfg.name),
+      LoadTestMode::Default => phase_cfg.name.to_string(),
+    };
+    println!("Phase: {}", phase_name);
+    let phase_duration = Duration::from_secs(phase_duration_secs());
     let reads = Arc::new(AtomicU64::new(0));
     let writes = Arc::new(AtomicU64::new(0));
     let start = Instant::now();
@@ -354,7 +417,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .write(true)
         .append(true)
         .open(&stats_path)?;
-      let phase = phase_cfg.name.to_string();
+      let phase = phase_name.clone();
       let phase_start = start;
       let phase_dur = phase_duration;
       tokio::spawn(async move {
@@ -388,7 +451,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
       let reads = Arc::clone(&reads);
       let writes = Arc::clone(&writes);
       let queue = Arc::clone(&queue);
-      let phase_name = phase_cfg.name;
+      let phase_name_for_task = phase_name.clone();
       let phase_start = start;
       let phase_dur = phase_duration;
       tokio::spawn(async move {
@@ -419,7 +482,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
           last_writes = w;
           println!(
             "  [{}] {}s reads={} writes={} queue={} r/s={} w/s={}",
-            phase_name, elapsed_secs, r, w, queue_len, r_s, w_s
+            phase_name_for_task, elapsed_secs, r, w, queue_len, r_s, w_s
           );
         }
       })
@@ -440,7 +503,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let total_writes = writes.load(Ordering::Relaxed);
     println!(
       "  {}: reads={} writes={} ratio={:.1}",
-      phase_cfg.name,
+      phase_name,
       total_reads,
       total_writes,
       if total_writes > 0 {
@@ -451,11 +514,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
   }
 
-  let snap = stats.snapshot();
+  let res_stats = match processor
+    .process_request(&Request {
+      subgraph: String::new(),
+      data:     ReqData::GetStats,
+    })
+    .await
+  {
+    Response::Stats(s) => s,
+    other => {
+      eprintln!("GetStats failed or unexpected response: {:?}", other);
+      ResStats::default()
+    },
+  };
   println!(
     "Final stats: pending={} median_us={} p95_us={} p99_us={} count={}",
-    snap.pending, snap.median_us, snap.p95_us, snap.p99_us, snap.count
+    res_stats.pending,
+    res_stats.median_us,
+    res_stats.p95_us,
+    res_stats.p99_us,
+    res_stats.count
   );
+  let _ = writeln!(
+    file,
+    "final,0,{},{},{},{},{},{},{}",
+    res_stats.pending,
+    res_stats.median_us,
+    res_stats.p95_us,
+    res_stats.p99_us,
+    res_stats.min_us,
+    res_stats.max_us,
+    res_stats.count
+  );
+  let _ = file.flush();
   println!("Stats written to {}", stats_path.display());
 
   Ok(())

@@ -50,9 +50,13 @@ impl AugGraph {
         }
         self.zero_opinion[id] = *score;
       },
-      AugGraphOp::WriteRecalculateZero => self.recalculate_zero(),
       AugGraphOp::WriteRecalculateClustering => {
         log_warning!("Recalculate clustering is ignored!")
+      },
+      AugGraphOp::ClearEgo(ego_id) => {
+        if let Err(e) = self.mr.clear_ego(*ego_id) {
+          log_error!("ClearEgo failed: {}", e);
+        }
       },
       AugGraphOp::DeleteNode(node) => {
         if let Some(src_info) = self.nodes.get_by_name(node) {

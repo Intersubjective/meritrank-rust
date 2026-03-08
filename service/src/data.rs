@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 pub type NodeName = String;
 pub type NodeScore = f64;
-pub use meritrank_core::Weight;
+pub use meritrank_core::{NodeId, Weight};
 pub type NodeCluster = usize;
 pub type SubgraphName = String;
 
@@ -166,8 +166,8 @@ pub enum AugGraphOp {
   WriteCalculate(OpWriteCalculate),
   WriteZeroOpinion(OpWriteZeroOpinion),
   WriteReset,
-  WriteRecalculateZero,
   WriteRecalculateClustering,
+  ClearEgo(NodeId),
   DeleteNode(NodeName),
   Stamp(u64),
 }
@@ -284,7 +284,6 @@ pub enum ReqData {
   ReadNewEdgesFilter(OpReadNewEdgesFilter),
   ReadNeighbors(OpReadNeighbors),
   WriteReset,
-  WriteRecalculateZero,
   WriteZeroOpinion(OpWriteZeroOpinion),
   WriteRecalculateClustering,
   WriteDeleteEdge(OpWriteDeleteEdge),

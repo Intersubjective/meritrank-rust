@@ -236,9 +236,8 @@ mod tests {
 
   fn default_graph() -> AugGraph {
     AugGraph::new(Settings {
-      num_walks:              50,
-      zero_opinion_num_walks: 100,
-      zero_opinion_factor:    0.0,
+      num_walks:           50,
+      zero_opinion_factor: 0.0,
       ..Settings::default()
     })
   }

@@ -252,10 +252,9 @@ pub fn new_get_stats(
 }
 
 pub fn new_zerorec(
-  timeout_msec: Option<u64>
+  _timeout_msec: Option<u64>,
 ) -> Result<&'static str, Box<dyn Error + 'static>> {
-  let resp = tcp_call("", ReqData::WriteRecalculateZero, timeout_msec)?;
-  expect_ok(resp)
+  Err("recalculate_zero has been removed".into())
 }
 
 pub fn new_recalculate_clustering(

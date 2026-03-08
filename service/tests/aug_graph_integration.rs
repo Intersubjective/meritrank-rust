@@ -16,7 +16,6 @@ use meritrank_service::settings::Settings;
 fn default_graph() -> AugGraph {
   AugGraph::new(Settings {
     num_walks:              50,
-    zero_opinion_num_walks: 100,
     zero_opinion_factor:    0.0,
     ..Settings::default()
   })
@@ -25,7 +24,6 @@ fn default_graph() -> AugGraph {
 fn default_graph_zero() -> AugGraph {
   AugGraph::new(Settings {
     num_walks:              50,
-    zero_opinion_num_walks: 50,
     ..Settings::default()
   })
 }
@@ -130,7 +128,6 @@ fn read_neighbors_helper(
 fn scores_uncontexted() {
   let mut graph = AugGraph::new(Settings {
     num_walks:              500,
-    zero_opinion_num_walks: 100,
     zero_opinion_factor:    0.0,
     ..Settings::default()
   });
@@ -577,7 +574,6 @@ fn graph_no_direct_connectivity() {
 fn graph_force_connectivity() {
   let mut graph = AugGraph::new(Settings {
     num_walks:              100,
-    zero_opinion_num_walks: 100,
     force_read_graph_conn:  true,
     ..Settings::default()
   });
@@ -780,7 +776,6 @@ fn neighbors_outbound() {
 fn neighbors_non_ego_score() {
   let mut graph = AugGraph::new(Settings {
     num_walks:              500,
-    zero_opinion_num_walks: 100,
     zero_opinion_factor:    0.0,
     ..Settings::default()
   });
@@ -952,14 +947,12 @@ fn vsids_write_edge() {
 fn omit_neg_edges_scores_setting() {
   let mut graph_omit = AugGraph::new(Settings {
     num_walks:              50,
-    zero_opinion_num_walks: 100,
     omit_neg_edges_scores:  true,
     ..Settings::default()
   });
 
   let mut graph_include = AugGraph::new(Settings {
     num_walks:              50,
-    zero_opinion_num_walks: 100,
     omit_neg_edges_scores:  false,
     ..Settings::default()
   });
@@ -1037,13 +1030,11 @@ fn omit_neg_edges_scores_setting() {
 fn omit_neg_edges_scores_mutual_scores() {
   let mut graph_omit = AugGraph::new(Settings {
     num_walks:              200,
-    zero_opinion_num_walks: 100,
     omit_neg_edges_scores:  true,
     ..Settings::default()
   });
   let mut graph_include = AugGraph::new(Settings {
     num_walks:              200,
-    zero_opinion_num_walks: 100,
     omit_neg_edges_scores:  false,
     ..Settings::default()
   });

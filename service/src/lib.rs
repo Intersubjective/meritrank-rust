@@ -9,3 +9,4 @@ pub mod settings;
 pub mod state_manager;
 pub mod utils;
 pub mod vsids;
+pub mod walk_tracker;

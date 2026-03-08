@@ -11,14 +11,13 @@ pub struct Settings {
   pub server_address: String,
   pub server_port: u16,
   pub num_walks: usize,
-  pub zero_opinion_num_walks: usize,
-  pub top_nodes_limit: usize,
   pub zero_opinion_factor: f64,
   pub score_clusters_cache_size: usize,
   pub score_clusters_timeout: u64,
   pub scores_cache_size: usize,
   pub scores_cache_timeout: u64,
-  // pub walks_cache_size: usize,
+  /// Max number of egos to keep walk data for per subgraph (0 = unlimited).
+  pub walks_cache_size: usize,
   // pub filter_num_hashes: usize,
   // pub filter_max_size: usize,
   // pub filter_min_size: usize,
@@ -29,6 +28,8 @@ pub struct Settings {
   // pub cache_ttl: u64,
   pub min_ops_before_swap: usize,
   pub subgraph_queue_capacity: usize,
+  /// When true, collect ops queue and processing-time stats (for GetStats / ResetStats). Off by default.
+  pub collect_stats: bool,
 }
 
 impl Default for Settings {
@@ -39,18 +40,18 @@ impl Default for Settings {
       server_address: "127.0.0.1".into(),
       server_port: 8080,
       num_walks: 10000,
-      zero_opinion_num_walks: 1000,
-      top_nodes_limit: 100,
       zero_opinion_factor: 0.2,
       score_clusters_cache_size: 1024 * 10,
       score_clusters_timeout: 60 * 60 * 6,
       scores_cache_size: 1024 * 10,
       scores_cache_timeout: 60 * 60,
+      walks_cache_size: 0,
       omit_neg_edges_scores: false,
       force_read_graph_conn: false,
       num_score_quantiles: 100,
       min_ops_before_swap: 1,
       subgraph_queue_capacity: 1024,
+      collect_stats: false,
     }
   }
 }
@@ -125,11 +126,6 @@ pub fn load_from_env() -> Settings {
   load_var("MERITRANK_SERVER_ADDRESS", &mut s.server_address);
   load_var("MERITRANK_SERVER_PORT", &mut s.server_port);
   load_var("MERITRANK_NUM_WALKS", &mut s.num_walks);
-  load_var(
-    "MERITARNK_ZERO_OPINION_NUM_WALKS",
-    &mut s.zero_opinion_num_walks,
-  );
-  load_var("MERITRANK_TOP_NODES_LIMIT", &mut s.top_nodes_limit);
   load_zero_opinion_factor(&mut s.zero_opinion_factor);
   load_var(
     "MERITRANK_SCORE_CLUSTERS_CACHE_SIZE",
@@ -144,6 +140,7 @@ pub fn load_from_env() -> Settings {
     "MERITRANK_SCORES_CACHE_TIMEOUT",
     &mut s.scores_cache_timeout,
   );
+  load_var("MERITRANK_WALKS_CACHE_SIZE", &mut s.walks_cache_size);
   load_var(
     "MERITRANK_OMIT_NEG_EDGES_SCORES",
     &mut s.omit_neg_edges_scores,
@@ -161,6 +158,7 @@ pub fn load_from_env() -> Settings {
     "MERITRANK_SUBGRAPH_QUEUE_CAPACITY",
     &mut s.subgraph_queue_capacity,
   );
+  load_var("MERITRANK_COLLECT_STATS", &mut s.collect_stats);
 
   s
 }

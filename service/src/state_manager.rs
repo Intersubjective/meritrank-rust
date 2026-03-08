@@ -11,6 +11,7 @@ use parking_lot::RwLock;
 use crate::data::Weight;
 use tokio::{sync::mpsc, task::JoinSet};
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -18,6 +19,8 @@ use std::thread;
 use std::time::Instant;
 
 use crate::processor_stats::ProcessorStats;
+use crate::walk_tracker::WalkTracker;
+use meritrank_core::NodeId;
 
 /// Sends each op to both write channels (fan-out) for double-buffered eventual consistency.
 #[derive(Clone)]
@@ -43,6 +46,7 @@ pub struct ConcurrentDataProcessor {
   processing_thread: thread::JoinHandle<()>,
   pub op_sender:     FanoutSender,
   pub shared:        Arc<ArcSwap<RwLock<AugGraph>>>,
+  pub walk_tracker:  Option<WalkTracker>,
 }
 
 pub type GraphProcessor = ConcurrentDataProcessor;
@@ -130,6 +134,7 @@ impl ConcurrentDataProcessor {
     min_ops_before_swap: usize,
     publish_notify: Arc<tokio::sync::Notify>,
     stats: Option<Arc<ProcessorStats>>,
+    walks_cache_size: usize,
   ) -> Self {
     let copy_a = Arc::new(RwLock::new(initial.clone()));
     let copy_b = Arc::new(RwLock::new(initial));
@@ -138,6 +143,12 @@ impl ConcurrentDataProcessor {
     let (tx_a, write_rx_a) = mpsc::channel(queue_len);
     let (tx_b, write_rx_b) = mpsc::channel(queue_len);
     let op_sender = FanoutSender { tx_a, tx_b };
+
+    let walk_tracker = if walks_cache_size > 0 {
+      Some(WalkTracker::new(walks_cache_size as u64))
+    } else {
+      None
+    };
 
     let shared_clone = Arc::clone(&shared);
     let notify_clone = Arc::clone(&publish_notify);
@@ -158,6 +169,7 @@ impl ConcurrentDataProcessor {
       processing_thread: loop_thread,
       op_sender,
       shared,
+      walk_tracker,
     }
   }
 
@@ -361,6 +373,7 @@ impl MultiGraphProcessor {
           }
         }
       }
+      self.touch_ego_in_tracker(&req.subgraph, ego).await;
     }
 
     match data {
@@ -518,11 +531,6 @@ impl MultiGraphProcessor {
         self.subgraphs_map.clear();
         self.insert_subgraph_if_does_not_exist(&String::new());
         Response::Ok
-      },
-      ReqData::WriteRecalculateZero => {
-        self
-          .send_op(&req.subgraph, AugGraphOp::WriteRecalculateZero)
-          .await
       },
       ReqData::WriteRecalculateClustering => {
         self
@@ -750,6 +758,42 @@ impl MultiGraphProcessor {
     }
   }
 
+  /// Records ego usage in the walk tracker and sends ClearEgo for any evicted egos.
+  async fn touch_ego_in_tracker(
+    &self,
+    subgraph_name: &SubgraphName,
+    ego: &NodeName,
+  ) {
+    let ego_id_opt = RefCell::new(None);
+    self.process_read(subgraph_name, |aug_graph| {
+      if let Some(info) = aug_graph.nodes.get_by_name(ego) {
+        *ego_id_opt.borrow_mut() = Some(info.id);
+      }
+      Response::Ok
+    });
+    let ego_id = match *ego_id_opt.borrow() {
+      Some(id) => id,
+      None => return,
+    };
+
+    let evicted_ids: Vec<NodeId> = if let Some(entry) = self.subgraphs_map.get(subgraph_name) {
+      if let Some(ref tracker) = entry.walk_tracker {
+        tracker.touch(ego_id);
+        tracker.drain_evicted()
+      } else {
+        vec![]
+      }
+    } else {
+      vec![]
+    };
+
+    for evicted_id in evicted_ids {
+      let _ = self
+        .send_op(subgraph_name, AugGraphOp::ClearEgo(evicted_id))
+        .await;
+    }
+  }
+
   pub fn insert_subgraph_if_does_not_exist(
     &self,
     subgraph_name: &SubgraphName,
@@ -759,7 +803,7 @@ impl MultiGraphProcessor {
     self
       .subgraphs_map
       .entry(subgraph_name.clone())
-      .or_insert((|| {
+      .or_insert_with(|| {
         log_trace!("Create subgraph");
         GraphProcessor::new(
           AugGraph::new(self.settings.clone()),
@@ -767,8 +811,9 @@ impl MultiGraphProcessor {
           self.settings.min_ops_before_swap,
           self.publish_notify.clone(),
           self.stats.clone(),
+          self.settings.walks_cache_size,
         )
-      })())
+      })
       .op_sender
       .clone()
   }
@@ -1280,13 +1325,14 @@ mod tests {
   #[tokio::test]
   async fn nonblocking() {
     let notify = Arc::new(tokio::sync::Notify::new());
-    let proc = GraphProcessor::new(
-      AugGraph::new(Settings::default()),
-      10,
-      1,
-      Arc::clone(&notify),
-      None,
-    );
+      let proc = GraphProcessor::new(
+        AugGraph::new(Settings::default()),
+        10,
+        1,
+        Arc::clone(&notify),
+        None,
+        0,
+      );
     let _ = proc.op_sender.send(AugGraphOp::Stamp(1)).await;
     let _ = proc.op_sender.send(AugGraphOp::Stamp(2)).await;
     let _ = proc.op_sender.send(AugGraphOp::Stamp(3)).await;
