@@ -11,7 +11,6 @@ use parking_lot::RwLock;
 use crate::data::Weight;
 use tokio::{sync::mpsc, task::JoinSet};
 
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -248,10 +247,10 @@ impl MultiGraphProcessor {
   {
     log_trace!();
 
-    let subgraph = match self.subgraphs_map.get(subgraph_name) {
+    let arc = match self.subgraphs_map.get(subgraph_name) {
       Some(subgraph) => {
         log_verbose!("Found subgraph for name: {:?}", subgraph_name);
-        subgraph
+        subgraph.shared.load_full()
       },
       None => {
         log_warning!("Subgraph not found for name: {:?}", subgraph_name);
@@ -259,15 +258,13 @@ impl MultiGraphProcessor {
       },
     };
 
-    let arc = subgraph.shared.load_full();
     let rw_guard = arc.read();
-    let aug_graph: &AugGraph = &*rw_guard;
     log_trace!(
       "Successfully accessed AugGraph for subgraph: {:?}",
       subgraph_name
     );
 
-    let response = read_function(aug_graph);
+    let response = read_function(&*rw_guard);
     log_verbose!("Executed read function for subgraph: {:?}", subgraph_name);
 
     response
@@ -279,25 +276,23 @@ impl MultiGraphProcessor {
   ) {
     log_trace!();
 
-    for ref_multi in self.subgraphs_map.iter() {
-      let subgraph = ref_multi.value();
-      let _ = subgraph.op_sender.clone().send(AugGraphOp::Stamp(stamp)).await;
+    let senders: Vec<FanoutSender> = self
+      .subgraphs_map
+      .iter()
+      .map(|r| r.value().op_sender.clone())
+      .collect();
+
+    for s in &senders {
+      let _ = s.send(AugGraphOp::Stamp(stamp)).await;
     }
 
     loop {
       let notified = self.publish_notify.notified();
 
-      let mut done = true;
-      for ref_multi in self.subgraphs_map.iter() {
-        let sub = ref_multi.value();
-        let arc = sub.shared.load_full();
-        let s = arc.read().stamp;
-        if s < stamp {
-          done = false;
-          break;
-        }
-      }
-
+      let done = self
+        .subgraphs_map
+        .iter()
+        .all(|r| r.value().shared.load_full().read().stamp >= stamp);
       if done {
         break;
       }
@@ -328,7 +323,6 @@ impl MultiGraphProcessor {
         )
         .await;
       let stamp = self.next_stamp();
-      let _ = self.send_op(subgraph, AugGraphOp::Stamp(stamp)).await;
       self.sync_future(stamp).await;
     }
   }
@@ -473,10 +467,6 @@ impl MultiGraphProcessor {
         }
 
         let stamp = self.next_stamp();
-        for ref_multi in self.subgraphs_map.iter() {
-          let name = ref_multi.key().clone();
-          let _ = self.send_op(&name, AugGraphOp::Stamp(stamp)).await;
-        }
         self.sync_future(stamp).await;
 
         self.loading.store(false, Ordering::SeqCst);
@@ -493,9 +483,22 @@ impl MultiGraphProcessor {
           .await
       },
       ReqData::WriteCreateContext => {
-        let is_new = !self.subgraphs_map.contains_key(&req.subgraph);
-        self.insert_subgraph_if_does_not_exist(&req.subgraph);
-        if is_new {
+        use dashmap::mapref::entry::Entry;
+        let was_new = match self.subgraphs_map.entry(req.subgraph.clone()) {
+          Entry::Occupied(_) => false,
+          Entry::Vacant(v) => {
+            v.insert(GraphProcessor::new(
+              AugGraph::new(self.settings.clone()),
+              self.settings.subgraph_queue_capacity,
+              self.settings.min_ops_before_swap,
+              self.publish_notify.clone(),
+              self.stats.clone(),
+              self.settings.walks_cache_size,
+            ));
+            true
+          },
+        };
+        if was_new {
           self.seed_context_from_aggregate(&req.subgraph).await;
         }
         Response::Ok
@@ -739,7 +742,10 @@ impl MultiGraphProcessor {
     });
 
     if let Response::Edges(ResEdges { edges }) = response {
-      let tx = self.get_tx_channel(subgraph_name);
+      let tx = match self.subgraphs_map.get(subgraph_name) {
+        Some(entry) => entry.op_sender.clone(),
+        None => return,
+      };
       for edge in edges {
         if node_kind_from_prefix(&edge.src) == Some(NodeKind::User)
           && node_kind_from_prefix(&edge.dst) == Some(NodeKind::User)
@@ -764,27 +770,30 @@ impl MultiGraphProcessor {
     subgraph_name: &SubgraphName,
     ego: &NodeName,
   ) {
-    let ego_id_opt = RefCell::new(None);
-    self.process_read(subgraph_name, |aug_graph| {
-      if let Some(info) = aug_graph.nodes.get_by_name(ego) {
-        *ego_id_opt.borrow_mut() = Some(info.id);
+    let ego_id = {
+      let arc = match self.subgraphs_map.get(subgraph_name) {
+        Some(entry) => entry.shared.load_full(),
+        None => return,
+      };
+      let guard = arc.read();
+      match guard.nodes.get_by_name(ego) {
+        Some(info) => info.id,
+        None => return,
       }
-      Response::Ok
-    });
-    let ego_id = match *ego_id_opt.borrow() {
-      Some(id) => id,
-      None => return,
     };
 
-    let evicted_ids: Vec<NodeId> = if let Some(entry) = self.subgraphs_map.get(subgraph_name) {
-      if let Some(ref tracker) = entry.walk_tracker {
-        tracker.touch(ego_id);
-        tracker.drain_evicted()
-      } else {
-        vec![]
+    let evicted_ids: Vec<NodeId> = {
+      match self.subgraphs_map.get(subgraph_name) {
+        Some(entry) => {
+          if let Some(ref tracker) = entry.walk_tracker {
+            tracker.touch(ego_id);
+            tracker.drain_evicted()
+          } else {
+            vec![]
+          }
+        },
+        None => vec![],
       }
-    } else {
-      vec![]
     };
 
     for evicted_id in evicted_ids {
@@ -800,6 +809,9 @@ impl MultiGraphProcessor {
   ) -> FanoutSender {
     log_trace!();
 
+    if let Some(entry) = self.subgraphs_map.get(subgraph_name) {
+      return entry.op_sender.clone();
+    }
     self
       .subgraphs_map
       .entry(subgraph_name.clone())
@@ -832,14 +844,16 @@ impl MultiGraphProcessor {
 
     self.insert_subgraph_if_does_not_exist(subgraph_name);
 
-    let mut join_set = JoinSet::new();
+    let senders: Vec<FanoutSender> = self
+      .subgraphs_map
+      .iter()
+      .map(|r| r.value().op_sender.clone())
+      .collect();
 
-    for ref_multi in self.subgraphs_map.iter() {
-      let subgraph = ref_multi.value();
-      let op_sender = subgraph.op_sender.clone();
+    let mut join_set = JoinSet::new();
+    for op_sender in senders {
       let src = src.clone();
       let dst = dst.clone();
-
       join_set.spawn(async move {
         op_sender
           .send(AugGraphOp::WriteEdge(OpWriteEdge {
@@ -877,18 +891,17 @@ mod tests {
   use crate::data::{EdgeResult, FilterOptions, OpReadScores, ResEdges, ResScores};
   use crate::data::Weight;
   use std::sync::atomic::Ordering;
-  use std::time::Duration;
 
   fn default_processor() -> MultiGraphProcessor {
     MultiGraphProcessor::new(Settings::default())
   }
 
+  /// Waits for the processor to apply a sync point (process_request(Sync) already awaits).
   async fn sync(proc: &MultiGraphProcessor) {
     let _ = proc.process_request(&Request {
       subgraph: String::new(),
       data:     ReqData::Sync(1),
     }).await;
-    tokio::time::sleep(Duration::from_millis(20)).await;
   }
 
   fn edges_from_response(response: Response) -> Vec<(String, String, Weight)> {
@@ -1299,13 +1312,13 @@ mod tests {
         }),
       })
       .await;
-    for _ in 0..9 {
+    for _ in 0..100 {
       if let Response::Scores(ResScores { scores }) = &scores_resp {
         if !scores.is_empty() {
           return;
         }
       }
-      tokio::time::sleep(Duration::from_millis(20)).await;
+      tokio::task::yield_now().await;
       scores_resp = proc
         .process_request(&Request {
           subgraph: String::new(),

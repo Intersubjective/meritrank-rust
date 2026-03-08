@@ -131,7 +131,7 @@ mod tests {
 
   use tokio::{
     net::TcpSocket,
-    time::{sleep, timeout, Duration},
+    time::{timeout, Duration},
   };
 
   fn test_settings(port: u16) -> Settings {
@@ -167,10 +167,42 @@ mod tests {
       .unwrap()
   }
 
+  /// Waits for the server to accept connections (retries until timeout), then returns.
+  async fn wait_for_server(port: u16) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    while tokio::time::Instant::now() < deadline {
+      if let Ok(socket) = TcpSocket::new_v4() {
+        if socket
+          .connect(format!("127.0.0.1:{}", port).parse().unwrap())
+          .await
+          .is_ok()
+        {
+          return;
+        }
+      }
+      tokio::task::yield_now().await;
+    }
+    panic!("server did not become ready within 2s");
+  }
+
   /// Sends a request and returns the response (convenience for tests).
   async fn roundtrip(stream: &mut TcpStream, request: Request) -> Response {
     write_request(stream, request).await.unwrap();
     read_response(stream).await.unwrap()
+  }
+
+  /// Roundtrip for a request, then sync so the server has applied it before the next call.
+  async fn roundtrip_then_sync(stream: &mut TcpStream, request: Request) -> Response {
+    let r = roundtrip(stream, request).await;
+    let _ = roundtrip(
+      stream,
+      Request {
+        subgraph: "".into(),
+        data:     ReqData::Sync(1),
+      },
+    )
+    .await;
+    r
   }
 
   fn test_score_options() -> FilterOptions {
@@ -198,12 +230,10 @@ mod tests {
   #[tokio::test]
   async fn request_response() {
     let (mut server_task, running) = spawn_server(8082);
-
-    //  FIXME: Sleep must not be required here!
-    sleep(Duration::from_millis(10)).await;
+    wait_for_server(8082).await;
 
     let mut stream = connect_to(8082).await;
-    let _ = roundtrip(
+    let _ = roundtrip_then_sync(
       &mut stream,
       Request {
         subgraph: "".into(),
@@ -216,15 +246,8 @@ mod tests {
       },
     )
     .await;
-    let _ = roundtrip(
-      &mut stream,
-      Request {
-        subgraph: "".into(),
-        data:     ReqData::Sync(1),
-      },
-    )
-    .await;
-    let scores = roundtrip(
+    // Lazy calculation on read: poll until scores appear (no sleep; same pattern as state_manager tests).
+    let mut scores_resp = roundtrip(
       &mut stream,
       Request {
         subgraph: "".into(),
@@ -235,13 +258,28 @@ mod tests {
       },
     )
     .await;
-
-    match scores {
+    for _ in 0..100 {
+      if let Response::Scores(ref s) = scores_resp {
+        if !s.scores.is_empty() {
+          break;
+        }
+      }
+      tokio::task::yield_now().await;
+      scores_resp = roundtrip(
+        &mut stream,
+        Request {
+          subgraph: "".into(),
+          data:     ReqData::ReadScores(OpReadScores {
+            ego:           "U1".into(),
+            score_options: test_score_options(),
+          }),
+        },
+      )
+      .await;
+    }
+    match scores_resp {
       Response::Scores(scores) => {
-        //  Lazy calculation on read: ensure_calculated runs before ReadScores,
-        //  so scores are non-empty after put_edge + sync without explicit
-        //  WriteCalculate. U2 is not "owned by U1" so hide_personal=true
-        //  does not filter it out.
+        // U2 is not "owned by U1" so hide_personal=true does not filter it out.
         assert!(scores.scores.len() > 0);
       },
       _ => assert!(false),
@@ -256,9 +294,7 @@ mod tests {
   #[tokio::test]
   async fn calculate_and_fetch_score() {
     let (mut server_task, running) = spawn_server(8083);
-
-    //  FIXME: Sleep must not be required here!
-    sleep(Duration::from_millis(10)).await;
+    wait_for_server(8083).await;
 
     let mut stream = connect_to(8083).await;
     let _ = roundtrip(
@@ -274,19 +310,11 @@ mod tests {
       },
     )
     .await;
-    let _ = roundtrip(
+    let _ = roundtrip_then_sync(
       &mut stream,
       Request {
         subgraph: "".into(),
         data:     ReqData::WriteCalculate(OpWriteCalculate { ego: "U1".into() }),
-      },
-    )
-    .await;
-    let _ = roundtrip(
-      &mut stream,
-      Request {
-        subgraph: "".into(),
-        data:     ReqData::Sync(1),
       },
     )
     .await;
