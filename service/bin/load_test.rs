@@ -1,5 +1,6 @@
-//! Load test: bulk load edges from CSV, warmup 10k walks per user, then drive mixed
-//! read/write load from a shared op queue with configurable worker count and pacing per phase.
+//! Load test: bulk load edges from CSV, warmup N walks per user (default 1000; set
+//! MERITRANK_LOAD_TEST_NUM_WALKS to override), then drive mixed read/write load from a shared
+//! op queue with configurable worker count and pacing per phase. Default N keeps warmup ≤30s for ~100 egos.
 
 use meritrank_service::data::{
   BulkEdge, FilterOptions, NodeKind, OpReadMutualScores, OpReadScores, OpWriteBulkEdges,
@@ -62,6 +63,14 @@ fn phase_duration_secs() -> u64 {
     .unwrap_or(PHASE_DURATION_SECS)
 }
 
+/// Number of walks per ego for warmup. Default 1000 keeps warmup under ~30s for ~100 egos; set higher (e.g. 10000) for stress.
+fn load_test_num_walks() -> usize {
+  env::var("MERITRANK_LOAD_TEST_NUM_WALKS")
+    .ok()
+    .and_then(|s| s.parse().ok())
+    .unwrap_or(1000)
+}
+
 #[derive(Debug, Clone, serde::Deserialize)]
 struct CsvEdge {
   src:    String,
@@ -119,17 +128,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   let mode = load_test_mode();
   let eviction_cache = eviction_cache_size();
+  let num_walks = load_test_num_walks();
   let settings = match mode {
     LoadTestMode::Default => Settings {
-      num_walks: 10_000,
+      num_walks,
       ..Settings::default()
     },
     LoadTestMode::Eviction => Settings {
-      num_walks:         10_000,
-      walks_cache_size:  eviction_cache,
+      num_walks,
+      walks_cache_size: eviction_cache,
       ..Settings::default()
     },
   };
+  println!("Warmup: {} walks per ego (set MERITRANK_LOAD_TEST_NUM_WALKS to override)", num_walks);
   match mode {
     LoadTestMode::Default => println!("Mode: default (unlimited walk cache)"),
     LoadTestMode::Eviction => println!(
@@ -208,6 +219,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::process::exit(1);
   }
 
+  let warmup_start = Instant::now();
   for (i, u) in users.iter().enumerate() {
     let _ = processor
       .process_request(&Request {
@@ -228,6 +240,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     })
     .await;
   processor.sync_future(warmup_stamp).await;
+  let warmup_elapsed = warmup_start.elapsed();
+  if warmup_elapsed > Duration::from_secs(30) {
+    eprintln!(
+      "Warmup took {:.1}s (target ≤30s); consider MERITRANK_LOAD_TEST_NUM_WALKS={} for faster warmup",
+      warmup_elapsed.as_secs_f64(),
+      num_walks.saturating_sub(500).max(500),
+    );
+  }
   // Brief delay so the swapped front is fully visible to readers before we start load phases.
   tokio::time::sleep(Duration::from_millis(500)).await;
   let _ = processor
@@ -236,7 +256,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
       data:     ReqData::ResetStats,
     })
     .await;
-  println!("Warmup (10k walks per user) done; all user nodes synced; stats reset.");
+  println!(
+    "Warmup ({} walks per user) done in {:.1}s; all user nodes synced; stats reset.",
+    num_walks,
+    warmup_elapsed.as_secs_f64(),
+  );
 
   let stats_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("load_test_stats.csv");
   let mut file = OpenOptions::new()

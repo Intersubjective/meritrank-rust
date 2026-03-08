@@ -3,7 +3,7 @@
 ## Test design (queue-based)
 
 - **Data**: All edges from the configured CSV are loaded via a single **bulk** command, then sync. **Default**: `psql-connector/testdata/edges.csv` (855 edges, 101 users — larger and more realistic). Override with `MERITRANK_LOAD_TEST_EDGES`.
-- **Warmup**: For every **user (U)** node, the test runs **10k walks** (WriteCalculate). Then a single **sync** (Stamp + `sync_future`) ensures all calculations are applied and visible; a 500 ms delay follows before load phases start. Only users are warmed up; other node types (e.g. B) are not calculated.
+- **Warmup**: For every **user (U)** node, the test runs **N walks** (WriteCalculate). Default **N=1000** keeps warmup ≤30s for ~100 egos; set `MERITRANK_LOAD_TEST_NUM_WALKS` (e.g. `10000`) for stress. Then a single **sync** (Stamp + `sync_future`) ensures all calculations are applied and visible; a 500 ms delay follows before load phases start. Only users are warmed up; other node types (e.g. B) are not calculated.
 - **Write constraints**: Random writes are restricted to:
   - **WriteEdge**: either **U→U** (two distinct users from the warmed-up set) or **U→B** (user → beacon, when beacons exist).
   - **WriteDeleteNode**: deletes a node from the set of **write targets** (users + beacons that exist in the graph).
@@ -29,34 +29,36 @@
 
 - **Edges**: 855  
 - **Nodes**: 303 total, **101 users**, **61 beacons**, 162 write targets  
-- **Warmup**: 101 users × 10k walks, then sync + 500 ms, then **ResetStats**; no “Node is not calculated” spam.
+- **Warmup**: 101 users × N walks (default 1000), then sync + 500 ms, then **ResetStats**; Warmup duration is printed; if >30s, a hint suggests lowering `MERITRANK_LOAD_TEST_NUM_WALKS`. no “Node is not calculated” spam.
 - **Client queue**: Capped at 10k; oldest ops dropped when over cap.
+- **Latest run**: Release build, **10k walks/ego** (`MERITRANK_LOAD_TEST_NUM_WALKS=10000`). Warmup **1.3 s**; 20 s per phase.
 
 ### Client throughput (this run)
 
-| Phase   | Reads  | Writes | Ratio (r/w) | Notes                    |
-|--------|--------|--------|-------------|---------------------------|
-| low    | 1,782  | 22     | 81.0        | 3 workers, 10 ms delay    |
-| medium | 9,432  | 110    | 85.7        | 10 workers, 1 ms delay   |
-| high   | 43,062 | 435    | 99.0       | 30 workers, no delay     |
+| Phase   | Reads  | Writes | Ratio (r/w) | Reads/s | Notes                    |
+|--------|--------|--------|-------------|---------|---------------------------|
+| low    | 1,783  | 26     | 68.6        | ~89     | 3 workers, 10 ms delay    |
+| medium | 9,608  | 89     | 108.0       | ~480    | 10 workers, 1 ms delay   |
+| high   | 75,337 | 714    | 105.5       | ~3,767  | 30 workers, no delay     |
 
-- **Client queue**: Stayed at 0–1 during low/medium; high phase keeps workers busy; cap (10k) prevents unbounded growth. Throughput remains limited by service-side processing; read:write ratio close to target (100:1).
+- **Max read throughput**: **12,048 reads/s** (peak at 6s in high phase; client queue at cap thereafter).
+- **Client queue**: 0–1 during low/medium; high phase hits 10k cap (workers stay busy). Throughput limited by service-side processing; read:write ratio near target (100:1).
 
 ### Op processing time (from `load_test_stats.csv`)
 
-| Metric | This run (psql-connector edges) | Notes |
-|--------|----------------------------------|--------|
-| median | ~144 ms                           | Dominated by score/mutual reads on 303-node graph. |
-| p95    | ~331 ms                           | Heavy reads + occasional write path. |
-| p99    | ~968 ms                           | Tail of mutual scores / 10k-walk cost; some spikes. |
-| max    | ~979 ms                           | Single heavy request in sample. |
+| Metric | This run (10k walks, release) | Notes |
+|--------|--------------------------------|--------|
+| median | ~15 ms  | Score/mutual reads on 303-node graph. |
+| p95    | ~50 ms  | Heavy reads + occasional write path. |
+| p99    | ~92 ms  | Tail of mutual scores; some spikes. |
+| max    | —       | From sample. |
 
-**Final stats** (end of run): `pending=438`, `median_us=144439`, `p95_us=331017`, `p99_us=967897`, `count=142`. The CSV may show `pending` underflow in some rows (known double-buffer stats artifact); treat very large `pending` values as invalid.
+**Final stats** (end of run): `median_us=15045`, `p95_us=50045`, `p99_us=91838`, `count=1261`. The CSV may show `pending` underflow in some rows (known double-buffer stats artifact); treat very large `pending` values as invalid.
 
 ### Pending queue
 
 - **low / medium**: `pending` in the CSV can show underflow (artifact); use it only as a rough backlog indicator.
-- **high**: `pending` is meaningful (e.g. 438 at end); queue stays in the hundreds under sustained load.
+- **high**: `pending` is meaningful; client queue can hit 10k cap under sustained load.
 
 ---
 
@@ -100,6 +102,9 @@ MERITRANK_LOAD_TEST_MODE=eviction MERITRANK_LOAD_TEST_PHASE_SECS=5 \
 
 # Override edges file (e.g. use service testdata for a smaller graph)
 MERITRANK_LOAD_TEST_EDGES=service/testdata/edges.csv cargo run --bin load_test -p meritrank_service
+
+# Warmup: default 1000 walks/ego (keeps warmup ≤30s). Stress test with more walks:
+MERITRANK_LOAD_TEST_NUM_WALKS=10000 cargo run --release --bin load_test -p meritrank_service
 ```
 
 ---
