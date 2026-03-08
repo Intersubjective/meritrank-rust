@@ -206,26 +206,7 @@ impl MultiGraphProcessor {
     &self,
     subgraph_name: &SubgraphName,
   ) -> FanoutSender {
-    log_trace!();
-
-    match self.subgraphs_map.get(subgraph_name) {
-      Some(subgraph) => subgraph.op_sender.clone(),
-      None => self
-        .subgraphs_map
-        .entry(subgraph_name.clone())
-        .or_insert((|| {
-          log_trace!("Create subgraph");
-          GraphProcessor::new(
-            AugGraph::new(self.settings.clone()),
-            self.settings.subgraph_queue_capacity,
-            self.settings.min_ops_before_swap,
-            self.publish_notify.clone(),
-            self.stats.clone(),
-          )
-        })())
-        .op_sender
-        .clone(),
-    }
+    self.insert_subgraph_if_does_not_exist(subgraph_name)
   }
 
   async fn send_op(
@@ -772,7 +753,7 @@ impl MultiGraphProcessor {
   pub fn insert_subgraph_if_does_not_exist(
     &self,
     subgraph_name: &SubgraphName,
-  ) {
+  ) -> FanoutSender {
     log_trace!();
 
     self
@@ -787,7 +768,9 @@ impl MultiGraphProcessor {
           self.publish_notify.clone(),
           self.stats.clone(),
         )
-      })());
+      })())
+      .op_sender
+      .clone()
   }
 
   async fn process_user_to_user_edge(
