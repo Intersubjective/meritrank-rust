@@ -11,6 +11,8 @@ pub struct Settings {
   pub server_address: String,
   pub server_port: u16,
   pub num_walks: usize,
+  /// Random-walk continuation probability (PageRank-style damping).
+  pub alpha: f64,
   pub zero_opinion_factor: f64,
   pub score_clusters_cache_size: usize,
   pub score_clusters_timeout: u64,
@@ -40,6 +42,7 @@ impl Default for Settings {
       server_address: "127.0.0.1".into(),
       server_port: 8080,
       num_walks: 10000,
+      alpha: 0.85,
       zero_opinion_factor: 0.2,
       score_clusters_cache_size: 1024 * 10,
       score_clusters_timeout: 60 * 60 * 6,
@@ -90,6 +93,31 @@ fn load_var<T>(
     });
 }
 
+/// Load alpha; must be in (0.0, 1.0]. Invalid values are rejected and default is kept.
+fn load_alpha(val: &mut f64) {
+  const NAME: &str = "MERITRANK_ALPHA";
+  const MIN: f64 = 0.0;
+  const MAX: f64 = 1.0;
+  if let Ok(s) = var(NAME) {
+    match s.parse::<f64>() {
+      Ok(x) if x > MIN && x <= MAX => *val = x,
+      Ok(x) => {
+        log_error!(
+          "{} must be in ({}, {}], got {}; using default {}",
+          NAME,
+          MIN,
+          MAX,
+          x,
+          *val
+        );
+      },
+      Err(_) => {
+        log_error!("Failed to parse {} as float: {:?}", NAME, s);
+      },
+    }
+  }
+}
+
 /// Load zero opinion factor; must be in [0.0, 1.0]. Invalid values are rejected and default is kept.
 fn load_zero_opinion_factor(val: &mut f64) {
   const NAME: &str = "MERITRANK_ZERO_OPINION_FACTOR";
@@ -126,6 +154,7 @@ pub fn load_from_env() -> Settings {
   load_var("MERITRANK_SERVER_ADDRESS", &mut s.server_address);
   load_var("MERITRANK_SERVER_PORT", &mut s.server_port);
   load_var("MERITRANK_NUM_WALKS", &mut s.num_walks);
+  load_alpha(&mut s.alpha);
   load_zero_opinion_factor(&mut s.zero_opinion_factor);
   load_var(
     "MERITRANK_SCORE_CLUSTERS_CACHE_SIZE",

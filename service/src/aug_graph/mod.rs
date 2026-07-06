@@ -49,8 +49,11 @@ impl AugGraph {
         .time_to_live(Duration::from_secs(settings.score_clusters_timeout))
         .build();
 
+    let mut mr = MeritRank::new(Graph::new(), settings.num_walks);
+    mr.alpha = settings.alpha;
+
     AugGraph {
-      mr: MeritRank::new(Graph::new(), settings.num_walks),
+      mr,
       nodes: NodeRegistry::new(),
       settings: settings.clone(),
       zero_opinion: Vec::new(),

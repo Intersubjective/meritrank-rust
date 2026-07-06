@@ -10,6 +10,7 @@ Rust [MeritRank engine](/core/README.md).
 - `MERITRANK_SERVER_PORT` - default `8080`
 - `MERITRANK_SERVER_ADDRESS` - default `127.0.0.1`
 - `MERITRANK_NUM_WALKS` - default `10000`
+- `MERITRANK_ALPHA` - walk continuation probability, from `0.0` (exclusive) to `1.0`, default `0.85`
 - `MERITRANK_ZERO_OPINION_NUM_WALKS` - default `1000`
 - `MERITRANK_TOP_NODES_LIMIT` - default `100`
 - `MERITRANK_ZERO_OPINION_FACTOR` - from `0.0` to `1.0`, default `0.2`
