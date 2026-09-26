@@ -76,6 +76,7 @@ impl RandomWalk {
 
   pub fn clear(&mut self) {
     self.nodes.clear();
+    self.negative_segment_start = None;
   }
 
   pub fn iter(&self) -> impl Iterator<Item = &NodeId> {

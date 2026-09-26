@@ -333,4 +333,38 @@ mod tests {
       );
     }
   }
+
+  /// Regression: recalculating an ego reuses its walk slots. A stale
+  /// `negative_segment_start` left by `RandomWalk::clear` put the regenerated
+  /// walks into positive-only mode, so the negative edge was taken with
+  /// probability (1 - a)·a ≈ 0.13 instead of a = 0.85. Covers both
+  /// `calculate` twice and the cache-eviction path `clear_ego` + `calculate`.
+  #[test]
+  fn test_recalculate_resets_negative_segment() {
+    let walk_count = 20000;
+    for evict in [false, true] {
+      let mut rank = MeritRank::new(Graph::new(), walk_count);
+      for _ in 0..3 {
+        rank.get_new_nodeid();
+      }
+      rank.set_edge(0, 1, -1.0).unwrap();
+      rank.set_edge(1, 2, 1.0).unwrap();
+      rank.calculate(0).unwrap();
+      if evict {
+        rank.clear_ego(0).unwrap();
+      }
+      rank.calculate(0).unwrap();
+
+      let neg_1 = rank.get_negative_hits()[&0].get_count(&1) as f64
+        / walk_count as f64;
+      // Binomial sd at W = 20000 is ~0.0025.
+      assert!(
+        (neg_1 - rank.alpha).abs() < 0.03,
+        "evict={}: negative-hit frequency of node 1 = {}, expected ~{}",
+        evict,
+        neg_1,
+        rank.alpha
+      );
+    }
+  }
 }

@@ -161,4 +161,15 @@ mod tests {
     assert_eq!(iter.next(), Some(3));
     assert_eq!(iter.next(), None);
   }
+
+  #[test]
+  fn test_random_walk_clear_resets_negative_segment() {
+    let mut walk = RandomWalk::new();
+    walk.push(1, true).unwrap();
+    walk.push(2, false).unwrap();
+    assert_eq!(walk.negative_segment_start, Some(1));
+    walk.clear();
+    assert!(walk.is_empty());
+    assert_eq!(walk.negative_segment_start, None);
+  }
 }
