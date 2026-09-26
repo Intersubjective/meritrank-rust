@@ -26,7 +26,7 @@ impl AugGraph {
 
     let ego_id = self.nodes.register(&mut self.mr, ego, kind);
 
-    match self.mr.calculate_with_rng(ego_id, &mut self.rng) {
+    match self.mr.calculate(ego_id) {
       Ok(_) => {},
       Err(e) => log_error!("{}", e),
     };

@@ -73,7 +73,7 @@ impl AugGraph {
             })
             .unwrap_or_default();
           for dst_id in dst_ids {
-            match self.mr.set_edge_with_rng(src_id, dst_id, 0.0, &mut self.rng) {
+            match self.mr.set_edge(src_id, dst_id, 0.0) {
               Ok(_) => {},
               Err(e) => log_error!("{}", e),
             }

@@ -6,8 +6,6 @@ use crate::vsids::VSIDSManager;
 
 use meritrank_core::{Graph, MeritRank, NodeId};
 use moka::sync::Cache;
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 
 use std::time::Duration;
 
@@ -30,9 +28,6 @@ pub struct AugGraph {
   pub cached_score_clusters: Cache<(NodeId, NodeKind), ClusterGroupBounds>,
   pub vsids:                 VSIDSManager,
   pub stamp:                 u64,
-  /// Source of every random draw of this copy. Seeded from `settings.seed`, so both buffer
-  /// copies start from the same state.
-  pub rng:                   StdRng,
 }
 
 #[derive(Debug)]
@@ -56,6 +51,9 @@ impl AugGraph {
 
     let mut mr = MeritRank::new(Graph::new(), settings.num_walks);
     mr.alpha = settings.alpha;
+    // Both buffer copies start from the same stream; the subgraph worker reseeds it before every
+    // operation.
+    mr.reseed(settings.seed);
 
     AugGraph {
       mr,
@@ -66,7 +64,6 @@ impl AugGraph {
       cached_score_clusters,
       vsids: VSIDSManager::new(),
       stamp: 0,
-      rng: StdRng::seed_from_u64(settings.seed),
     }
   }
 

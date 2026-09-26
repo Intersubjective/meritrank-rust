@@ -1,5 +1,6 @@
 use integer_hasher::{IntMap, IntSet};
-use rand::Rng;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 
 use crate::constants::{ASSERT, EPSILON, OPTIMIZE_INVALIDATION};
 use crate::counter::Counter;
@@ -18,6 +19,9 @@ pub struct MeritRank {
   calculated: IntSet<NodeId>,
   /// Egos whose walks or counters changed since the last `take_dirty_egos`.
   dirty_egos: IntSet<NodeId>,
+  /// Source of every random draw. Callers that need reproducible walks reseed it (`reseed`),
+  /// e.g. before each operation.
+  rng:        StdRng,
   pub alpha:  Weight,
 }
 
@@ -30,8 +34,14 @@ impl MeritRank {
       neg_hits: IntMap::default(),
       calculated: IntSet::default(),
       dirty_egos: IntSet::default(),
+      rng: StdRng::from_rng(&mut rand::rng()),
       alpha: 0.85,
     }
+  }
+
+  /// Restarts the random stream from `seed`.
+  pub fn reseed(&mut self, seed: u64) {
+    self.rng = StdRng::seed_from_u64(seed);
   }
 
   pub fn is_calculated(&self, ego: NodeId) -> bool {
@@ -68,16 +78,7 @@ impl MeritRank {
     Ok(())
   }
 
-  /// `calculate_with_rng` with the thread RNG.
   pub fn calculate(&mut self, ego: NodeId) -> Result<(), MeritRankError> {
-    self.calculate_with_rng(ego, &mut rand::rng())
-  }
-
-  pub fn calculate_with_rng<R: Rng + ?Sized>(
-    &mut self,
-    ego: NodeId,
-    rng: &mut R,
-  ) -> Result<(), MeritRankError> {
     self.calculated.insert(ego);
     self.dirty_egos.insert(ego);
     let start_id = self.walks.ensure_block_for_ego(ego)?;
@@ -101,7 +102,7 @@ impl MeritRank {
       };
       walk.push(ego, true)?;
 
-      self.graph.continue_walk(walk, self.alpha, rng)?;
+      self.graph.continue_walk(walk, self.alpha, &mut self.rng)?;
 
       self
         .pos_hits
@@ -193,22 +194,11 @@ impl MeritRank {
     self.graph.get_new_nodeid()
   }
 
-  /// `set_edge_with_rng` with the thread RNG.
   pub fn set_edge(
     &mut self,
     src: NodeId,
     dest: NodeId,
     new_weight: f64,
-  ) -> Result<(), MeritRankError> {
-    self.set_edge_with_rng(src, dest, new_weight, &mut rand::rng())
-  }
-
-  pub fn set_edge_with_rng<R: Rng + ?Sized>(
-    &mut self,
-    src: NodeId,
-    dest: NodeId,
-    new_weight: f64,
-    rng: &mut R,
   ) -> Result<(), MeritRankError> {
     let old_weight = self
       .graph
@@ -227,17 +217,16 @@ impl MeritRank {
     }
 
     if old_weight.abs() > EPSILON && new_weight.abs() > EPSILON {
-      self.set_edge_(src, dest, 0.0, rng)?;
+      self.set_edge_(src, dest, 0.0)?;
     }
-    self.set_edge_(src, dest, new_weight, rng)
+    self.set_edge_(src, dest, new_weight)
   }
 
-  pub fn set_edge_<R: Rng + ?Sized>(
+  pub fn set_edge_(
     &mut self,
     src: NodeId,
     dest: NodeId,
     new_weight: f64,
-    rng: &mut R,
   ) -> Result<(), MeritRankError> {
     if src == dest {
       return Err(MeritRankError::SelfReferenceNotAllowed);
@@ -296,7 +285,7 @@ impl MeritRank {
         src,
         Some(dest),
         step_recalc_probability,
-        rng,
+        &mut self.rng,
       )?
     } else {
       vec![]
@@ -344,8 +333,10 @@ impl MeritRank {
       //#[cfg(optimize_invalidation)]
       if OPTIMIZE_INVALIDATION {
         if deletion_mode {
-          self.graph.extend_walk_in_case_of_edge_deletion(walk, rng)?;
-        } else if rng.random::<f64>() < self.alpha {
+          self
+            .graph
+            .extend_walk_in_case_of_edge_deletion(walk, &mut self.rng)?;
+        } else if self.rng.random::<f64>() < self.alpha {
           // If already in negative continuation, appended node is in negative
           // subsegment by position; do not set negative_segment_start again.
           let step_is_positive =
@@ -356,7 +347,7 @@ impl MeritRank {
         }
       }
       if !skip_continuation {
-        self.graph.continue_walk(walk, self.alpha, rng)?;
+        self.graph.continue_walk(walk, self.alpha, &mut self.rng)?;
       }
 
       // Update counters associated with the updated walks
