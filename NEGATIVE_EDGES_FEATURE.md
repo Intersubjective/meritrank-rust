@@ -7,7 +7,7 @@ the forward-penalty semantics. The feature depends on the service-consistency tr
 
 This document states *what* MeritRank must do: requirements, API contract and acceptance tests.
 The reasoning behind each decision lives in `NEGATIVE_EDGES_JOURNAL.md`, cited here as
-**J-P1, J-P2** (problems), **J-D1…J-D25** (decisions) and **A1…A9** (axioms).
+**J-P1, J-P2** (problems), **J-D1…J-D26** (decisions) and **A1…A9** (axioms).
 Requirement IDs are stable: a new requirement takes the next free number, and a withdrawn one keeps
 its number, so numbers within a section need not be consecutive. The interactive model is
 `scripts/negative_edges_demo.ipynb`. The application-side design (Tentura) is
@@ -305,22 +305,27 @@ with `b = 1` on every absorbed walk, `score_A(C) = n_C·(1 − (1+λ)·q_C)`. In
   scores (J-D25). Tests that run without it MUST use statistical tolerances derived from W. Tests
   inspect walls through the administrative reads (`mr_edgelist`).
 
-### Dependencies (service-consistency track, J-D22)
+### Dependencies (service-consistency track, J-D22, J-D26)
 
-The feature relies on these, delivered separately and first:
+The feature relies on these, delivered separately and first; the detailed plan is
+`SERVICE_CONSISTENCY_PLAN.md`:
 
-- **C1. Replica copies.** One ordered operation sequence with a replay log, applied by both
-  buffer copies; copies are exact replicas (same order, same seed). Order holds across contexts
-  for fanned-out User→User writes. Readers acquire a copy without stalling behind the worker.
-- **C2. Barrier.** Server-owned barrier in the sequence with forced publication; errors
-  propagated; `mr_sync` `VOLATILE` (R21).
+- **C1. Replica copies.** A dispatcher assigns every mutating operation a sequence number and
+  enqueues it into one queue per subgraph; the worker replays a log into the other buffer copy, so
+  the copies are exact replicas. Order holds across contexts for fanned-out User→User writes.
+  Readers acquire a copy without stalling behind the worker.
+- **C2. Barrier.** Per-subgraph publication watermark; `mr_sync` enqueues an urgent barrier into
+  every subgraph and waits for the watermarks; errors propagated; `mr_sync` `VOLATILE`, reads
+  `STABLE` (R21).
 - **C3. Caches.** No score cache. Cluster bounds cached per copy, keyed by ego generation and
   zero-opinion revision. The core reports egos whose walks changed during an operation (all nested
   `set_edge` calls included, e.g. VSIDS rescales), plus `calculate` and `clear_ego`.
-- **C4. Reverse scores** are computed by calculating the needed peers before answering, never
-  served from a remembered value.
-- **C5. RNG** owned by `MeritRank`, every draw through it; deterministic bulk ordering and score
-  ties.
+- **C4. Residency and reverse scores.** Own LRU with pins replaces the TinyLFU walk tracker; reads
+  are two-phase and pin the peers whose reverse scores the response needs, calculating absent ones
+  with one idempotent `EnsureCalculated`; `mr_mutual_scores` works in portions of at most the
+  capacity. Eviction frees walk memory.
+- **C5. RNG** per operation from `(seed, subgraph, seq)`, every draw in the core through it;
+  deterministic bulk ordering and score ties.
 
 ### Rollout
 
@@ -368,7 +373,8 @@ per ego and node, `|z| < 5`, with a negative control proving sensitivity; the ha
 - Recalculation and `clear_ego` + `calculate` of an ego with absorbed walks (clearing resets
   `absorbed_at`, J-D20).
 - The adversarial scenarios of `core/tests/test_incremental_adversarial*.rs`, rewritten for walls.
-- A weight ratio above 2^53 on one node leaves invalidation probabilities correct (exact sums).
+- A weight ratio above 2^53 on one node leaves invalidation probabilities correct (exact sums;
+  delivered by the consistency track).
 
 Accounting and storage:
 
@@ -406,7 +412,7 @@ API:
 | Denominator W (R11) | `core/src/rank.rs::get_node_score`, lines 108–112 |
 | Positive-edge invalidation (J-D19) | `core/src/walk_storage.rs::decide_skip_invalidation_on_edge_addition` — one probability `w/(pos_sum + w)`, skip the terminal position of an absorbed walk; `rank.rs::set_edge_` |
 | Wall change (R16) | new path in `core/src/rank.rs`; candidates from `walk_storage.rs::get_visits_through_node(B)` or A's walk block |
-| Exact cached sums (J-D19) | `core/src/graph.rs::set_edge`, `remove_edge` — recompute `pos_sum` |
+| Exact cached sums (J-D19, J-D26) | `core/src/graph.rs` — lazy `OnceLock` distribution + sum, built by the first consumer (consistency track, phase 1) |
 | Dirty egos (C3) | collected in `core/src/rank.rs` repair loops, drained by `service/src/aug_graph/absorb.rs::apply_op` |
 | Encoding checks (R1–R3) | `psql-connector/src/lib.rs::mr_put_edge`, bulk, and the service write path |
 | Exact wall storage (R19) | `service/src/vsids.rs`; `service/src/aug_graph/edges.rs::set_edge_by_id`, `apply_edge_rescales_and_deletions` — keep negative edges out of scaling, rescale, pruning and min/max; `core/src/rank.rs::set_edge_` deletion only on exact 0 |
@@ -453,7 +459,7 @@ API:
 
 ## 11. References
 
-- `NEGATIVE_EDGES_JOURNAL.md` — decisions J-D1…J-D25, axioms A1…A9, known attacks.
+- `NEGATIVE_EDGES_JOURNAL.md` — decisions J-D1…J-D26, axioms A1…A9, known attacks.
 - `scripts/negative_edges_demo.ipynb` — linear-chain model, analytic vs Monte-Carlo.
 - `core/tests/test_incremental_bias.rs`, `core/tests/test_incremental_adversarial.rs`,
   `core/tests/test_incremental_adversarial_fable.rs` — incremental-vs-fresh statistical harness

@@ -8,7 +8,7 @@ Decision numbering is local to this document (`JOURNAL.md` covers the NNG→TCP 
 its own D1, D2, …).
 
 Companion interactive demo: `scripts/negative_edges_demo.ipynb` (run via `scripts/run_demo.sh`).
-Requirements, glossary and acceptance tests: `NEGATIVE_EDGES_FEATURE.md` (decisions here: D1–D25). This journal records
+Requirements, glossary and acceptance tests: `NEGATIVE_EDGES_FEATURE.md` (decisions here: D1–D26). This journal records
 *why*; the feature document records *what*. Where they differ, the feature document is current.
 
 ---
@@ -399,9 +399,9 @@ the coupling itself, D20).
   deletion (all frames) then a wall addition (A's frame), or the reverse. The intermediate
   "no edge" graph is valid; composition of exact steps is exact. This is how `set_edge` already
   replaces a weight.
-- **Cached sums are recomputed exactly** (`pos_sum` over the node's positive edges, O(degree)) on
-  every change: the `WeightedIndex` cache is rebuilt at the same cost on the next sample anyway.
-  Incremental `+=`/`−=` cancels catastrophically for weight ratios > 2^53 (D20).
+- **Cached sums are exact** (amended by D26): the positive-edge distribution and its sum are built
+  lazily in one pass by the first consumer, never maintained by `+=`/`−=`, which cancels
+  catastrophically for weight ratios > 2^53 (D20).
 - **Blame is stored as `Σ b` without λ**; λ is applied at read time. Debug builds check it
   against a from-scratch recount after every repair.
 - **Clearing a walk resets all of its metadata** (`absorbed_at`), the lesson of D20.
@@ -531,6 +531,37 @@ never ends).
   `NotImplemented`).
 - **Bans in Tentura** currently publish 0, not −1 (`m0193.dart:4304`); −1 is part of their §17.4
   checklist.
+
+---
+
+## D26 — Consistency track planned; refinements that touch the feature
+
+**Context** (2026-09-26): planning the track of D22 (`SERVICE_CONSISTENCY_PLAN.md`) refined some
+of its decisions and one of D19.
+
+**Decisions**:
+
+- **Exact sums stay lazy** (amends D19). Recomputing `pos_sum` on every edge change would cost
+  O(Σ degree²) during bulk load, which inserts edges one by one (the same reason `WeightedIndex` is
+  built lazily today). The distribution and its sum are cached together in a `OnceLock`, reset in
+  O(1) on change and built in O(degree) by the first consumer; the optimizer asks for the sum only
+  when some walk visits the source, so bulk load never builds anything.
+- **RNG per operation** from `(seed, subgraph, seq)` rather than RNG state in `MeritRank`: buffer
+  copies stay identical without sharing generator state, and R22 follows from the sequence.
+- **Reverse scores come from resident, incrementally maintained frames.** Transient frames
+  (generate W walks per read, then drop them) were rejected: at the intended W = 10 000 (production
+  runs 1000 only temporarily) a mutual-scores read over hundreds of peers would cost millions of
+  steps per request, and the same argument would abolish incremental maintenance altogether.
+  Transient generation remains the test oracle.
+- **Own LRU with pins** replaces the moka walk tracker, whose default TinyLFU policy can reject a
+  just-touched ego and so evict the frame being read. Reads are two-phase: forward scores, filters
+  and pagination first, then pin (and calculate if absent) only the peers in the response.
+  `mr_mutual_scores` pins peers in portions of at most the capacity. `EnsureCalculated` is one
+  idempotent operation, not split. Eviction frees walk memory (today it does not).
+- **Barrier via a publication watermark**: sequence numbers from the dispatcher, a per-subgraph
+  `published_seq`, urgent operations forcing publication.
+- **Volatility**: writes and `mr_sync` `VOLATILE`, reads `STABLE`.
+- **`MERITRANK_MIN_OPS_BEFORE_SWAP`** is reinterpreted as the maximum batch size, name kept.
 
 ---
 
