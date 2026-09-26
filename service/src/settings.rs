@@ -168,11 +168,11 @@ pub fn load_from_env() -> Settings {
     "MERITRANK_SCORE_CLUSTERS_TIMEOUT",
     &mut s.score_clusters_timeout,
   );
-  load_var("MERITRANK_SCORES_CACHE_SIZE", &mut s.scores_cache_size);
-  load_var(
-    "MERITRANK_SCORES_CACHE_TIMEOUT",
-    &mut s.scores_cache_timeout,
-  );
+  for name in ["MERITRANK_SCORES_CACHE_SIZE", "MERITRANK_SCORES_CACHE_TIMEOUT"] {
+    if var(name).is_ok() {
+      log_warning!("{} is ignored: scores are no longer cached", name);
+    }
+  }
   load_var("MERITRANK_WALKS_CACHE_SIZE", &mut s.walks_cache_size);
   load_var(
     "MERITRANK_OMIT_NEG_EDGES_SCORES",

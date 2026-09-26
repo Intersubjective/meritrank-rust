@@ -5,7 +5,7 @@ use crate::utils::{log::*, quantiles::*};
 
 use meritrank_core::{NodeId, Weight};
 
-use super::AugGraph;
+use super::{record_frame_access, AugGraph};
 
 impl AugGraph {
   pub fn update_node_score_clustering(
@@ -18,7 +18,7 @@ impl AugGraph {
     let bounds = self.calculate_score_clusters_bounds(ego, kind, node_ids);
     self
       .cached_score_clusters
-      .insert((ego, kind), bounds.clone());
+      .insert(self.cluster_key(ego, kind), bounds.clone());
     bounds
   }
 
@@ -58,7 +58,7 @@ impl AugGraph {
 
     let bounds: &Vec<Weight> = &self
       .cached_score_clusters
-      .get(&(ego_id, kind))
+      .get(&self.cluster_key(ego_id, kind))
       .unwrap_or_else(|| self.update_node_score_clustering(ego_id, kind));
 
     if bounds_are_empty(bounds) {
@@ -138,7 +138,7 @@ impl AugGraph {
     );
     let (reverse_score, reverse_cluster) =
       match self.get_object_owner(dst_id) {
-        Some(dst_owner_id) => self.fetch_score_cached(dst_owner_id, ego_info.id),
+        Some(dst_owner_id) => self.fetch_score_clustered(dst_owner_id, ego_info.id),
         None => (0.0, 0),
       };
 
@@ -201,7 +201,7 @@ impl AugGraph {
       .map(|(target_info, score, cluster)| {
         let (reverse_score, reverse_cluster) =
           match self.get_object_owner(target_info.id) {
-            Some(owner_id) => self.fetch_score_cached(owner_id, ego_info.id),
+            Some(owner_id) => self.fetch_score_clustered(owner_id, ego_info.id),
             None => (0.0, 0),
           };
         ScoreResult {
@@ -216,17 +216,15 @@ impl AugGraph {
       .collect()
   }
 
-  pub fn fetch_score_cached(
+  /// Score of `dst_id` in `ego_id`'s frame, read from the frame's counters, with its cluster.
+  pub fn fetch_score_clustered(
     &self,
     ego_id: NodeId,
     dst_id: NodeId,
   ) -> (NodeScore, NodeCluster) {
     log_trace!("{} {}", dst_id, ego_id);
 
-    let score = match self.cached_scores.get(&(ego_id, dst_id)) {
-      Some(score) => self.with_zero_opinion(dst_id, score),
-      None => self.fetch_raw_score(ego_id, dst_id),
-    };
+    let score = self.fetch_raw_score(ego_id, dst_id);
 
     let kind_opt = self
       .nodes
@@ -311,11 +309,9 @@ impl AugGraph {
   ) -> NodeScore {
     log_trace!("{} {} {}", ego_id, dst_id, self.settings.num_walks);
 
+    record_frame_access(ego_id);
     match self.mr.get_node_score(ego_id, dst_id) {
-      Ok(score) => {
-        self.cached_scores.insert((ego_id, dst_id), score);
-        self.with_zero_opinion(dst_id, score)
-      },
+      Ok(score) => self.with_zero_opinion(dst_id, score),
       Err(e) => {
         log_trace!("Failed to get node score: {}", e);
         0.0
@@ -335,11 +331,9 @@ impl AugGraph {
       zero_opinion_factor
     );
 
+    record_frame_access(ego_id);
     match self.mr.get_all_scores(ego_id, None) {
       Ok(scores) => {
-        for (dst_id, score) in &scores {
-          self.cached_scores.insert((ego_id, *dst_id), *score);
-        }
         let scores = self.with_zero_opinions(scores);
 
         // Filter out nodes that have a direct negative edge from ego

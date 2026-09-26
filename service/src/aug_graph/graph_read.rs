@@ -274,7 +274,7 @@ impl AugGraph {
           self.fetch_score(ego_id, dst_id);
         let (score_value_of_ego, score_cluster_of_ego) =
           match self.get_object_owner(dst_id) {
-            Some(dst_owner_id) => self.fetch_score_cached(dst_owner_id, ego_id),
+            Some(dst_owner_id) => self.fetch_score_clustered(dst_owner_id, ego_id),
             None => (0.0, 0),
           };
 

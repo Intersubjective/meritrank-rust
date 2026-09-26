@@ -4,7 +4,7 @@ use crate::settings::*;
 use crate::utils::log::*;
 use crate::vsids::VSIDSManager;
 
-use meritrank_core::{Graph, MeritRank, NodeId};
+use meritrank_core::{Graph, IntMap, MeritRank, NodeId};
 use moka::sync::Cache;
 
 use std::time::Duration;
@@ -18,16 +18,73 @@ mod scores;
 
 pub type ClusterGroupBounds = Vec<NodeScore>;
 
-#[derive(Clone)]
+/// Cluster bounds are valid for one generation of the ego's frame and one zero-opinion revision.
+pub type ClusterKey = (NodeId, NodeKind, u64, u64);
+
 pub struct AugGraph {
   pub mr:                    MeritRank,
   pub nodes:                 NodeRegistry,
   pub settings:              Settings,
   pub zero_opinion:          Vec<NodeScore>, // FIXME: change to map because of sparseness
-  pub cached_scores:         Cache<(NodeId, NodeId), NodeScore>,
-  pub cached_score_clusters: Cache<(NodeId, NodeKind), ClusterGroupBounds>,
+  /// Derived from this copy's own state only: `Clone` builds a fresh one, so the two buffer
+  /// copies never share it.
+  pub cached_score_clusters: Cache<ClusterKey, ClusterGroupBounds>,
+  /// Bumped whenever an ego's walks change (`MeritRank::take_dirty_egos`).
+  pub generations:           IntMap<NodeId, u64>,
+  /// Bumped by every zero-opinion write.
+  pub zero_revision:         u64,
   pub vsids:                 VSIDSManager,
   pub stamp:                 u64,
+}
+
+fn cluster_cache(settings: &Settings) -> Cache<ClusterKey, ClusterGroupBounds> {
+  Cache::builder()
+    .max_capacity(settings.score_clusters_cache_size as u64)
+    .time_to_live(Duration::from_secs(settings.score_clusters_timeout))
+    .build()
+}
+
+impl Clone for AugGraph {
+  fn clone(&self) -> Self {
+    AugGraph {
+      mr:                    self.mr.clone(),
+      nodes:                 self.nodes.clone(),
+      settings:              self.settings.clone(),
+      zero_opinion:          self.zero_opinion.clone(),
+      cached_score_clusters: cluster_cache(&self.settings),
+      generations:           self.generations.clone(),
+      zero_revision:         self.zero_revision,
+      vsids:                 self.vsids.clone(),
+      stamp:                 self.stamp,
+    }
+  }
+}
+
+thread_local! {
+  /// Egos whose frames the current read touched, when recording (`record_frames`).
+  static FRAME_LOG: std::cell::RefCell<Option<std::collections::BTreeSet<NodeId>>> =
+    const { std::cell::RefCell::new(None) };
+}
+
+/// Notes that the current read accesses `ego`'s frame (no-op unless recording).
+pub(crate) fn record_frame_access(ego: NodeId) {
+  FRAME_LOG.with(|log| {
+    if let Some(set) = log.borrow_mut().as_mut() {
+      set.insert(ego);
+    }
+  });
+}
+
+/// Runs a synchronous read and returns, with its result, the egos whose frames it accessed.
+pub fn record_frames<T>(read: impl FnOnce() -> T) -> (T, Vec<NodeId>) {
+  FRAME_LOG.with(|log| *log.borrow_mut() = Some(Default::default()));
+  let result = read();
+  let frames = FRAME_LOG
+    .with(|log| log.borrow_mut().take())
+    .unwrap_or_default()
+    .into_iter()
+    .collect();
+  (result, frames)
 }
 
 #[derive(Debug)]
@@ -38,17 +95,6 @@ pub(crate) enum AugGraphError {
 
 impl AugGraph {
   pub fn new(settings: Settings) -> AugGraph {
-    let cached_scores: Cache<(NodeId, NodeId), NodeScore> = Cache::builder()
-      .max_capacity(settings.scores_cache_size as u64)
-      .time_to_live(Duration::from_secs(settings.scores_cache_timeout))
-      .build();
-
-    let cached_score_clusters: Cache<(NodeId, NodeKind), ClusterGroupBounds> =
-      Cache::builder()
-        .max_capacity(settings.score_clusters_cache_size as u64)
-        .time_to_live(Duration::from_secs(settings.score_clusters_timeout))
-        .build();
-
     let mut mr = MeritRank::new(Graph::new(), settings.num_walks);
     mr.alpha = settings.alpha;
     // Both buffer copies start from the same stream; the subgraph worker reseeds it before every
@@ -60,10 +106,27 @@ impl AugGraph {
       nodes: NodeRegistry::new(),
       settings: settings.clone(),
       zero_opinion: Vec::new(),
-      cached_scores,
-      cached_score_clusters,
+      cached_score_clusters: cluster_cache(&settings),
+      generations: IntMap::default(),
+      zero_revision: 0,
       vsids: VSIDSManager::new(),
       stamp: 0,
+    }
+  }
+
+  pub(crate) fn cluster_key(
+    &self,
+    ego: NodeId,
+    kind: NodeKind,
+  ) -> ClusterKey {
+    let generation = self.generations.get(&ego).copied().unwrap_or(0);
+    (ego, kind, generation, self.zero_revision)
+  }
+
+  /// Bumps the generation of every ego whose walks changed since the last call.
+  pub(crate) fn bump_generations(&mut self) {
+    for ego in self.mr.take_dirty_egos() {
+      *self.generations.entry(ego).or_default() += 1;
     }
   }
 

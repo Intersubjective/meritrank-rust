@@ -410,7 +410,6 @@ async fn s6_lone_sync_publishes_below_batch_threshold() {
 /// U1's reverse score for U2 is U1's score in U2's frame. Once U2 stops trusting U1 (and U1 is
 /// unreachable from U2), it must drop to 0 after a sync. Today the first read caches it for an
 /// hour and later reads return the cached value.
-#[ignore = "S7: fixed in phase 5 (no score cache)"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn s7_reverse_score_is_fresh_after_sync() {
   let proc = MultiGraphProcessor::new(settings(2_000));
@@ -627,4 +626,172 @@ async fn mutual_scores_have_reverse_scores_on_first_read() {
     },
     other => panic!("expected scores, got {:?}", other),
   }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: residency (own LRU with pins), two-phase reads
+// ---------------------------------------------------------------------------
+
+fn cache_settings(
+  num_walks: usize,
+  capacity: usize,
+) -> Settings {
+  Settings {
+    walks_cache_size: capacity,
+    ..settings(num_walks)
+  }
+}
+
+fn mutual(
+  resp: Response,
+) -> Vec<meritrank_service::data::ScoreResult> {
+  match resp {
+    Response::Scores(ResScores { scores }) => scores,
+    other => panic!("expected scores, got {:?}", other),
+  }
+}
+
+fn null_ctx(proc: &MultiGraphProcessor) -> dashmap::mapref::one::Ref<'_, String, GraphProcessor> {
+  proc.subgraphs_map.get("").unwrap()
+}
+
+/// More peers than the walk cache holds: mutual scores are read in portions and every row still
+/// gets its reverse score; afterwards the residency is back within capacity (+ the pinned ego).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn mutual_scores_in_portions_beyond_capacity() {
+  let capacity = 3;
+  let proc = MultiGraphProcessor::new(cache_settings(500, capacity));
+  for i in 1..=9 {
+    write(&proc, "", "U0", &format!("U{i}"), 1.0).await;
+    write(&proc, "", &format!("U{i}"), "U0", 1.0).await;
+  }
+  sync(&proc, 1).await;
+  let rows = mutual(
+    request(
+      &proc,
+      "",
+      ReqData::ReadMutualScores(OpReadMutualScores {
+        ego: "U0".into(),
+      }),
+    )
+    .await,
+  );
+  let peers: Vec<_> = rows.iter().filter(|r| r.target != "U0").collect();
+  assert_eq!(peers.len(), 9, "rows: {:?}", rows.iter().map(|r| &r.target).collect::<Vec<_>>());
+  for r in peers {
+    assert!(r.reverse_score > 0.0, "no reverse score for {}", r.target);
+  }
+  assert!(null_ctx(&proc).residency.len() <= capacity + 1);
+}
+
+/// Reading many egos one after another keeps the walk storage bounded by the capacity: evicted
+/// egos release their blocks and later egos reuse them.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn walk_memory_bounded_by_capacity() {
+  let (w, capacity) = (200, 4);
+  let proc = MultiGraphProcessor::new(cache_settings(w, capacity));
+  for i in 0..30 {
+    write(&proc, "", &format!("U{i}"), &format!("U{}", (i + 1) % 30), 1.0).await;
+  }
+  sync(&proc, 1).await;
+  for i in 0..30 {
+    request(
+      &proc,
+      "",
+      ReqData::ReadScores(meritrank_service::data::OpReadScores {
+        ego:           format!("U{i}"),
+        score_options: Default::default(),
+      }),
+    )
+    .await;
+  }
+  sync(&proc, 2).await;
+  let allocated = null_ctx(&proc).read(|g| g.mr.allocated_walks());
+  assert!(
+    allocated <= (capacity + 2) * w,
+    "walk storage grew to {} slots for capacity {}",
+    allocated,
+    capacity
+  );
+  // The last read may leave capacity + 1 (its ego + a full portion) until the next plan.
+  assert!(null_ctx(&proc).residency.len() <= capacity + 1);
+}
+
+/// A peer evicted from the cache is recalculated when a reverse score needs it, so the reverse
+/// score reflects a change made while it was evicted.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn reverse_score_fresh_after_eviction() {
+  let proc = MultiGraphProcessor::new(cache_settings(1_000, 2));
+  write(&proc, "", "U1", "U2", 1.0).await;
+  write(&proc, "", "U2", "U1", 1.0).await;
+  // U3..U7: a separate ring that never reaches U1 or U2; reading them evicts U2.
+  for i in 3..8 {
+    write(&proc, "", &format!("U{i}"), &format!("U{}", 3 + (i - 2) % 5), 1.0).await;
+  }
+  sync(&proc, 1).await;
+  let read_mutual = || ReqData::ReadMutualScores(OpReadMutualScores {
+    ego: "U1".into(),
+  });
+  let before = mutual(request(&proc, "", read_mutual()).await);
+  assert!(before.iter().any(|r| r.target == "U2" && r.reverse_score > 0.0));
+
+  // Push U2 out of the cache.
+  for i in 3..8 {
+    request(
+      &proc,
+      "",
+      ReqData::ReadScores(meritrank_service::data::OpReadScores {
+        ego:           format!("U{i}"),
+        score_options: Default::default(),
+      }),
+    )
+    .await;
+  }
+  assert!(
+    !null_ctx(&proc).residency.is_resident(null_ctx(&proc).read(|g| g.nodes.get_by_name("U2").unwrap().id)),
+    "setup: U2 should have been evicted"
+  );
+  write(&proc, "", "U2", "U1", 0.0).await;
+  write(&proc, "", "U2", "U3", 1.0).await;
+  sync(&proc, 2).await;
+
+  let after = mutual(request(&proc, "", read_mutual()).await);
+  let u2 = after.iter().find(|r| r.target == "U2").expect("U2 row");
+  assert_eq!(u2.reverse_score, 0.0, "stale reverse score after eviction");
+}
+
+/// Many concurrent first reads of one ego (which also pull in its peers' frames for reverse
+/// scores) calculate every frame once and all see scores.
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn concurrent_first_reads_calculate_once() {
+  let w = 300;
+  let proc = Arc::new(MultiGraphProcessor::new(cache_settings(w, 10)));
+  for i in 0..10 {
+    write(&proc, "", &format!("U{i}"), &format!("U{}", (i + 1) % 10), 1.0).await;
+  }
+  sync(&proc, 1).await;
+  let mut js = JoinSet::new();
+  for _ in 0..32 {
+    let p = Arc::clone(&proc);
+    js.spawn(async move {
+      mutual(
+        request(
+          &p,
+          "",
+          ReqData::ReadScores(meritrank_service::data::OpReadScores {
+            ego:           "U0".into(),
+            score_options: Default::default(),
+          }),
+        )
+        .await,
+      )
+      .len()
+    });
+  }
+  while let Some(n) = js.join_next().await {
+    assert!(n.unwrap() > 0, "a concurrent first read saw no scores");
+  }
+  // Each resident ego holds exactly one block: concurrent requests did not calculate twice.
+  let resident = null_ctx(&proc).residency.len();
+  assert_eq!(null_ctx(&proc).read(|g| g.mr.allocated_walks()), resident * w);
 }

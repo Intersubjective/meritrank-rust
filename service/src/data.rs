@@ -172,8 +172,9 @@ pub enum AugGraphOp {
   Stamp(u64),
   /// No-op marker; urgent, so the worker publishes right after it (the sync barrier).
   Barrier,
-  /// Calculates the listed egos that are not calculated yet; urgent.
-  EnsureCalculated(Vec<NodeName>),
+  /// Calculates the listed egos that are not calculated yet; urgent. Node ids are the same in
+  /// both buffer copies (replicas).
+  EnsureCalculated(Vec<NodeId>),
 }
 
 #[derive(Debug, Encode, Decode, Serialize, Deserialize)]

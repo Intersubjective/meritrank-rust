@@ -2,6 +2,8 @@ use crate::data::*;
 use crate::node_registry::*;
 use crate::utils::log::*;
 
+use meritrank_core::NodeId;
+
 use super::AugGraph;
 
 impl AugGraph {
@@ -35,16 +37,15 @@ impl AugGraph {
   /// Calculates the ego unless it already is. Unknown or non-user egos are ignored.
   pub fn ensure_calculated(
     &mut self,
-    ego: &NodeName,
+    ego_id: NodeId,
   ) {
-    let info = match self.nodes.get_by_name(ego) {
-      Some(x) => x,
-      None => return,
-    };
-    if info.kind != NodeKind::User || self.mr.is_calculated(info.id) {
+    match self.nodes.get_by_id(ego_id) {
+      Some(info) if info.kind == NodeKind::User => {},
+      _ => return,
+    }
+    if self.mr.is_calculated(ego_id) {
       return;
     }
-    let ego_id = info.id;
     if let Err(e) = self.mr.calculate(ego_id) {
       log_error!("{}", e);
     }

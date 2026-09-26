@@ -45,7 +45,7 @@ impl AugGraph {
     items
       .into_iter()
       .filter_map(|(dst_id, weight)| {
-        let (_score, cluster) = self.fetch_score_cached(ego_id, dst_id);
+        let (_score, cluster) = self.fetch_score_clustered(ego_id, dst_id);
         self.nodes.get_by_id(dst_id).map(|info| {
           (info.clone(), weight, cluster)
         })
@@ -161,7 +161,7 @@ impl AugGraph {
       if score_value_of_dst > 0.0 && node.kind == NodeKind::User {
         let (score_value_of_ego, score_cluster_of_ego) =
           match self.get_object_owner(node.id) {
-            Some(dst_owner_id) => self.fetch_score_cached(dst_owner_id, ego_id),
+            Some(dst_owner_id) => self.fetch_score_clustered(dst_owner_id, ego_id),
             None => (0.0, 0),
           };
         v.push(ScoreResult {

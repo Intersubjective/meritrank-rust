@@ -908,8 +908,10 @@ fn set_zero_opinion_uncontexted() {
 
 #[test]
 fn vsids_write_edge() {
+  // The compared visit probabilities differ by ~0.03; 20k walks keep that ~8 sd apart (500 walks
+  // made the test fail about one run in three).
   let mut graph = AugGraph::new(Settings {
-    num_walks: 500,
+    num_walks: 20_000,
     ..Settings::default()
   });
   // Test expects magnitude-20 to scale 1.0 above 3.0 (bump^20 > 3 => bump > ~1.056).

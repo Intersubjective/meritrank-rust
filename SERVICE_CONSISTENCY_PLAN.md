@@ -1,6 +1,6 @@
 # Plan: Service Consistency Track
 
-**Status: IN PROGRESS** — phases 0–3 done on `feature/service-consistency`. Agreed 2026-09-26. Lands in `main` before the negative-edges
+**Status: IN PROGRESS** — phases 0–5 done on `feature/service-consistency`. Agreed 2026-09-26. Lands in `main` before the negative-edges
 feature (`NEGATIVE_EDGES_FEATURE.md`, dependencies C1–C5; journal `NEGATIVE_EDGES_JOURNAL.md`,
 D22 and D26). Every defect listed in §1 exists in `main` today, independently of walls.
 
@@ -147,6 +147,12 @@ published copy taken after the wait.
 
 The peer set is taken from phase 1's copy; both copies are at least as new as any preceding
 `mr_sync`, so R21 holds.
+
+Implementation: the first pass records, in a thread-local, every ego whose frame the read touched
+(`record_frames` around `get_node_score`/`get_all_scores`); those are the peers. When they exceed
+the capacity, every read (not only mutual scores) pins them in portions and takes each row (one
+per peer: a score's target, a graph edge's destination) from its portion's read, keeping the first
+pass's order. An unpinned request (explicit `WriteCalculate`) never evicts the ego it requests.
 
 ### 2.7 Caches (S7)
 

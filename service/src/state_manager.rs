@@ -1,4 +1,5 @@
 use crate::aug_graph::*;
+use crate::aug_graph::record_frames;
 use crate::data::*;
 use crate::node_registry::*;
 use crate::settings::*;
@@ -11,14 +12,14 @@ use parking_lot::RwLock;
 use crate::data::Weight;
 use tokio::sync::{mpsc, watch};
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
 use crate::processor_stats::ProcessorStats;
-use crate::walk_tracker::WalkTracker;
+use crate::residency::{Lease, Residency};
 use meritrank_core::NodeId;
 
 /// An operation with its position in the dispatcher's global sequence.
@@ -86,7 +87,8 @@ pub struct ConcurrentDataProcessor {
   pub shared:        Arc<ArcSwap<RwLock<AugGraph>>>,
   /// Sequence number of the last operation visible in the published copy.
   pub published_seq: watch::Receiver<u64>,
-  pub walk_tracker:  Option<WalkTracker>,
+  /// Which egos keep their walks (MERITRANK_WALKS_CACHE_SIZE; 0 = unlimited).
+  pub residency:     Arc<Residency>,
 }
 
 pub type GraphProcessor = ConcurrentDataProcessor;
@@ -237,6 +239,44 @@ fn processing_loop(
   }
 }
 
+/// Replaces, in `base`, every row whose peer (score target, graph edge destination) is in
+/// `peers` by the same row of `portion`, keeping `base`'s order.
+fn merge_rows(
+  base: Response,
+  portion: Response,
+  peers: &HashSet<String>,
+) -> Response {
+  match (base, portion) {
+    (Response::Scores(ResScores { scores }), Response::Scores(ResScores { scores: part })) => {
+      let mut part: HashMap<String, ScoreResult> = part
+        .into_iter()
+        .filter(|r| peers.contains(&r.target))
+        .map(|r| (r.target.clone(), r))
+        .collect();
+      Response::Scores(ResScores {
+        scores: scores
+          .into_iter()
+          .map(|r| part.remove(&r.target).unwrap_or(r))
+          .collect(),
+      })
+    },
+    (Response::Graph(ResGraph { graph }), Response::Graph(ResGraph { graph: part })) => {
+      let mut part: HashMap<(String, String), GraphResult> = part
+        .into_iter()
+        .filter(|r| peers.contains(&r.dst))
+        .map(|r| ((r.src.clone(), r.dst.clone()), r))
+        .collect();
+      Response::Graph(ResGraph {
+        graph: graph
+          .into_iter()
+          .map(|r| part.remove(&(r.src.clone(), r.dst.clone())).unwrap_or(r))
+          .collect(),
+      })
+    },
+    (base, _) => base,
+  }
+}
+
 /// The graph's User→User edges as writes, with their stored weights (used to seed a context).
 fn user_edges(graph: &AugGraph) -> Vec<OpWriteEdge> {
   let mut edges = vec![];
@@ -323,11 +363,7 @@ impl ConcurrentDataProcessor {
     };
     let (published_tx, published_seq) = watch::channel(0);
 
-    let walk_tracker = if walks_cache_size > 0 {
-      Some(WalkTracker::new(walks_cache_size as u64))
-    } else {
-      None
-    };
+    let residency = Residency::new(walks_cache_size);
 
     let shared_clone = Arc::clone(&shared);
     let notify_clone = Arc::clone(&publish_notify);
@@ -351,7 +387,7 @@ impl ConcurrentDataProcessor {
       op_sender,
       shared,
       published_seq,
-      walk_tracker,
+      residency,
     }
   }
 
@@ -536,6 +572,19 @@ impl MultiGraphProcessor {
     }
   }
 
+  /// Runs a read on the subgraph's published copy; `None` if the subgraph does not exist.
+  fn process_read_value<F, T>(
+    &self,
+    subgraph_name: &SubgraphName,
+    read: F,
+  ) -> Option<T>
+  where
+    F: FnOnce(&AugGraph) -> T,
+  {
+    let shared = Arc::clone(&self.subgraphs_map.get(subgraph_name)?.shared);
+    Some(read_published(&shared, read))
+  }
+
   pub fn process_read<F>(
     &self,
     subgraph_name: &SubgraphName,
@@ -575,42 +624,123 @@ impl MultiGraphProcessor {
     dispatched.wait_published().await
   }
 
-  /// Calculates the listed egos that exist and are not calculated yet in the subgraph, and waits
-  /// until that is published.
-  async fn ensure_calculated(
+  /// Makes the egos' frames resident in the subgraph and, with `pin`, keeps them so until the
+  /// returned lease is dropped. Absent frames are calculated; evictions to stay within capacity
+  /// are decided and dispatched under the dispatcher lock, so they are ordered with every other
+  /// calculation. Waits until the frames are published. Non-user and unknown ids are ignored.
+  async fn acquire(
     &self,
     subgraph: &SubgraphName,
-    egos: &[NodeName],
-  ) {
-    let shared = match self.subgraphs_map.get(subgraph) {
-      Some(p) => Arc::clone(&p.shared),
-      None => return,
+    egos: &[NodeId],
+    pin: bool,
+  ) -> Option<Lease> {
+    let (residency, mut watch, shared) = match self.subgraphs_map.get(subgraph) {
+      Some(p) => (
+        Arc::clone(&p.residency),
+        p.published_seq.clone(),
+        Arc::clone(&p.shared),
+      ),
+      None => return None,
     };
-    let missing: Vec<NodeName> = read_published(&shared, |g| {
+    let mut egos: Vec<NodeId> = read_published(&shared, |g| {
       egos
         .iter()
-        .filter(|ego| {
-          g.nodes
-            .get_by_name(ego)
-            .map_or(false, |info| !g.mr.is_calculated(info.id))
+        .copied()
+        .filter(|id| {
+          g.nodes.get_by_id(*id).map_or(false, |i| i.kind == NodeKind::User)
         })
-        .cloned()
         .collect()
     });
-    if missing.is_empty() {
-      return;
+    egos.sort_unstable();
+    egos.dedup();
+    if egos.is_empty() {
+      return None;
     }
-    let dispatched = {
+
+    if pin {
+      if let Some(ready) = residency.try_pin_resident(&egos) {
+        let _ = watch.wait_for(|v| *v >= ready).await;
+        return Some(Lease::new(residency, egos));
+      }
+    }
+
+    let wait_for = {
       let mut state = self.dispatcher.lock().await;
-      self
-        .dispatch_locked(
-          &mut state,
-          Targets::One(subgraph),
-          AugGraphOp::EnsureCalculated(missing),
-        )
-        .await
+      let plan = residency.plan(&egos, pin);
+      for id in &plan.evict {
+        self
+          .dispatch_locked(&mut state, Targets::One(subgraph), AugGraphOp::ClearEgo(*id))
+          .await;
+      }
+      let mut wait_for = plan.ready_seq;
+      if !plan.calculate.is_empty() {
+        let d = self
+          .dispatch_locked(
+            &mut state,
+            Targets::One(subgraph),
+            AugGraphOp::EnsureCalculated(plan.calculate.clone()),
+          )
+          .await;
+        residency.set_ready(&plan.calculate, d.seq);
+        wait_for = wait_for.max(d.seq);
+      }
+      wait_for
     };
-    dispatched.wait_published().await;
+    let _ = watch.wait_for(|v| *v >= wait_for).await;
+    if pin {
+      Some(Lease::new(residency, egos))
+    } else {
+      None
+    }
+  }
+
+  /// A read in an ego's frame, in two phases: pin the ego and read, recording which other frames
+  /// the read needed (reverse scores); pin those, calculating absent ones, and read again. When
+  /// the peers do not fit the capacity, they are pinned in portions and each row (one per peer:
+  /// the target of a score, the destination of a graph edge) is taken from its portion's read.
+  async fn ego_read<F>(
+    &self,
+    subgraph: &SubgraphName,
+    ego: &NodeName,
+    run: F,
+  ) -> Response
+  where
+    F: Fn(&AugGraph) -> Response,
+  {
+    let (residency, shared) = match self.subgraphs_map.get(subgraph) {
+      Some(p) => (Arc::clone(&p.residency), Arc::clone(&p.shared)),
+      None => return Response::Fail,
+    };
+    let ego_id = match read_published(&shared, |g| g.nodes.get_by_name(ego).map(|i| i.id)) {
+      Some(id) => id,
+      None => return read_published(&shared, &run),
+    };
+    let _ego = self.acquire(subgraph, &[ego_id], true).await;
+
+    let (first, frames) = record_frames(|| read_published(&shared, &run));
+    let peers: Vec<NodeId> = frames.into_iter().filter(|id| *id != ego_id).collect();
+    if peers.is_empty() {
+      return first;
+    }
+    let capacity = residency.capacity();
+    if capacity == 0 || peers.len() <= capacity {
+      let _peers = self.acquire(subgraph, &peers, true).await;
+      return read_published(&shared, &run);
+    }
+
+    let mut merged = first;
+    for portion in peers.chunks(capacity) {
+      let _lease = self.acquire(subgraph, portion, true).await;
+      let names: HashSet<String> = read_published(&shared, |g| {
+        portion
+          .iter()
+          .filter_map(|id| g.nodes.get_by_id(*id).map(|i| i.name.clone()))
+          .collect()
+      });
+      let portion_read = read_published(&shared, &run);
+      merged = merge_rows(merged, portion_read, &names);
+    }
+    merged
   }
 
   pub async fn process_request(
@@ -629,31 +759,6 @@ impl MultiGraphProcessor {
 
     let data = req.data.clone();
 
-    if let Some(ego) = req.data.read_ego() {
-      let mut egos = vec![ego.clone()];
-      // Mutual scores need reverse scores (the ego's score in each peer's frame): calculate the
-      // peers in the same batch. (Phase 4 narrows this to the peers the response needs.)
-      if let ReqData::ReadMutualScores(_) = &req.data {
-        if let Response::NodeList(ResNodeList { nodes }) =
-          self.process_read(&req.subgraph, |aug_graph| {
-            Response::NodeList(ResNodeList {
-              nodes: aug_graph
-                .nodes
-                .id_to_info
-                .iter()
-                .map(|info| (info.name.clone(),))
-                .collect(),
-            })
-          })
-        {
-          egos.extend(nodes.into_iter().map(|(name,)| name).filter(|name| {
-            node_kind_from_prefix(name) == Some(NodeKind::User) && name != ego
-          }));
-        }
-      }
-      self.ensure_calculated(&req.subgraph, &egos).await;
-      self.touch_ego_in_tracker(&req.subgraph, ego).await;
-    }
 
     match data {
       ReqData::ResetStats => {
@@ -761,6 +866,13 @@ impl MultiGraphProcessor {
         }
       },
       ReqData::WriteCalculate(data) => {
+        // Register the ego as resident (possibly evicting others), then recalculate it.
+        let ego_id = self.process_read_value(&req.subgraph, |g| {
+          g.nodes.get_by_name(&data.ego).map(|i| i.id)
+        });
+        if let Some(Some(id)) = ego_id {
+          self.acquire(&req.subgraph, &[id], false).await;
+        }
         self
           .send_op(
             &req.subgraph,
@@ -820,32 +932,40 @@ impl MultiGraphProcessor {
         self.process_read(&req.subgraph, |_| Response::NotImplemented)
       },
       ReqData::ReadScores(data) => {
-        self.process_read(&req.subgraph, |aug_graph| {
-          Response::Scores(ResScores {
-            scores: aug_graph.read_scores(data),
+        self
+          .ego_read(&req.subgraph, &data.ego, |aug_graph| {
+            Response::Scores(ResScores {
+              scores: aug_graph.read_scores(data.clone()),
+            })
           })
-        })
+          .await
       },
       ReqData::ReadNodeScore(data) => {
-        self.process_read(&req.subgraph, |aug_graph| {
-          Response::Scores(ResScores {
-            scores: aug_graph.read_node_score(data),
+        self
+          .ego_read(&req.subgraph, &data.ego, |aug_graph| {
+            Response::Scores(ResScores {
+              scores: aug_graph.read_node_score(data.clone()),
+            })
           })
-        })
+          .await
       },
       ReqData::ReadGraph(data) => {
-        self.process_read(&req.subgraph, |aug_graph| {
-          Response::Graph(ResGraph {
-            graph: aug_graph.read_graph(data),
+        self
+          .ego_read(&req.subgraph, &data.ego, |aug_graph| {
+            Response::Graph(ResGraph {
+              graph: aug_graph.read_graph(data.clone()),
+            })
           })
-        })
+          .await
       },
       ReqData::ReadNeighbors(data) => {
-        self.process_read(&req.subgraph, |aug_graph| {
-          Response::Scores(ResScores {
-            scores: aug_graph.read_neighbors(data),
+        self
+          .ego_read(&req.subgraph, &data.ego, |aug_graph| {
+            Response::Scores(ResScores {
+              scores: aug_graph.read_neighbors(data.clone()),
+            })
           })
-        })
+          .await
       },
       ReqData::ReadNodeList => self.process_read(&req.subgraph, |aug_graph| {
         Response::NodeList(ResNodeList {
@@ -906,11 +1026,13 @@ impl MultiGraphProcessor {
         })
       },
       ReqData::ReadMutualScores(data) => {
-        self.process_read(&req.subgraph, |aug_graph| {
-          Response::Scores(ResScores {
-            scores: aug_graph.read_mutual_scores(data),
+        self
+          .ego_read(&req.subgraph, &data.ego, |aug_graph| {
+            Response::Scores(ResScores {
+              scores: aug_graph.read_mutual_scores(data.clone()),
+            })
           })
-        })
+          .await
       },
       ReqData::Sync(_stamp) => {
         if self.sync_future().await {
@@ -980,43 +1102,6 @@ impl MultiGraphProcessor {
       },
     };
     response
-  }
-
-  /// Records ego usage in the walk tracker and sends ClearEgo for any evicted egos.
-  async fn touch_ego_in_tracker(
-    &self,
-    subgraph_name: &SubgraphName,
-    ego: &NodeName,
-  ) {
-    let shared = match self.subgraphs_map.get(subgraph_name) {
-      Some(entry) => Arc::clone(&entry.shared),
-      None => return,
-    };
-    let ego_id =
-      match read_published(&shared, |g| g.nodes.get_by_name(ego).map(|i| i.id)) {
-        Some(id) => id,
-        None => return,
-      };
-
-    let evicted_ids: Vec<NodeId> = {
-      match self.subgraphs_map.get(subgraph_name) {
-        Some(entry) => {
-          if let Some(ref tracker) = entry.walk_tracker {
-            tracker.touch(ego_id);
-            tracker.drain_evicted()
-          } else {
-            vec![]
-          }
-        },
-        None => vec![],
-      }
-    };
-
-    for evicted_id in evicted_ids {
-      let _ = self
-        .send_op(subgraph_name, AugGraphOp::ClearEgo(evicted_id))
-        .await;
-    }
   }
 
   /// Creates the subgraph if it is absent. Callers that must order the creation against

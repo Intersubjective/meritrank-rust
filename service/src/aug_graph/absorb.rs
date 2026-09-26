@@ -12,7 +12,14 @@ impl AugGraph {
     op: &AugGraphOp,
   ) {
     log_command!("{:?}", op);
+    self.apply_op_inner(op);
+    self.bump_generations();
+  }
 
+  fn apply_op_inner(
+    &mut self,
+    op: &AugGraphOp,
+  ) {
     match op {
       AugGraphOp::WriteReset => {
         *self = AugGraph::new(self.settings.clone());
@@ -49,6 +56,7 @@ impl AugGraph {
           self.zero_opinion.resize(id + 1, 0.0);
         }
         self.zero_opinion[id] = *score;
+        self.zero_revision += 1;
       },
       AugGraphOp::WriteRecalculateClustering => {
         log_warning!("Recalculate clustering is ignored!")
@@ -86,7 +94,7 @@ impl AugGraph {
       AugGraphOp::Barrier => {},
       AugGraphOp::EnsureCalculated(egos) => {
         for ego in egos {
-          self.ensure_calculated(ego);
+          self.ensure_calculated(*ego);
         }
       },
     }
