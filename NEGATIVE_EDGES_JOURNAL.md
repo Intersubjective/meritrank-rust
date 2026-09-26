@@ -8,7 +8,7 @@ Decision numbering is local to this document (`JOURNAL.md` covers the NNG→TCP 
 its own D1, D2, …).
 
 Companion interactive demo: `scripts/negative_edges_demo.ipynb` (run via `scripts/run_demo.sh`).
-Requirements, glossary and acceptance tests: `NEGATIVE_EDGES_FEATURE.md`. This journal records
+Requirements, glossary and acceptance tests: `NEGATIVE_EDGES_FEATURE.md` (decisions here: D1–D15). This journal records
 *why*; the feature document records *what*. Where they differ, the feature document is current.
 
 ---
@@ -92,7 +92,7 @@ Closed form for node C:
 score_A(C) = n_C · (1 − (1+λ)·q_C)
 ```
 
-`n_C` = expected visits to C per walk, `q_C` = probability that a walk at C is later
+`n_C` = probability that a walk visits C (a node counts once per walk), `q_C` = probability that a walk at C is later
 **absorbed** at a wall. Not merely that it reaches a walled node: for a soft wall the two
 differ, and only absorption poisons (the notebook computes `q = d·α^distance`). The walled node
 itself sits at distance 0, so `b_B = 1`. Two mechanisms live in that formula and must not be
@@ -107,7 +107,10 @@ conflated:
 `q_C` is C's own routing choice and is invariant to everything Bob does. A node goes negative at
 `q_C > 1/(1+λ)`; at `λ = 1` that is `q_C > 0.5`. Recommended starting point: `λ ≈ 0.3–0.5`.
 
-`γ = 1` blames the whole prefix uniformly; `γ → 0` concentrates blame on the direct voucher.
+`γ = 1` blames the whole prefix uniformly; `γ → 0` concentrates blame on the wall node itself
+(`b = γ⁰ = 1`). Blaming only the direct voucher is a separate mode (blame radius 1), not a limit
+of γ. The closed form above holds for a node with `b = 1`; in general see the feature document,
+R10.
 
 ---
 
@@ -179,7 +182,10 @@ allows. When inheritance is built, it must satisfy:
 - **Which walls — open.** Preferably hard walls only (`|w| = 1`, explicit bans). Soft walls are
   behavioural traces, and inheriting them opens a read-receipt oracle: X can trust A
   unilaterally and read A's walls off diffs of X's own frame. The alternative — inherit all
-  walls proportionally to `d`, under a cap — weakens the oracle but does not close it.
+  walls proportionally to `d`, under a cap — weakens the oracle but does not close it. Against
+  hard-only: inheriting soft walls is the only way a spammer's standing drops in the frames of
+  third parties who walk through his recipients; phase 1 confines the effect to the recipients'
+  own frames (Tentura design note, §13).
 - **Own positive edge vs inherited wall is not MR's concern.** The application compensates
   (Tentura keeps friends always visible); MR stays generic.
 
@@ -241,8 +247,10 @@ a minus and drags his endorsers down.
 **Decision**: for Tentura this is joint liability by design, not an attack to defend against. If
 I vouched for someone who starts spamming, I lose standing with him. The loss is bounded by my
 own flow into him (A4) and repaired the moment I weaken or cut the edge (A5). The application is
-expected to tell vouchers when this is happening (Tentura design note, Q9); MR needs nothing
-extra.
+expected to tell vouchers when this is happening (Tentura design note, Q9). Phase 1 alert is
+qualitative and computed by the application from its own walls, the voucher's edges and
+`mr_node_score(s, X) > 0`; MR needs nothing extra. A loss-attribution function
+(`mr_wall_loss(ego, target, wall)`, from `absorbed_at`) is a possible later extension.
 
 ## D12 — Rollout: clear legacy negative edges before switching semantics
 
@@ -253,6 +261,59 @@ live in production under the current semantics.
 **Decision**: before the MR switch, the application removes every legacy negative edge (Tentura:
 clamp published trust weights to `≥ 0` and resync). Only then does it publish walls.
 
+## D13 — One absorption trial per walk per wall
+
+**Context** (cross-check, 2026-09-26): if every arrival at a soft wall is a new trial, B can add
+a cycle `B→D→B` and raise the absorption probability of everyone who routes to him — B's own
+out-edges then change the scores of nodes upstream of him, which A1 forbids.
+
+**Decision**: a walk takes exactly one absorption trial at a given wall, at its first arrival.
+If it passes, later arrivals at the same wall are free.
+
+**Consequence**: B's out-edges no longer affect nodes upstream of him through re-trials. One
+effect remains and is intended: if a *second* wall E is reachable from B, walks that pass B and
+are absorbed at E blame their whole prefix, including those who routed to B. That is ordinary
+backward blame along the path — vouching for B covers where B routes — and it is bounded by the
+`(1 − d)` share that passes B. A1 is stated with this proviso.
+
+## D14 — Zero opinion is left alone; axioms are about the core score
+
+**Context**: served scores blend in a global zero opinion, `(1 − k)·score + k·zero` (Tentura
+runs `k = 0.02`). A node behind a hard wall, and everything reachable only through it,
+therefore gets `k·zero(X)` instead of 0 in the served output.
+
+**Decision**: keep the blend for all nodes. Zero opinion is a deliberately ego-independent prior;
+walls act on walks inside one frame, and mixing the two layers to zero out one case — which the
+application hides anyway (bans) — is not worth it. Suppressing the blend only for `D_A` would
+not even be complete: the subtree behind the wall would still get `k·zero`. Axioms and tests are
+stated on the core score; MR integration tests run with the factor at 0 or read the core score.
+A6 holds on served scores as well, since the zero-opinion term does not depend on walls.
+
+## D15 — Cross-check fixes: accounting, exact storage, contexts, barrier, tests
+
+**Context** (2026-09-26): an independent cross-check (codex, GPT-6 Astra) of the feature spec
+against the service code and the Tentura design found gaps between the spec and the service as
+it actually runs.
+
+**Decisions**:
+
+- **Once per walk.** The core counts a node once per walk (`increment_unique_counts`); the spec
+  had said "per visit". Blame is also once per walk, with the `b` of the node's visit nearest to
+  the wall. `n_C` means "probability of being visited".
+- **Walls are exempt from VSIDS.** The service stores `w·bump^(index − mag_scale)` and rescales
+  and prunes a node's out-edges together. Positive weights are normalised, so this cancels for
+  them; `d` is not, so scaling would weaken walls and pruning would delete soft ones. Walls keep
+  the exact published `d`.
+- **Contexts are binding.** Walls follow the service's fan-out of null-context user edges into
+  every context, including later ones; bulk and incremental writes must agree; bulk validates.
+- **Barrier and caches.** A write ack means "queued"; `mr_sync` is the barrier. Wall changes
+  invalidate cached scores. A sign transition (trust ↔ wall) is a positive-edge change.
+- **Deterministic tests.** A seed setting; otherwise statistical tolerances; walls are inspected
+  in tests only through administrative reads.
+- **Axioms re-scoped.** A6 compares against the wall-free graph (the per-step form is false: a
+  wall upstream of wall B lifts B's negative score toward 0). A9 excludes sign transitions. A4's
+  "investment" is `n_C·q_C`.
+
 ---
 
 ## Axioms
@@ -262,15 +323,15 @@ formulations: `NEGATIVE_EDGES_FEATURE.md`, §7.
 
 | | Axiom |
 |---|---|
-| A1 | Changing any outgoing edge of B leaves `score_A(X)` unchanged for all `X ≠ B` (hard wall); for a soft wall, for all X not reachable from B |
+| A1 | Changing any outgoing edge of B leaves `score_A(X)` unchanged for all `X ≠ B` (hard wall); for a soft wall, for all X not reachable from B, unless another wall is reachable from B (D13) |
 | A2 | A node reachable from A only through B scores 0 (hard wall; soft wall: at most `(1 − d)` of its baseline) |
 | A3 | A node X with support independent of B and `q_X = 0` keeps a positive score (no collateral damage) |
-| A4 | C's multiplier is monotone in `q_C`, and C's loss never exceeds its investment in B |
+| A4 | C's multiplier is monotone in `q_C`, and C's loss never exceeds `(1+λ)` × its investment in B (`n_C·q_C`) |
 | A5 | Removing `C→B` restores C immediately (penalty is a function of the current graph) |
-| A6 | Distrusting B must not increase anyone's score |
+| A6 | Walls must not raise anyone's score above its value in the wall-free graph (D15) |
 | A7 | Total loss in A's frame ≤ `(1+λ)` × flow into B, where flow into B is `M_B`: the baseline visit mass of the walks that reach B |
 | A8 | A's negative edge affects only frames that transitively trust A |
-| A9 | Phase 1 (no inheritance): adding, changing or removing a wall of A changes no score in any frame other than A's |
+| A9 | Phase 1 (no inheritance): adding, changing or removing a wall of A, with A's positive out-edges unchanged, changes no score in any frame other than A's |
 
 ---
 
