@@ -9,9 +9,9 @@ use arc_swap::ArcSwap;
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use crate::data::Weight;
-use tokio::{sync::mpsc, task::JoinSet};
+use tokio::sync::{mpsc, watch};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -21,30 +21,65 @@ use crate::processor_stats::ProcessorStats;
 use crate::walk_tracker::WalkTracker;
 use meritrank_core::NodeId;
 
-/// Sends each op to both write channels (fan-out) for double-buffered eventual consistency.
+/// An operation with its position in the dispatcher's global sequence.
 #[derive(Clone)]
-pub struct FanoutSender {
-  tx_a: mpsc::Sender<AugGraphOp>,
-  tx_b: mpsc::Sender<AugGraphOp>,
+pub struct SeqOp {
+  pub seq: u64,
+  pub op:  Arc<AugGraphOp>,
 }
 
-impl FanoutSender {
+/// Urgent operations end a batch: the worker publishes right after applying them.
+fn is_urgent(op: &AugGraphOp) -> bool {
+  matches!(op, AugGraphOp::Stamp(_) | AugGraphOp::WriteCalculate(_))
+}
+
+/// Sends operations into a subgraph's single queue.
+#[derive(Clone)]
+pub struct OpSender {
+  tx:        mpsc::Sender<SeqOp>,
+  /// Numbering for standalone use of one processor (`send`). A `MultiGraphProcessor` numbers
+  /// operations with its dispatcher instead (`send_seq`); the two are never mixed.
+  local_seq: Arc<tokio::sync::Mutex<u64>>,
+}
+
+impl OpSender {
+  /// Numbers the operation locally and enqueues it. Returns its sequence number.
   pub async fn send(
     &self,
     op: AugGraphOp,
-  ) -> Result<(), mpsc::error::SendError<AugGraphOp>> {
-    let op2 = op.clone();
-    self.tx_a.send(op).await?;
-    self.tx_b.send(op2).await?;
-    Ok(())
+  ) -> Result<u64, mpsc::error::SendError<SeqOp>> {
+    let mut last = self.local_seq.lock().await;
+    let seq = *last + 1;
+    self
+      .tx
+      .send(SeqOp {
+        seq,
+        op: Arc::new(op),
+      })
+      .await?;
+    *last = seq;
+    Ok(seq)
+  }
+
+  /// Enqueues an operation numbered by the caller, who guarantees increasing numbers.
+  pub async fn send_seq(
+    &self,
+    seq: u64,
+    op: Arc<AugGraphOp>,
+  ) -> Result<(), mpsc::error::SendError<SeqOp>> {
+    self.tx.send(SeqOp { seq, op }).await
   }
 }
 
+/// A subgraph: two replica copies of the graph, one published for reads, one written by the
+/// worker thread, and the single queue that feeds them.
 pub struct ConcurrentDataProcessor {
   #[allow(unused)]
   processing_thread: thread::JoinHandle<()>,
-  pub op_sender:     FanoutSender,
+  pub op_sender:     OpSender,
   pub shared:        Arc<ArcSwap<RwLock<AugGraph>>>,
+  /// Sequence number of the last operation visible in the published copy.
+  pub published_seq: watch::Receiver<u64>,
   pub walk_tracker:  Option<WalkTracker>,
 }
 
@@ -57,80 +92,156 @@ pub struct MultiGraphProcessor {
   internal_stamp:    AtomicU64,
   publish_notify:    Arc<tokio::sync::Notify>,
   pub stats:         Option<Arc<ProcessorStats>>,
+  /// Every mutating operation takes this lock, gets the next sequence number and is enqueued into
+  /// all of its target subgraphs before the lock is released, so every subgraph sees operations
+  /// in one global order. Reads never take it.
+  dispatcher:        tokio::sync::Mutex<u64>,
+}
+
+/// Where a dispatched operation goes.
+enum Targets<'a> {
+  One(&'a SubgraphName),
+  /// These subgraphs, created if absent, in this order.
+  List(Vec<SubgraphName>),
+  /// Every existing subgraph, after creating `ensure` if it is absent.
+  All { ensure: &'a SubgraphName },
+}
+
+/// SplitMix64 finaliser.
+fn mix64(mut z: u64) -> u64 {
+  z = z.wrapping_add(0x9E37_79B9_7F4A_7C15);
+  z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+  z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+  z ^ (z >> 31)
+}
+
+/// Stable 64-bit key of a subgraph name (FNV-1a), for deriving its random streams.
+fn stream_key(name: &str) -> u64 {
+  name.bytes().fold(0xCBF2_9CE4_8422_2325, |h, b| {
+    (h ^ b as u64).wrapping_mul(0x0100_0000_01B3)
+  })
+}
+
+/// Seed of the random stream an operation uses: both copies apply it with the same stream, so
+/// they stay identical, and a rerun of the same sequence reproduces every walk.
+fn op_seed(
+  seed: u64,
+  stream: u64,
+  seq: u64,
+) -> u64 {
+  mix64(mix64(seed ^ mix64(stream)) ^ seq)
 }
 
 fn processing_loop(
   copy_a: Arc<RwLock<AugGraph>>,
   copy_b: Arc<RwLock<AugGraph>>,
-  write_rx_a: mpsc::Receiver<AugGraphOp>,
-  write_rx_b: mpsc::Receiver<AugGraphOp>,
+  mut rx: mpsc::Receiver<SeqOp>,
   shared: Arc<ArcSwap<RwLock<AugGraph>>>,
   publish_notify: Arc<tokio::sync::Notify>,
-  min_ops_before_swap: usize,
+  published_tx: watch::Sender<u64>,
+  max_batch: usize,
   stats: Option<Arc<ProcessorStats>>,
+  stream: u64,
 ) {
   let mut front_arc = copy_a;
   let mut back_arc = copy_b;
-  let mut front_rx = write_rx_a;
-  let mut back_rx = write_rx_b;
-
+  let max_batch = max_batch.max(1);
   shared.store(Arc::clone(&front_arc));
-  let mut back_guard = back_arc.write();
 
-  let apply_one = |guard: &mut parking_lot::RwLockWriteGuard<'_, AugGraph>, op: &AugGraphOp, st: &Option<Arc<ProcessorStats>>, record_stats: bool| {
+  let apply = |graph: &mut AugGraph, op: &SeqOp, record_stats: bool| {
     let start = Instant::now();
-    guard.apply_op(op);
+    let seed = op_seed(graph.settings.seed, stream, op.seq);
+    graph.mr.reseed(seed);
+    graph.apply_op(&op.op);
     if record_stats {
-      if let Some(s) = st {
+      if let Some(s) = &stats {
         s.record_applied(start.elapsed());
       }
     }
   };
 
   loop {
-    let mut applied = 0usize;
-    while applied < min_ops_before_swap {
-      let op = match back_rx.blocking_recv() {
-        Some(o) => o,
-        None => return,
-      };
-      apply_one(&mut back_guard, &op, &stats, true);
-      applied += 1;
-      while let Ok(op) = back_rx.try_recv() {
-        apply_one(&mut back_guard, &op, &stats, true);
-        applied += 1;
+    // Wait for work without holding any lock.
+    let first = match rx.blocking_recv() {
+      Some(op) => op,
+      None => return,
+    };
+    let mut batch = vec![first];
+    while batch.len() < max_batch && !is_urgent(&batch[batch.len() - 1].op) {
+      match rx.try_recv() {
+        Ok(op) => batch.push(op),
+        Err(_) => break,
       }
     }
 
-    drop(back_guard);
-    shared.store(Arc::clone(&back_arc));
-    publish_notify.notify_waiters();
-
-    std::mem::swap(&mut front_arc, &mut back_arc);
-    std::mem::swap(&mut front_rx, &mut back_rx);
-
-    back_guard = back_arc.write();
-    let mut drained = 0usize;
-    while let Ok(op) = back_rx.try_recv() {
-      apply_one(&mut back_guard, &op, &stats, false);
-      drained += 1;
+    {
+      let mut back = back_arc.write();
+      for op in &batch {
+        apply(&mut back, op, true);
+      }
     }
-    if drained >= min_ops_before_swap {
-      drop(back_guard);
-      shared.store(Arc::clone(&back_arc));
-      publish_notify.notify_waiters();
-      std::mem::swap(&mut front_arc, &mut back_arc);
-      std::mem::swap(&mut front_rx, &mut back_rx);
-      back_guard = back_arc.write();
+
+    // The back copy now holds everything the published copy holds plus the batch, so publishing
+    // it never moves the published state backwards.
+    let last_seq = batch[batch.len() - 1].seq;
+    shared.store(Arc::clone(&back_arc));
+    published_tx.send_replace(last_seq);
+    publish_notify.notify_waiters();
+    std::mem::swap(&mut front_arc, &mut back_arc);
+
+    // Bring the new back copy level with the published one by replaying the same batch with the
+    // same random streams. Readers still on it finish first; nobody waits on it while idle.
+    let mut back = back_arc.write();
+    for op in &batch {
+      apply(&mut back, op, false);
+    }
+  }
+}
+
+/// Runs `read` on the published copy. The copy is re-checked after taking its lock, so a read
+/// never runs on a copy that stopped being published in between.
+pub fn read_published<F, T>(
+  shared: &ArcSwap<RwLock<AugGraph>>,
+  read: F,
+) -> T
+where
+  F: FnOnce(&AugGraph) -> T,
+{
+  loop {
+    let arc = shared.load_full();
+    let guard = arc.read();
+    if Arc::ptr_eq(&shared.load(), &arc) {
+      return read(&guard);
     }
   }
 }
 
 impl ConcurrentDataProcessor {
+  /// A standalone processor (random streams keyed by the empty subgraph name).
   pub fn new(
     initial: AugGraph,
     queue_len: usize,
-    min_ops_before_swap: usize,
+    max_batch: usize,
+    publish_notify: Arc<tokio::sync::Notify>,
+    stats: Option<Arc<ProcessorStats>>,
+    walks_cache_size: usize,
+  ) -> Self {
+    Self::new_for_subgraph(
+      "",
+      initial,
+      queue_len,
+      max_batch,
+      publish_notify,
+      stats,
+      walks_cache_size,
+    )
+  }
+
+  pub fn new_for_subgraph(
+    name: &str,
+    initial: AugGraph,
+    queue_len: usize,
+    max_batch: usize,
     publish_notify: Arc<tokio::sync::Notify>,
     stats: Option<Arc<ProcessorStats>>,
     walks_cache_size: usize,
@@ -139,9 +250,12 @@ impl ConcurrentDataProcessor {
     let copy_b = Arc::new(RwLock::new(initial));
     let shared = Arc::new(ArcSwap::new(Arc::clone(&copy_a)));
 
-    let (tx_a, write_rx_a) = mpsc::channel(queue_len);
-    let (tx_b, write_rx_b) = mpsc::channel(queue_len);
-    let op_sender = FanoutSender { tx_a, tx_b };
+    let (tx, rx) = mpsc::channel(queue_len.max(1));
+    let op_sender = OpSender {
+      tx,
+      local_seq: Arc::new(tokio::sync::Mutex::new(0)),
+    };
+    let (published_tx, published_seq) = watch::channel(0);
 
     let walk_tracker = if walks_cache_size > 0 {
       Some(WalkTracker::new(walks_cache_size as u64))
@@ -151,16 +265,18 @@ impl ConcurrentDataProcessor {
 
     let shared_clone = Arc::clone(&shared);
     let notify_clone = Arc::clone(&publish_notify);
+    let stream = stream_key(name);
     let loop_thread = thread::spawn(move || {
       processing_loop(
         copy_a,
         copy_b,
-        write_rx_a,
-        write_rx_b,
+        rx,
         shared_clone,
         notify_clone,
-        min_ops_before_swap,
+        published_tx,
+        max_batch,
         stats,
+        stream,
       );
     });
 
@@ -168,8 +284,20 @@ impl ConcurrentDataProcessor {
       processing_thread: loop_thread,
       op_sender,
       shared,
+      published_seq,
       walk_tracker,
     }
+  }
+
+  /// Runs `read` on the published copy (see `read_published`).
+  pub fn read<F, T>(
+    &self,
+    read: F,
+  ) -> T
+  where
+    F: FnOnce(&AugGraph) -> T,
+  {
+    read_published(&self.shared, read)
   }
 
   #[allow(unused)]
@@ -181,21 +309,19 @@ impl ConcurrentDataProcessor {
 
 impl MultiGraphProcessor {
   pub fn new(settings: Settings) -> Self {
-    let mgp = MultiGraphProcessor {
-      subgraphs_map:   DashMap::new(),
-      settings,
-      loading:         AtomicBool::new(false),
-      internal_stamp:  AtomicU64::new(0),
-      publish_notify:  Arc::new(tokio::sync::Notify::new()),
-      stats:           None,
-    };
-    mgp.insert_subgraph_if_does_not_exist(&String::new());
-    mgp
+    Self::with_stats(settings, None)
   }
 
   pub fn new_with_stats(
     settings: Settings,
     stats: Arc<ProcessorStats>,
+  ) -> Self {
+    Self::with_stats(settings, Some(stats))
+  }
+
+  fn with_stats(
+    settings: Settings,
+    stats: Option<Arc<ProcessorStats>>,
   ) -> Self {
     let mgp = MultiGraphProcessor {
       subgraphs_map:   DashMap::new(),
@@ -203,7 +329,8 @@ impl MultiGraphProcessor {
       loading:         AtomicBool::new(false),
       internal_stamp:  AtomicU64::new(0),
       publish_notify:  Arc::new(tokio::sync::Notify::new()),
-      stats:           Some(stats),
+      stats,
+      dispatcher:      tokio::sync::Mutex::new(0),
     };
     mgp.insert_subgraph_if_does_not_exist(&String::new());
     mgp
@@ -213,11 +340,56 @@ impl MultiGraphProcessor {
     self.internal_stamp.fetch_add(1, Ordering::SeqCst) + 1
   }
 
-  pub fn get_tx_channel(
+  /// Numbers `op` and enqueues it into every target subgraph, under the dispatcher lock.
+  async fn dispatch(
     &self,
-    subgraph_name: &SubgraphName,
-  ) -> FanoutSender {
-    self.insert_subgraph_if_does_not_exist(subgraph_name)
+    targets: Targets<'_>,
+    op: AugGraphOp,
+  ) -> Response {
+    let op = Arc::new(op);
+    let mut last_seq = self.dispatcher.lock().await;
+
+    let names: Vec<SubgraphName> = match targets {
+      Targets::One(name) => {
+        self.insert_subgraph_if_does_not_exist(name);
+        vec![name.clone()]
+      },
+      Targets::List(names) => {
+        for name in &names {
+          self.insert_subgraph_if_does_not_exist(name);
+        }
+        names
+      },
+      Targets::All { ensure } => {
+        self.insert_subgraph_if_does_not_exist(ensure);
+        let mut names: Vec<SubgraphName> =
+          self.subgraphs_map.iter().map(|r| r.key().clone()).collect();
+        names.sort();
+        names
+      },
+    };
+    // Clone the senders out of the map: no map guard may be held across an await.
+    let senders: Vec<OpSender> = names
+      .iter()
+      .filter_map(|n| self.subgraphs_map.get(n).map(|p| p.op_sender.clone()))
+      .collect();
+
+    *last_seq += 1;
+    let seq = *last_seq;
+    let mut ok = true;
+    for sender in senders {
+      if let Some(s) = &self.stats {
+        s.record_enqueue();
+      }
+      if sender.send_seq(seq, Arc::clone(&op)).await.is_err() {
+        ok = false;
+      }
+    }
+    if ok {
+      Response::Ok
+    } else {
+      Response::Fail
+    }
   }
 
   async fn send_op(
@@ -226,14 +398,15 @@ impl MultiGraphProcessor {
     op: AugGraphOp,
   ) -> Response {
     log_trace!();
+    self.dispatch(Targets::One(subgraph_name), op).await
+  }
 
-    if let Some(s) = &self.stats {
-      s.record_enqueue();
-    }
-    if self.get_tx_channel(subgraph_name).send(op).await.is_ok() {
-      Response::Ok
+  /// `subgraph` and the null context, once each.
+  fn with_null_context(subgraph_name: &SubgraphName) -> Vec<SubgraphName> {
+    if subgraph_name.is_empty() {
+      vec![String::new()]
     } else {
-      Response::Fail
+      vec![subgraph_name.clone(), String::new()]
     }
   }
 
@@ -247,27 +420,14 @@ impl MultiGraphProcessor {
   {
     log_trace!();
 
-    let arc = match self.subgraphs_map.get(subgraph_name) {
-      Some(subgraph) => {
-        log_verbose!("Found subgraph for name: {:?}", subgraph_name);
-        subgraph.shared.load_full()
-      },
+    let shared = match self.subgraphs_map.get(subgraph_name) {
+      Some(subgraph) => Arc::clone(&subgraph.shared),
       None => {
         log_warning!("Subgraph not found for name: {:?}", subgraph_name);
         return Response::Fail;
       },
     };
-
-    let rw_guard = arc.read();
-    log_trace!(
-      "Successfully accessed AugGraph for subgraph: {:?}",
-      subgraph_name
-    );
-
-    let response = read_function(&*rw_guard);
-    log_verbose!("Executed read function for subgraph: {:?}", subgraph_name);
-
-    response
+    read_published(&shared, read_function)
   }
 
   pub async fn sync_future(
@@ -276,15 +436,14 @@ impl MultiGraphProcessor {
   ) {
     log_trace!();
 
-    let senders: Vec<FanoutSender> = self
-      .subgraphs_map
-      .iter()
-      .map(|r| r.value().op_sender.clone())
-      .collect();
-
-    for s in &senders {
-      let _ = s.send(AugGraphOp::Stamp(stamp)).await;
-    }
+    let _ = self
+      .dispatch(
+        Targets::All {
+          ensure: &String::new(),
+        },
+        AugGraphOp::Stamp(stamp),
+      )
+      .await;
 
     loop {
       let notified = self.publish_notify.notified();
@@ -292,7 +451,7 @@ impl MultiGraphProcessor {
       let done = self
         .subgraphs_map
         .iter()
-        .all(|r| r.value().shared.load_full().read().stamp >= stamp);
+        .all(|r| read_published(&r.value().shared, |g| g.stamp) >= stamp);
       if done {
         break;
       }
@@ -331,8 +490,6 @@ impl MultiGraphProcessor {
     &self,
     req: &Request,
   ) -> Response {
-    //  NOTE: Duplicated logic with `process_request_blocking`.
-    //
     //  FIXME: No need to clone here, but borrow checker!!!
 
     log_trace!();
@@ -410,10 +567,14 @@ impl MultiGraphProcessor {
       ReqData::WriteBulkEdges(data) => {
         self.loading.store(true, Ordering::SeqCst);
 
-        self.subgraphs_map.clear();
-        self.insert_subgraph_if_does_not_exist(&String::new());
+        {
+          let _ordered = self.dispatcher.lock().await;
+          self.subgraphs_map.clear();
+          self.insert_subgraph_if_does_not_exist(&String::new());
+        }
 
-        let mut contexts: HashSet<SubgraphName> = HashSet::new();
+        // Ordered collections: the load must not depend on hash iteration order.
+        let mut contexts: BTreeSet<SubgraphName> = BTreeSet::new();
         for edge in &data.edges {
           if !edge.context.is_empty() {
             contexts.insert(edge.context.clone());
@@ -424,8 +585,8 @@ impl MultiGraphProcessor {
         }
 
         let mut user_user_edges: Vec<OpWriteEdge> = vec![];
-        let mut context_non_user_edges: HashMap<SubgraphName, Vec<OpWriteEdge>> =
-          HashMap::new();
+        let mut context_non_user_edges: BTreeMap<SubgraphName, Vec<OpWriteEdge>> =
+          BTreeMap::new();
 
         for edge in data.edges {
           let op = OpWriteEdge {
@@ -483,20 +644,11 @@ impl MultiGraphProcessor {
           .await
       },
       ReqData::WriteCreateContext => {
-        use dashmap::mapref::entry::Entry;
-        let was_new = match self.subgraphs_map.entry(req.subgraph.clone()) {
-          Entry::Occupied(_) => false,
-          Entry::Vacant(v) => {
-            v.insert(GraphProcessor::new(
-              AugGraph::new(self.settings.clone()),
-              self.settings.subgraph_queue_capacity,
-              self.settings.min_ops_before_swap,
-              self.publish_notify.clone(),
-              self.stats.clone(),
-              self.settings.walks_cache_size,
-            ));
-            true
-          },
+        let was_new = {
+          let _ordered = self.dispatcher.lock().await;
+          let exists = self.subgraphs_map.contains_key(&req.subgraph);
+          self.insert_subgraph_if_does_not_exist(&req.subgraph);
+          !exists
         };
         if was_new {
           self.seed_context_from_aggregate(&req.subgraph).await;
@@ -517,13 +669,12 @@ impl MultiGraphProcessor {
           .await
       },
       ReqData::WriteDeleteNode(data) => {
-        let op = AugGraphOp::DeleteNode(data.node.clone());
-        let resp = self.send_op(&req.subgraph, op.clone()).await;
-        if matches!(resp, Response::Ok) {
-          let default_ctx = String::new();
-          let _ = self.send_op(&default_ctx, op).await;
-        }
-        resp
+        self
+          .dispatch(
+            Targets::List(Self::with_null_context(&req.subgraph)),
+            AugGraphOp::DeleteNode(data.node.clone()),
+          )
+          .await
       },
       ReqData::WriteZeroOpinion(data) => {
         self
@@ -531,6 +682,7 @@ impl MultiGraphProcessor {
           .await
       },
       ReqData::WriteReset => {
+        let _ordered = self.dispatcher.lock().await;
         self.subgraphs_map.clear();
         self.insert_subgraph_if_does_not_exist(&String::new());
         Response::Ok
@@ -654,8 +806,6 @@ impl MultiGraphProcessor {
     subgraph_name: &SubgraphName,
     data: &OpWriteEdge,
   ) -> Response {
-    //  NOTE: Duplicated logic with `process_write_edge_blocking`.
-
     log_trace!("{:?} {:?}", subgraph_name, data);
 
     if data.src == data.dst {
@@ -703,12 +853,9 @@ impl MultiGraphProcessor {
           amount:    data.amount,
           magnitude: data.magnitude,
         });
-        let resp = self.send_op(subgraph_name, op.clone()).await;
-        if matches!(resp, Response::Ok) {
-          let default_ctx = String::new();
-          let _ = self.send_op(&default_ctx, op).await;
-        }
-        resp
+        self
+          .dispatch(Targets::List(Self::with_null_context(subgraph_name)), op)
+          .await
       },
     };
     response
@@ -742,22 +889,21 @@ impl MultiGraphProcessor {
     });
 
     if let Response::Edges(ResEdges { edges }) = response {
-      let tx = match self.subgraphs_map.get(subgraph_name) {
-        Some(entry) => entry.op_sender.clone(),
-        None => return,
-      };
       for edge in edges {
         if node_kind_from_prefix(&edge.src) == Some(NodeKind::User)
           && node_kind_from_prefix(&edge.dst) == Some(NodeKind::User)
           && edge.weight != 0.0
         {
-          let _ = tx
-            .send(AugGraphOp::WriteEdge(OpWriteEdge {
-              src:       edge.src,
-              dst:       edge.dst,
-              amount:    edge.weight,
-              magnitude: 0,
-            }))
+          let _ = self
+            .send_op(
+              subgraph_name,
+              AugGraphOp::WriteEdge(OpWriteEdge {
+                src:       edge.src,
+                dst:       edge.dst,
+                amount:    edge.weight,
+                magnitude: 0,
+              }),
+            )
             .await;
         }
       }
@@ -770,17 +916,15 @@ impl MultiGraphProcessor {
     subgraph_name: &SubgraphName,
     ego: &NodeName,
   ) {
-    let ego_id = {
-      let arc = match self.subgraphs_map.get(subgraph_name) {
-        Some(entry) => entry.shared.load_full(),
+    let shared = match self.subgraphs_map.get(subgraph_name) {
+      Some(entry) => Arc::clone(&entry.shared),
+      None => return,
+    };
+    let ego_id =
+      match read_published(&shared, |g| g.nodes.get_by_name(ego).map(|i| i.id)) {
+        Some(id) => id,
         None => return,
       };
-      let guard = arc.read();
-      match guard.nodes.get_by_name(ego) {
-        Some(info) => info.id,
-        None => return,
-      }
-    };
 
     let evicted_ids: Vec<NodeId> = {
       match self.subgraphs_map.get(subgraph_name) {
@@ -803,21 +947,24 @@ impl MultiGraphProcessor {
     }
   }
 
+  /// Creates the subgraph if it is absent. Callers that must order the creation against
+  /// operations hold the dispatcher lock.
   pub fn insert_subgraph_if_does_not_exist(
     &self,
     subgraph_name: &SubgraphName,
-  ) -> FanoutSender {
+  ) {
     log_trace!();
 
-    if let Some(entry) = self.subgraphs_map.get(subgraph_name) {
-      return entry.op_sender.clone();
+    if self.subgraphs_map.contains_key(subgraph_name) {
+      return;
     }
     self
       .subgraphs_map
       .entry(subgraph_name.clone())
       .or_insert_with(|| {
         log_trace!("Create subgraph");
-        GraphProcessor::new(
+        GraphProcessor::new_for_subgraph(
+          subgraph_name,
           AugGraph::new(self.settings.clone()),
           self.settings.subgraph_queue_capacity,
           self.settings.min_ops_before_swap,
@@ -825,11 +972,11 @@ impl MultiGraphProcessor {
           self.stats.clone(),
           self.settings.walks_cache_size,
         )
-      })
-      .op_sender
-      .clone()
+      });
   }
 
+  /// A User→User edge takes part in every context: it is enqueued into all subgraphs as one
+  /// dispatched operation.
   async fn process_user_to_user_edge(
     &self,
     subgraph_name: &SubgraphName,
@@ -838,50 +985,24 @@ impl MultiGraphProcessor {
     amount: Weight,
     magnitude: Magnitude,
   ) -> Response {
-    //  NOTE: Duplicated logic with `process_user_to_user_edge_blocking`.
-
     log_trace!();
-
-    self.insert_subgraph_if_does_not_exist(subgraph_name);
-
-    let senders: Vec<FanoutSender> = self
-      .subgraphs_map
-      .iter()
-      .map(|r| r.value().op_sender.clone())
-      .collect();
-
-    let mut join_set = JoinSet::new();
-    for op_sender in senders {
-      let src = src.clone();
-      let dst = dst.clone();
-      join_set.spawn(async move {
-        op_sender
-          .send(AugGraphOp::WriteEdge(OpWriteEdge {
-            src,
-            dst,
-            amount,
-            magnitude,
-          }))
-          .await
-      });
-    }
-
-    let mut all_successful = true;
-    while let Some(result) = join_set.join_next().await {
-      match result {
-        Ok(Ok(())) => {},
-        _ => {
-          log_error!("Failed to send WriteEdge operation to a subgraph");
-          all_successful = false;
+    let response = self
+      .dispatch(
+        Targets::All {
+          ensure: subgraph_name,
         },
-      }
+        AugGraphOp::WriteEdge(OpWriteEdge {
+          src: src.clone(),
+          dst: dst.clone(),
+          amount,
+          magnitude,
+        }),
+      )
+      .await;
+    if !matches!(response, Response::Ok) {
+      log_error!("Failed to send WriteEdge operation to a subgraph");
     }
-
-    if all_successful {
-      Response::Ok
-    } else {
-      Response::Fail
-    }
+    response
   }
 }
 

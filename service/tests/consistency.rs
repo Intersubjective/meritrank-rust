@@ -164,10 +164,9 @@ async fn flush(
 // S1: the two buffer copies must apply writes in one order
 // ---------------------------------------------------------------------------
 
-/// Concurrent writers to one edge: after the queue settles, every published copy must hold the
-/// same weight. Today `FanoutSender::send` awaits the two queues separately, so two writers can
-/// interleave (a1, a2, b2, b1) and the copies end with different weights.
-#[ignore = "S1: fixed in phase 2 (one queue + replay log)"]
+/// Concurrent writers to one edge, then walks: every published copy must hold the same weight and
+/// bit-identical scores. Before phase 2, `FanoutSender::send` awaited two queues separately, so
+/// two writers could interleave (a1, a2, b2, b1), and each copy drew its own random walks.
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn s1_buffer_copies_are_replicas() {
   for trial in 0..40 {
@@ -194,18 +193,43 @@ async fn s1_buffer_copies_are_replicas() {
       r.unwrap().unwrap();
     }
 
+    // Random walks too: both copies must draw the same streams.
+    for (s, d) in [("U2", "U3"), ("U3", "U1"), ("U2", "U4")] {
+      proc
+        .op_sender
+        .send(AugGraphOp::WriteEdge(edge(s, d, 1.0)))
+        .await
+        .unwrap();
+    }
+    proc
+      .op_sender
+      .send(AugGraphOp::WriteCalculate(OpWriteCalculate {
+        ego: "U1".into(),
+      }))
+      .await
+      .unwrap();
+    proc
+      .op_sender
+      .send(AugGraphOp::WriteEdge(edge("U3", "U4", 2.0)))
+      .await
+      .unwrap();
+
     // Each flush publishes a copy; consecutive publications alternate between the two copies.
     let mut stamp = 0;
     let mut seen = vec![];
     for _ in 0..6 {
       flush(&proc, &notify, &mut stamp).await;
-      seen.push(published_weight(&proc, "U1", "U2"));
+      let scores = proc.read(|g| {
+        let u1 = g.nodes.get_by_name("U1").unwrap().id;
+        g.mr.get_all_scores(u1, None).unwrap()
+      });
+      seen.push((published_weight(&proc, "U1", "U2"), scores));
     }
     seen.dedup();
     assert!(
       seen.len() == 1,
-      "trial {trial}: buffer copies diverged, published weights {:?}",
-      seen
+      "trial {trial}: buffer copies diverged: {} distinct published states",
+      seen.len()
     );
     proc.shutdown().ok();
   }
@@ -215,7 +239,6 @@ async fn s1_buffer_copies_are_replicas() {
 // S2: fanned-out User→User writes must reach every context in one order
 // ---------------------------------------------------------------------------
 
-#[ignore = "S2: fixed in phase 2 (dispatcher)"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn s2_user_edges_reach_contexts_in_one_order() {
   for trial in 0..100 {
@@ -297,7 +320,6 @@ async fn s3_sync_waits_for_preceding_writes() {
 /// A reader loads the published Arc, then takes its read lock. If a swap happens in between, the
 /// worker write-locks that copy and holds the lock while waiting for the next operation, so the
 /// read waits until somebody writes again. Here nobody does.
-#[ignore = "S5: fixed in phase 2 (safe reader acquisition)"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn s5_stale_reader_does_not_stall() {
   let notify = Arc::new(Notify::new());
@@ -345,7 +367,6 @@ async fn s5_stale_reader_does_not_stall() {
 
 /// `queue_len = 1, min_ops_before_swap = 2`: the worker waits on the back queue for a second
 /// operation while the sender is blocked on the full front queue.
-#[ignore = "S6: fixed in phase 2 (single queue, publication policy)"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn s6_small_queue_and_batch_do_not_deadlock() {
   let notify = Arc::new(Notify::new());
@@ -368,8 +389,8 @@ async fn s6_small_queue_and_batch_do_not_deadlock() {
   );
 }
 
-/// A lone barrier must publish even when the batch threshold is not reached.
-#[ignore = "S6: fixed in phase 3 (urgent barrier)"]
+/// A lone barrier must publish even when the batch threshold is not reached (fixed in phase 2:
+/// `Stamp` is urgent and ends a batch).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn s6_lone_sync_publishes_below_batch_threshold() {
   let proc = MultiGraphProcessor::new(Settings {
@@ -434,7 +455,6 @@ async fn s7_reverse_score_is_fresh_after_sync() {
 /// catches B up only with what is already in B's queue and publishes it at once: the published
 /// copy is then older than the one before it, and stays so until the next write. Here a writer
 /// keeps adding distinct edges while a reader watches the published edge count.
-#[ignore = "S14: fixed in phase 2 (publish only a copy at least as advanced)"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn s14_publication_is_monotonic() {
   let notify = Arc::new(Notify::new());

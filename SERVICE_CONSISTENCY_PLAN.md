@@ -1,6 +1,6 @@
 # Plan: Service Consistency Track
 
-**Status: PLANNED, NOT IMPLEMENTED.** Agreed 2026-09-26. Lands in `main` before the negative-edges
+**Status: IN PROGRESS** — phases 0–2 done on `feature/service-consistency`. Agreed 2026-09-26. Lands in `main` before the negative-edges
 feature (`NEGATIVE_EDGES_FEATURE.md`, dependencies C1–C5; journal `NEGATIVE_EDGES_JOURNAL.md`,
 D22 and D26). Every defect listed in §1 exists in `main` today, independently of walls.
 
@@ -69,15 +69,18 @@ D22 and D26). Every defect listed in §1 exists in `main` today, independently o
 
 ### 2.3 Randomness (S12)
 
-- Every random draw in the core goes through an `&mut impl Rng` argument: neighbour sampling,
-  continuation, optimized invalidation, the incremental push, future absorption trials.
-- The worker creates the RNG per operation from `(seed, subgraph, seq)` (a seedable PRNG seeded by
-  a hash of the triple). Both copies apply the same operation with the same stream, so they stay
-  identical without sharing RNG state; reruns of the same operation sequence reproduce every walk.
+- The random generator is a field of `MeritRank` (`reseed(seed)`); inside the core it is handed
+  to every random draw: neighbour sampling, continuation, optimized invalidation, the incremental
+  push, future absorption trials. The public API takes no generator.
+- Before applying an operation the worker reseeds the copy's generator from
+  `(seed, subgraph, seq)` (SplitMix64 over the settings seed, an FNV-1a key of the subgraph name
+  and the sequence number). Both copies apply the same operation with the same stream, so they
+  stay identical without sharing generator state; reruns of the same operation sequence
+  reproduce every walk.
 - `MERITRANK_SEED` sets the seed; unset, a random seed is drawn once at start-up and shared by all
   subgraphs and both copies.
-- Deterministic ordering: bulk edges keep input order; `get_all_scores` breaks score ties by node
-  id.
+- Deterministic ordering: bulk edges keep input order and contexts are processed in sorted order;
+  `get_all_scores` breaks score ties by node id.
 
 ### 2.4 Core changes (S11, S13)
 
@@ -95,7 +98,7 @@ D22 and D26). Every defect listed in §1 exists in `main` today, independently o
 - **`clear_ego` frees memory.** It returns the ego's block to a free list, removes it from
   `ego_blocks`, replaces each walk's `nodes` with an empty `Vec`, and removes the ego from the
   calculated set and the counters. `ensure_block_for_ego` reuses free blocks first.
-- `meritrank_core` 0.11 (API change: RNG arguments).
+- `meritrank_core` 0.11 (API change: `pos_sum`/`neg_sum` fields become methods; `reseed`).
 
 ### 2.5 Residency: own LRU with pins (S8, S9, S10)
 
@@ -165,7 +168,7 @@ Each phase lands in `main` separately with its tests.
 | # | Phase | Contents | Tests |
 |---|---|---|---|
 | 0 | **Failing tests first** | Tests that reproduce S1–S3, S5–S7, S9, S14 against current `main`, marked `#[ignore = "S#: fixed in phase N"]` so `main` stays green; each phase removes its markers (`service/tests/consistency.rs`, `service/src/walk_tracker.rs`) | concurrent writes to one edge → copies differ; `sync(1)` after published stamp 100; reader stall; `queue_len=1, min_ops=2` deadlock; lone barrier below the batch threshold; stale reverse score after a change; newly touched ego evicted by the tracker; order across contexts; published state moving backwards |
-| 1 | **Core** | RNG arguments; lazy exact distributions; `p` only when visited; dirty egos; calculated set; `clear_ego` frees memory; stable tie order. core 0.11 | existing core tests; `test_incremental_bias.rs`; seeded determinism; weight-ratio > 2^53; memory reuse after eviction |
+| 1 | **Core** | RNG as a reseedable `MeritRank` field; lazy exact distributions; `p` only when visited; dirty egos; calculated set; `clear_ego` frees memory; stable tie order. core 0.11 | existing core tests; `test_incremental_bias.rs`; seeded determinism; weight-ratio > 2^53; memory reuse after eviction |
 | 2 | **Sequencing** | Dispatcher, single queue, replay log, publication policy, watermark, safe reader acquisition, per-operation RNG | copies bit-identical after concurrent writes; no stall; no deadlock at any threshold; order across contexts; publication monotonic |
 | 3 | **Barrier** | `Barrier` op, `mr_sync`, idempotent `EnsureCalculated`, bulk/reset/context creation through the dispatcher, connector volatility and upgrade script | two connector processes with overlapping stamps; sync covers every context incl. one created concurrently; prepared statements see fresh results |
 | 4 | **Residency and reads** | Own LRU with pins, `Lease`, two-phase reads, mutual in portions | no eviction of a pinned ego; concurrent acquires of one ego calculate once; mutual with more candidates than capacity; memory bounded by capacity |
