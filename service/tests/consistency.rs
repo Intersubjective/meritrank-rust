@@ -494,3 +494,35 @@ async fn s14_publication_is_monotonic() {
     regression
   );
 }
+
+// ---------------------------------------------------------------------------
+// S12: the same seed and the same operations give the same walks (phase 1)
+// ---------------------------------------------------------------------------
+
+/// Two graphs built from settings with the same seed and fed the same operations — as the two
+/// buffer copies are — end with identical scores; a different seed gives different ones.
+#[test]
+fn s12_same_seed_same_scores() {
+  let run = |seed: u64| {
+    let mut g = AugGraph::new(Settings {
+      seed,
+      ..settings(2_000)
+    });
+    for i in 0..10 {
+      g.set_edge(format!("U{i}"), format!("U{}", (i + 1) % 10), 1.0, 0);
+      g.set_edge(format!("U{i}"), format!("U{}", (i + 4) % 10), 0.5, 0);
+    }
+    g.calculate("U0".into());
+    g.calculate("U3".into());
+    g.set_edge("U2".into(), "U7".into(), 2.0, 0);
+    g.set_edge("U5".into(), "U6".into(), 0.0, 0);
+    let id = |g: &AugGraph, n: &str| g.nodes.get_by_name(n).unwrap().id;
+    let (u0, u3) = (id(&g, "U0"), id(&g, "U3"));
+    (
+      g.mr.get_all_scores(u0, None).unwrap(),
+      g.mr.get_all_scores(u3, None).unwrap(),
+    )
+  };
+  assert_eq!(run(11), run(11));
+  assert_ne!(run(11), run(12));
+}

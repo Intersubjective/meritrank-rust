@@ -45,8 +45,8 @@ pub fn perform_astar_search(
           } else {
             let n = kv[0].0;
             let mut w = *kv[0].1;
-            if data.pos_sum > EPSILON {
-              w /= data.pos_sum;
+            if data.pos_sum() > EPSILON {
+              w /= data.pos_sum();
             }
             neighbor = Some(Link::<NodeId, Weight> {
               neighbor:       *n,

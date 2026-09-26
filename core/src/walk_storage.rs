@@ -1,4 +1,3 @@
-use rand::rng;
 use rand::rand_core::RngCore;
 use rand::Rng;
 
@@ -21,6 +20,8 @@ pub struct WalkStorage {
   walks:          Vec<RandomWalk>,
   walks_per_ego:  usize,
   ego_blocks:     IntMap<NodeId, WalkId>,
+  /// Start ids of blocks released by evicted egos, reused before the storage grows.
+  free_blocks:    Vec<WalkId>,
 }
 
 impl WalkStorage {
@@ -30,7 +31,13 @@ impl WalkStorage {
       walks:         Vec::new(),
       walks_per_ego,
       ego_blocks:    IntMap::default(),
+      free_blocks:   Vec::new(),
     }
+  }
+
+  /// Number of walk slots allocated (occupied or free).
+  pub fn allocated_walks(&self) -> usize {
+    self.walks.len()
   }
 
   pub fn walks_per_ego(&self) -> usize {
@@ -75,12 +82,38 @@ impl WalkStorage {
     if let Some(&start) = self.ego_blocks.get(&ego) {
       return Ok(start);
     }
-    let start = self.walks.len() as WalkId;
-    for _ in 0..self.walks_per_ego {
-      self.walks.push(RandomWalk::new());
-    }
+    let start = match self.free_blocks.pop() {
+      Some(start) => start,
+      None => {
+        let start = self.walks.len() as WalkId;
+        for _ in 0..self.walks_per_ego {
+          self.walks.push(RandomWalk::new());
+        }
+        start
+      },
+    };
     self.ego_blocks.insert(ego, start);
     Ok(start)
+  }
+
+  /// Clears the ego's walks (as `clear_block_for_ego`), frees their memory and returns the block
+  /// to the free list. Used when an ego is evicted.
+  pub fn release_block_for_ego(
+    &mut self,
+    ego: NodeId,
+    pos_hits: &mut IntMap<NodeId, Counter>,
+    neg_hits: &mut IntMap<NodeId, Counter>,
+  ) -> Result<(), MeritRankError> {
+    let start = match self.ego_blocks.remove(&ego) {
+      Some(start) => start,
+      None => return Ok(()),
+    };
+    self.clear_block_for_ego(ego, start, pos_hits, neg_hits)?;
+    for walk in &mut self.walks[start..start + self.walks_per_ego] {
+      *walk = RandomWalk::new();
+    }
+    self.free_blocks.push(start);
+    Ok(())
   }
 
   /// Clears all walks in the ego's block: decrements counters, removes from visits, clears walk storage.
@@ -162,6 +195,7 @@ impl WalkStorage {
     self.visits.clear();
     self.walks.clear();
     self.ego_blocks.clear();
+    self.free_blocks.clear();
   }
 
   pub fn assert_visits_consistency(&self) -> Result<(), MeritRankError> {
@@ -179,11 +213,12 @@ impl WalkStorage {
 
   /// Returns a walk IDs and cut positions for the walks affected by introducing new outgoing
   /// edge at invalidated_node.
-  pub fn find_affected_walkids(
+  pub fn find_affected_walkids<R: Rng + ?Sized>(
     &self,
     invalidated_node: NodeId,
     dst_node: Option<NodeId>,
     step_recalc_probability: Option<(Weight, Weight)>,
+    rng: &mut R,
   ) -> Result<Vec<(WalkId, usize)>, MeritRankError> {
     let mut invalidated_walks_ids = vec![];
 
@@ -195,7 +230,6 @@ impl WalkStorage {
 
     for (walk_id, visit_pos) in walks {
       let _new_pos = if OPTIMIZE_INVALIDATION && dst_node.is_some() {
-        let mut rng = rng();
         let (may_skip, new_pos) = decide_skip_invalidation(
           match self.get_walk(*walk_id) {
             Some(x) => x,
@@ -214,7 +248,7 @@ impl WalkStorage {
             },
           ),
           step_recalc_probability,
-          Some(&mut rng),
+          Some(&mut *rng),
         )?;
         if may_skip {
           // Skip invalidating this walk if it is determined to be unnecessary
@@ -340,7 +374,7 @@ where
 
   let (invalidated_node, _dst_node) = edge;
 
-  let mut fallback_rng = rng();
+  let mut fallback_rng = rand::rng();
   let rng = rnd
     .as_mut()
     .map(|r| r as &mut dyn RngCore)

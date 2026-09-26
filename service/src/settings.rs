@@ -32,6 +32,9 @@ pub struct Settings {
   pub subgraph_queue_capacity: usize,
   /// When true, collect ops queue and processing-time stats (for GetStats / ResetStats). Off by default.
   pub collect_stats: bool,
+  /// Seed of every random draw (MERITRANK_SEED). Unset: drawn once when the settings are created,
+  /// so all subgraphs and both buffer copies share it.
+  pub seed: u64,
 }
 
 impl Default for Settings {
@@ -55,6 +58,7 @@ impl Default for Settings {
       min_ops_before_swap: 1,
       subgraph_queue_capacity: 1024,
       collect_stats: false,
+      seed: rand::random(),
     }
   }
 }
@@ -188,6 +192,7 @@ pub fn load_from_env() -> Settings {
     &mut s.subgraph_queue_capacity,
   );
   load_var("MERITRANK_COLLECT_STATS", &mut s.collect_stats);
+  load_var("MERITRANK_SEED", &mut s.seed);
 
   s
 }

@@ -7,13 +7,41 @@ use crate::RandomWalk;
 use log::error;
 use rand::distr::weighted::WeightedIndex;
 use rand::distr::Distribution;
-use rand::{rng, Rng};
+use rand::Rng;
+use std::sync::OnceLock;
 
 type IntIndexMap<K, V> = IndexMap<K, V, BuildIntHasher<K>>;
 
 pub type NodeId = usize;
 pub type Weight = f64;
 pub type EdgeId = (NodeId, NodeId);
+
+/// A weighted sampling distribution over a node's out-edges, together with the exact sum of their
+/// weights. Built in one pass from the current weights, never updated incrementally, so the sum
+/// cannot drift or cancel.
+#[derive(Debug, Clone)]
+struct EdgeDistr {
+  index: WeightedIndex<Weight>,
+  sum:   Weight,
+}
+
+impl EdgeDistr {
+  /// `None` when there are no edges or the weights do not form a distribution.
+  fn build<I: Iterator<Item = Weight>>(weights: I) -> Option<EdgeDistr> {
+    let weights: Vec<Weight> = weights.collect();
+    if weights.is_empty() {
+      return None;
+    }
+    let sum = weights.iter().sum();
+    match WeightedIndex::new(weights) {
+      Ok(index) => Some(EdgeDistr { index, sum }),
+      Err(e) => {
+        error!("Unable to build an edge distribution: {}", e);
+        None
+      },
+    }
+  }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct NodeData {
@@ -22,12 +50,11 @@ pub struct NodeData {
   pub neg_edges:     IntIndexMap<NodeId, Weight>,
   pub inbound_edges: IntIndexMap<NodeId, Weight>, // Cache for inbound edges
 
-  // The sum of positive edges is often used for normalization,
-  // so it is efficient to cache it.
-  pub pos_sum:     Weight,
-  pub neg_sum:     Weight,
-  abs_distr_cache: Option<WeightedIndex<Weight>>,
-  pos_distr_cache: Option<WeightedIndex<Weight>>,
+  // Distributions and weight sums are built lazily by the first consumer after a change and
+  // reset in O(1) by every change. Eager building would cost O(degree) per inserted edge, i.e.
+  // O(Σ degree²) during a bulk load. `OnceLock` lets readers build them through `&self`.
+  pos_distr: OnceLock<Option<EdgeDistr>>,
+  abs_distr: OnceLock<Option<EdgeDistr>>,
 }
 
 impl NodeData {
@@ -59,38 +86,59 @@ impl NodeData {
       .map(|(&node_id, &weight)| (node_id, weight))
   }
 
+  fn pos_distr(&self) -> Option<&EdgeDistr> {
+    self
+      .pos_distr
+      .get_or_init(|| EdgeDistr::build(self.pos_edges.values().copied()))
+      .as_ref()
+  }
+
+  fn abs_distr(&self) -> Option<&EdgeDistr> {
+    self
+      .abs_distr
+      .get_or_init(|| {
+        EdgeDistr::build(
+          self.pos_edges.values().chain(self.neg_edges.values()).copied(),
+        )
+      })
+      .as_ref()
+  }
+
+  /// Exact sum of the positive out-edge weights.
+  pub fn pos_sum(&self) -> Weight {
+    self.pos_distr().map_or(0.0, |d| d.sum)
+  }
+
+  /// Exact sum of the absolute out-edge weights, positive and negative.
+  pub fn abs_sum(&self) -> Weight {
+    self.abs_distr().map_or(0.0, |d| d.sum)
+  }
+
+  /// Resets the cached distributions after a change of the out-edges.
+  fn invalidate_distributions(&mut self) {
+    self.pos_distr = OnceLock::new();
+    self.abs_distr = OnceLock::new();
+  }
+
   // Return a random neighbor and whether it's from positive or negative edges
-  pub fn random_neighbor(
-    &mut self,
+  pub fn random_neighbor<R: Rng + ?Sized>(
+    &self,
     positive_only: bool,
+    rng: &mut R,
   ) -> Result<Option<(NodeId, bool)>, MeritRankError> {
     if positive_only {
       if self.pos_edges.is_empty() {
         return Ok(None);
       }
-
-      if self.pos_distr_cache.is_none() {
-        // Build and cache the distribution for positive edges
-        let weights: Vec<Weight> = self.pos_edges.values().copied().collect();
-        let wi = match WeightedIndex::new(weights) {
-          Ok(x) => x,
-          Err(_) => return Err(MeritRankError::InternalFatalError(Some(
-            internal_fatal::GRAPH_NODEDATA_POS_WEIGHTED_INDEX,
-          ))),
-        };
-        self.pos_distr_cache = Some(wi);
-      }
-
-      // Use the cached distribution
-      let cache = match self.pos_distr_cache.as_ref() {
+      let distr = match self.pos_distr() {
         Some(x) => x,
         None => return Err(MeritRankError::InternalFatalError(Some(
-          internal_fatal::GRAPH_NODEDATA_POS_DISTR_CACHE,
+          internal_fatal::GRAPH_NODEDATA_POS_WEIGHTED_INDEX,
         ))),
       };
-      let index = cache.sample(&mut rng());
-      let node_id = match self.pos_edges.keys().nth(index) {
-        Some(x) => *x,
+      let index = distr.index.sample(rng);
+      let node_id = match self.pos_edges.get_index(index) {
+        Some((x, _)) => *x,
         None => return Err(MeritRankError::InternalFatalError(Some(
           internal_fatal::GRAPH_NODEDATA_POS_KEYS_NTH,
         ))),
@@ -100,33 +148,13 @@ impl NodeData {
       if self.pos_edges.is_empty() && self.neg_edges.is_empty() {
         return Ok(None);
       }
-
-      if self.abs_distr_cache.is_none() {
-        // Build and cache the combined distribution of positive and negative edges
-        let combined_weights: Vec<Weight> = self
-          .pos_edges
-          .values()
-          .chain(self.neg_edges.values())
-          .map(|&w| w)
-          .collect();
-
-        let wi = match WeightedIndex::new(combined_weights) {
-          Ok(x) => x,
-          Err(_) => return Err(MeritRankError::InternalFatalError(Some(
-            internal_fatal::GRAPH_NODEDATA_ABS_WEIGHTED_INDEX,
-          ))),
-        };
-        self.abs_distr_cache = Some(wi);
-      }
-
-      // Use the cached distribution
-      let cache = match self.abs_distr_cache.as_ref() {
+      let distr = match self.abs_distr() {
         Some(x) => x,
         None => return Err(MeritRankError::InternalFatalError(Some(
-          internal_fatal::GRAPH_NODEDATA_ABS_DISTR_CACHE,
+          internal_fatal::GRAPH_NODEDATA_ABS_WEIGHTED_INDEX,
         ))),
       };
-      let index = cache.sample(&mut rng());
+      let index = distr.index.sample(rng);
       self.get_node_at_index(index)
     }
   }
@@ -139,8 +167,8 @@ impl NodeData {
     let pos_len = self.pos_edges.len();
 
     if index < pos_len {
-      let node_id = match self.pos_edges.keys().nth(index) {
-        Some(x) => *x,
+      let node_id = match self.pos_edges.get_index(index) {
+        Some((x, _)) => *x,
         None => return Err(MeritRankError::InternalFatalError(Some(
           internal_fatal::GRAPH_GET_NODE_AT_INDEX_POS,
         ))),
@@ -148,17 +176,14 @@ impl NodeData {
       Ok(Some((node_id, true)))
     } else {
       let neg_index = index - pos_len;
-      let node_id = match self.neg_edges.keys().nth(neg_index) {
-        Some(x) => *x,
+      let node_id = match self.neg_edges.get_index(neg_index) {
+        Some((x, _)) => *x,
         None => return Err(MeritRankError::InternalFatalError(Some(
           internal_fatal::GRAPH_GET_NODE_AT_INDEX_NEG,
         ))),
       };
       Ok(Some((node_id, false)))
     }
-  }
-  pub fn abs_sum(&self) -> Weight {
-    self.pos_sum + self.neg_sum
   }
 }
 
@@ -229,16 +254,12 @@ impl Graph {
       },
       w if w > 0.0 => {
         node.pos_edges.insert(to, weight);
-        node.pos_sum += weight;
-        node.abs_distr_cache = None;
-        node.pos_distr_cache = None;
       },
       _ => {
         node.neg_edges.insert(to, weight.abs());
-        node.neg_sum += weight.abs();
-        node.abs_distr_cache = None;
       },
     }
+    node.invalidate_distributions();
 
     // Update inbound edge cache for the target node
     self.nodes[to].inbound_edges.insert(from, weight);
@@ -284,23 +305,7 @@ impl Graph {
 
     // Both pos and neg weights should never be present at the same time.
     assert!(!(pos_weight.is_some() && neg_weight.is_some()));
-    node.abs_distr_cache = None;
-    if pos_weight.is_some() {
-      node.pos_distr_cache = None;
-    }
-    // We have to clamp the sum to zero to avoid negative sums,
-    // because floating-point arithmetic is not perfectly associative.
-    if let Some(weight) = pos_weight {
-      node.pos_sum -= weight;
-      if node.pos_sum < 0.0 {
-        node.pos_sum = 0.0;
-      }
-    } else if let Some(weight) = neg_weight {
-      node.neg_sum -= weight;
-      if node.neg_sum < 0.0 {
-        node.neg_sum = 0.0;
-      }
-    }
+    node.invalidate_distributions();
 
     Ok(if let Some(weight) = pos_weight {
       weight
@@ -329,15 +334,15 @@ impl Graph {
     })
   }
 
-  pub fn generate_walk_segment(
-    &mut self,
+  pub fn generate_walk_segment<R: Rng + ?Sized>(
+    &self,
     start_node: NodeId,
     alpha: f64,
     positive_only: bool,
+    rng: &mut R,
   ) -> Result<RandomWalk, MeritRankError> {
     let mut node = start_node;
     let mut segment = RandomWalk::new();
-    let mut rng = rng();
 
     let mut negative_continuation_mode = false;
     // When this variable becomes true, it means that a walk has encountered a negative edge,
@@ -350,7 +355,7 @@ impl Graph {
     // P  P  P    N   N  N  N
 
     loop {
-      let node_data = match self.get_node_data_mut(node) {
+      let node_data = match self.get_node_data(node) {
         Some(x) => x,
         None => return Err(MeritRankError::InternalFatalError(Some(
           internal_fatal::GRAPH_GENERATE_WALK_GET_NODE_DATA,
@@ -359,12 +364,9 @@ impl Graph {
       if rng.random::<f64>() > alpha {
         break;
       }
-      if let Some((next_step, step_is_positive)) = match node_data
-        .random_neighbor(negative_continuation_mode || positive_only)
+      if let Some((next_step, step_is_positive)) = node_data
+        .random_neighbor(negative_continuation_mode || positive_only, rng)?
       {
-        Ok(x) => x,
-        Err(e) => return Err(e),
-      } {
         segment.push(next_step, step_is_positive)?;
         if !step_is_positive {
           assert!(!negative_continuation_mode);
@@ -379,10 +381,11 @@ impl Graph {
     Ok(segment)
   }
 
-  pub fn continue_walk(
-    &mut self,
+  pub fn continue_walk<R: Rng + ?Sized>(
+    &self,
     walk: &mut RandomWalk,
     alpha: f64,
+    rng: &mut R,
   ) -> Result<(), MeritRankError> {
     // If the original walk is already in "negative mode",
     // we should restrict segment generation to positive edges
@@ -394,16 +397,16 @@ impl Graph {
       ))),
     };
     let new_segment =
-      self.generate_walk_segment(start_node, alpha, positive_only)?;
+      self.generate_walk_segment(start_node, alpha, positive_only, rng)?;
 
-    // Borrow mutable `walk` again for `extend`
     walk.extend(&new_segment)
   }
-  pub fn extend_walk_in_case_of_edge_deletion(
-    &mut self,
+
+  pub fn extend_walk_in_case_of_edge_deletion<R: Rng + ?Sized>(
+    &self,
     walk: &mut RandomWalk,
+    rng: &mut R,
   ) -> Result<(), MeritRankError> {
-    // Borrow mutable `walk` from `self.walks`
     // No force_first_step, so this is "edge deletion mode"
     //
     // Force addition of the first step by extending the original walk with it.
@@ -413,10 +416,10 @@ impl Graph {
     // was an edge different from the deleted one. Therefore, we should not apply
     // alpha-based stop to it, as this would lead to bias.
     let src_node = walk.last_node().unwrap();
-    let node_data = self.get_node_data_mut(src_node).unwrap();
+    let node_data = self.get_node_data(src_node).unwrap();
     let adding_to_negative_subsegment = walk.negative_segment_start.is_some();
     if let Some((forced_step, step_is_positive)) =
-      node_data.random_neighbor(adding_to_negative_subsegment)?
+      node_data.random_neighbor(adding_to_negative_subsegment, rng)?
     {
       walk.push(forced_step, step_is_positive)?;
     }

@@ -31,7 +31,7 @@ impl AugGraph {
       must_rescale,
     );
 
-    match self.mr.set_edge(src_id, dst_id, new_weight_scaled) {
+    match self.mr.set_edge_with_rng(src_id, dst_id, new_weight_scaled, &mut self.rng) {
       Ok(_) => {},
       Err(e) => {
         log_error!("{}", e);
@@ -104,7 +104,7 @@ impl AugGraph {
         dst_id_iter,
         weight_iter
       );
-      match self.mr.set_edge(src_id, dst_id_iter, weight_iter) {
+      match self.mr.set_edge_with_rng(src_id, dst_id_iter, weight_iter, &mut self.rng) {
         Ok(_) => {},
         Err(e) => {
           log_error!("{}", e);

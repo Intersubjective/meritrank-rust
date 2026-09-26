@@ -309,7 +309,7 @@ impl MultiGraphProcessor {
   ) {
     let needs_calc = self.process_read(subgraph, |aug_graph| {
       match aug_graph.nodes.get_by_name(ego) {
-        Some(info) if !aug_graph.mr.get_personal_hits().contains_key(&info.id) => Response::Fail,
+        Some(info) if !aug_graph.mr.is_calculated(info.id) => Response::Fail,
         _ => Response::Ok,
       }
     });

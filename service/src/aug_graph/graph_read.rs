@@ -60,13 +60,13 @@ impl AugGraph {
 
     let pos_sum = match self.mr.graph.get_node_data(src) {
       Some(x) => {
-        if x.pos_sum < EPSILON {
+        if x.pos_sum() < EPSILON {
           log_warning!(
             "Unable to normalize node weight, positive sum is zero."
           );
           1.0
         } else {
-          x.pos_sum
+          x.pos_sum()
         }
       },
 
@@ -175,7 +175,7 @@ impl AugGraph {
       Some(data) => {
         v.reserve_exact(data.pos_edges.len() + data.neg_edges.len());
 
-        let abs_sum = if data.pos_sum < EPSILON {
+        let abs_sum = if data.pos_sum() < EPSILON {
           log_warning!(
             "Unable to normalize node weight, positive sum is zero."
           );

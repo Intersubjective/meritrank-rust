@@ -1,5 +1,5 @@
-use integer_hasher::IntMap;
-use rand::random;
+use integer_hasher::{IntMap, IntSet};
+use rand::Rng;
 
 use crate::constants::{ASSERT, EPSILON, OPTIMIZE_INVALIDATION};
 use crate::counter::Counter;
@@ -10,11 +10,15 @@ use crate::walk_storage::WalkStorage;
 
 #[derive(Clone)]
 pub struct MeritRank {
-  pub graph: Graph,
-  walks:     WalkStorage,
-  pos_hits:  IntMap<NodeId, Counter>,
-  neg_hits:  IntMap<NodeId, Counter>,
-  pub alpha: Weight,
+  pub graph:  Graph,
+  walks:      WalkStorage,
+  pos_hits:   IntMap<NodeId, Counter>,
+  neg_hits:   IntMap<NodeId, Counter>,
+  /// Egos whose walks exist. An ego can be calculated with empty counters.
+  calculated: IntSet<NodeId>,
+  /// Egos whose walks or counters changed since the last `take_dirty_egos`.
+  dirty_egos: IntSet<NodeId>,
+  pub alpha:  Weight,
 }
 
 impl MeritRank {
@@ -24,26 +28,58 @@ impl MeritRank {
       walks: WalkStorage::new(walks_per_ego),
       pos_hits: IntMap::default(),
       neg_hits: IntMap::default(),
+      calculated: IntSet::default(),
+      dirty_egos: IntSet::default(),
       alpha: 0.85,
     }
   }
 
-  /// Clears the ego's walk block and counters without running new walks. Used when evicting an ego from cache.
+  pub fn is_calculated(&self, ego: NodeId) -> bool {
+    self.calculated.contains(&ego)
+  }
+
+  /// Returns, sorted, the egos whose walks or counters changed since the previous call, and
+  /// forgets them. Covers edge changes (every repaired walk's ego), `calculate`, `clear_ego` and
+  /// `clear_walks`.
+  pub fn take_dirty_egos(&mut self) -> Vec<NodeId> {
+    let mut egos: Vec<NodeId> = self.dirty_egos.drain().collect();
+    egos.sort_unstable();
+    egos
+  }
+
+  /// Number of walk slots allocated, occupied or free.
+  pub fn allocated_walks(&self) -> usize {
+    self.walks.allocated_walks()
+  }
+
+  /// Drops the ego's walks and counters and frees their memory. Used when evicting an ego from
+  /// cache.
   pub fn clear_ego(&mut self, ego: NodeId) -> Result<(), MeritRankError> {
-    if let Some(start_id) = self.walks.get_block_start(ego) {
-      self.walks.clear_block_for_ego(
-        ego,
-        start_id,
-        &mut self.pos_hits,
-        &mut self.neg_hits,
-      )?;
-    }
+    self.walks.release_block_for_ego(
+      ego,
+      &mut self.pos_hits,
+      &mut self.neg_hits,
+    )?;
     self.pos_hits.remove(&ego);
     self.neg_hits.remove(&ego);
+    if self.calculated.remove(&ego) {
+      self.dirty_egos.insert(ego);
+    }
     Ok(())
   }
 
+  /// `calculate_with_rng` with the thread RNG.
   pub fn calculate(&mut self, ego: NodeId) -> Result<(), MeritRankError> {
+    self.calculate_with_rng(ego, &mut rand::rng())
+  }
+
+  pub fn calculate_with_rng<R: Rng + ?Sized>(
+    &mut self,
+    ego: NodeId,
+    rng: &mut R,
+  ) -> Result<(), MeritRankError> {
+    self.calculated.insert(ego);
+    self.dirty_egos.insert(ego);
     let start_id = self.walks.ensure_block_for_ego(ego)?;
     self.walks.clear_block_for_ego(
       ego,
@@ -65,7 +101,7 @@ impl MeritRank {
       };
       walk.push(ego, true)?;
 
-      self.graph.continue_walk(walk, self.alpha)?;
+      self.graph.continue_walk(walk, self.alpha, rng)?;
 
       self
         .pos_hits
@@ -137,10 +173,11 @@ impl MeritRank {
       .map(|&peer| self.get_node_score(ego, peer).map(|score| (peer, score)))
       .collect::<Result<_, _>>()?;
 
-    peer_scores.sort_unstable_by(|(_, score1), (_, score2)| {
+    peer_scores.sort_unstable_by(|(id1, score1), (id2, score2)| {
       score2
         .partial_cmp(score1)
         .unwrap_or(std::cmp::Ordering::Equal)
+        .then(id1.cmp(id2))
     });
 
     Ok(
@@ -156,11 +193,22 @@ impl MeritRank {
     self.graph.get_new_nodeid()
   }
 
+  /// `set_edge_with_rng` with the thread RNG.
   pub fn set_edge(
     &mut self,
     src: NodeId,
     dest: NodeId,
     new_weight: f64,
+  ) -> Result<(), MeritRankError> {
+    self.set_edge_with_rng(src, dest, new_weight, &mut rand::rng())
+  }
+
+  pub fn set_edge_with_rng<R: Rng + ?Sized>(
+    &mut self,
+    src: NodeId,
+    dest: NodeId,
+    new_weight: f64,
+    rng: &mut R,
   ) -> Result<(), MeritRankError> {
     let old_weight = self
       .graph
@@ -179,16 +227,17 @@ impl MeritRank {
     }
 
     if old_weight.abs() > EPSILON && new_weight.abs() > EPSILON {
-      self.set_edge_(src, dest, 0.0)?;
+      self.set_edge_(src, dest, 0.0, rng)?;
     }
-    self.set_edge_(src, dest, new_weight)
+    self.set_edge_(src, dest, new_weight, rng)
   }
 
-  pub fn set_edge_(
+  pub fn set_edge_<R: Rng + ?Sized>(
     &mut self,
     src: NodeId,
     dest: NodeId,
     new_weight: f64,
+    rng: &mut R,
   ) -> Result<(), MeritRankError> {
     if src == dest {
       return Err(MeritRankError::SelfReferenceNotAllowed);
@@ -203,9 +252,19 @@ impl MeritRank {
       return Ok(());
     }
     let deletion_mode = new_weight.abs() <= EPSILON;
+    if deletion_mode && old_weight == 0.0 {
+      // Deleting an absent edge (including a tiny weight on one) changes nothing.
+      return Ok(());
+    }
     let mut step_recalc_probability: Option<(Weight, Weight)> = None;
+    // Without walks through `src` nothing is invalidated, so the probabilities (which force the
+    // node's lazy distribution to be built) are not needed; this keeps bulk loads O(edges).
+    let src_is_visited = self
+      .walks
+      .get_visits_through_node(src)
+      .map_or(false, |v| !v.is_empty());
 
-    if OPTIMIZE_INVALIDATION && !deletion_mode {
+    if OPTIMIZE_INVALIDATION && !deletion_mode && src_is_visited {
       let node_data = match self.graph.get_node_data(src) {
         Some(x) => x,
         None => return Err(MeritRankError::InternalFatalError(Some(
@@ -219,7 +278,7 @@ impl MeritRank {
       // In the negative segment, the walker picks among POSITIVE edges only.
       // Negative new edges have zero probability here (they aren't candidates).
       let prob_neg_seg = if new_weight > 0.0 {
-        new_weight / (node_data.pos_sum + new_weight)
+        new_weight / (node_data.pos_sum() + new_weight)
       } else {
         0.0
       };
@@ -232,11 +291,16 @@ impl MeritRank {
       self.graph.set_edge(src, dest, new_weight)?;
     }
 
-    let affected_walkids = self.walks.find_affected_walkids(
-      src,
-      Some(dest),
-      step_recalc_probability,
-    )?;
+    let affected_walkids = if src_is_visited {
+      self.walks.find_affected_walkids(
+        src,
+        Some(dest),
+        step_recalc_probability,
+        rng,
+      )?
+    } else {
+      vec![]
+    };
 
     for (walk_id, visit_pos) in &affected_walkids {
       // Revert the counters associated with the affected walks, as if the walks never existed
@@ -252,6 +316,7 @@ impl MeritRank {
           internal_fatal::RANK_SET_EDGE_FIRST_NODE,
         ))),
       };
+      self.dirty_egos.insert(ego);
       self
         .pos_hits
         .entry(ego)
@@ -279,8 +344,8 @@ impl MeritRank {
       //#[cfg(optimize_invalidation)]
       if OPTIMIZE_INVALIDATION {
         if deletion_mode {
-          self.graph.extend_walk_in_case_of_edge_deletion(walk)?;
-        } else if random::<f64>() < self.alpha {
+          self.graph.extend_walk_in_case_of_edge_deletion(walk, rng)?;
+        } else if rng.random::<f64>() < self.alpha {
           // If already in negative continuation, appended node is in negative
           // subsegment by position; do not set negative_segment_start again.
           let step_is_positive =
@@ -291,7 +356,7 @@ impl MeritRank {
         }
       }
       if !skip_continuation {
-        self.graph.continue_walk(walk, self.alpha)?;
+        self.graph.continue_walk(walk, self.alpha, rng)?;
       }
 
       // Update counters associated with the updated walks
@@ -397,5 +462,6 @@ impl MeritRank {
     self.walks.clear();
     self.pos_hits.clear();
     self.neg_hits.clear();
+    self.dirty_egos.extend(self.calculated.drain());
   }
 }
