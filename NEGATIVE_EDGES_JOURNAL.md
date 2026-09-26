@@ -1,14 +1,14 @@
 # Design Journal: Negative Edges — Absorbing Wall
 
-**Status: PROPOSED, NOT IMPLEMENTED.** The code in `core/` still implements the forward-penalty
-semantics described under "Problem" below. This document records the design reasoning so it can
-be reviewed before any code is touched.
+**Status: DESIGN AGREED, NOT IMPLEMENTED.** The code in `core/` still implements the forward-penalty
+semantics described under "Problem" below. D16–D25 record the implementation design review of
+2026-09-26; the service-consistency track (D22) lands in `main` before the feature.
 
 Decision numbering is local to this document (`JOURNAL.md` covers the NNG→TCP migration and has
 its own D1, D2, …).
 
 Companion interactive demo: `scripts/negative_edges_demo.ipynb` (run via `scripts/run_demo.sh`).
-Requirements, glossary and acceptance tests: `NEGATIVE_EDGES_FEATURE.md` (decisions here: D1–D15). This journal records
+Requirements, glossary and acceptance tests: `NEGATIVE_EDGES_FEATURE.md` (decisions here: D1–D25). This journal records
 *why*; the feature document records *what*. Where they differ, the feature document is current.
 
 ---
@@ -70,7 +70,8 @@ This is the whole fix for P1: Bob's outgoing edges are never traversed in Alice'
 That holds exactly for a hard wall. A soft wall (`d < 1`) lets a `(1 − d)` share of the flow
 through, so Bob still influences the nodes reachable from him — within that share. Nodes not
 reachable from Bob stay unaffected, but only under a fixed denominator (D5; see "Two safe
-relaxations" below). A1 is stated accordingly.
+relaxations" below), and — since every entry into B is a trial (D16) — apart from extra absorption
+that B can cause through a cycle back to himself. A1 is stated accordingly.
 
 Separating "distrust" (a node-level property) from "walk mechanics" (an in-walk state flag) is
 the core refactor. The present conflation of the two is what makes P2 possible.
@@ -130,6 +131,8 @@ genuine mistake in an earlier draft of the notebook.
 ---
 
 ## D5 — Fixed denominator
+
+*Refined by D17: the denominator is exactly W.*
 
 **Context**: `rank.rs::get_node_score` normalises by realised hits (`pos_total + neg_total`).
 
@@ -229,6 +232,8 @@ hard (`|w| = 1`, bans) versus soft (`|w| < 1`) — which D7 may use.
 
 ## D10 — Walls are private: no ego-facing read returns a negative edge
 
+*Superseded by D23: read privacy is not MR's concern.*
+
 **Context**: once a negative edge is a wall, reading it tells a third party who walls whom — in
 Tentura, who ignores whom, which is a read-receipt the walled party cannot switch off. Today
 `mr_graph(..., positive_only)` returns negative edges when asked, and Tentura's Hasura function
@@ -262,6 +267,8 @@ live in production under the current semantics.
 clamp published trust weights to `≥ 0` and resync). Only then does it publish walls.
 
 ## D13 — One absorption trial per walk per wall
+
+*Superseded by D16: a trial on every entry.*
 
 **Context** (cross-check, 2026-09-26): if every arrival at a soft wall is a new trial, B can add
 a cycle `B→D→B` and raise the absorption probability of everyone who routes to him — B's own
@@ -316,6 +323,217 @@ it actually runs.
 
 ---
 
+## D16 — An absorption trial on every entry into a wall (replaces D13)
+
+**Context** (implementation design review, 2026-09-26): D13's "one trial per walk per wall" makes
+the walk non-Markov: whether an arrival at B is a trial depends on the walk's history, so every
+repair path (generation, the optimizer's forced steps, R16 wall updates, `clear()`) must restore
+that hidden state correctly. This is the same class of state the current design carries in
+`negative_segment_start`, and exactly that state produced a live bug (D20).
+
+**Decision**: every arrival at `B ∈ D_A` is an independent absorption trial with probability
+`d_A(B)`. The walk state is just the current node. Stepping needs only "is this node a wall of
+the walk's ego"; no prefix scan. R16 wall updates get the same shape as the optimizer: scan the
+walk's arrivals at B from the first one (its position is already in the `visits` index) and
+re-couple each passing arrival.
+
+**Cost, accepted**: A1 weakens for soft walls. B can add a cycle back to itself, so a walk that
+passed B returns and is tried again. With return probability `r`, the absorption probability of
+a walk entering B becomes `d_eff = d / (1 − (1 − d)·r)` (at `d = 0.5`, `r = α² ≈ 0.72`:
+`d_eff ≈ 0.78`). B's out-edges can therefore *strengthen* the wall against B, so nodes routing to
+B lose more. This only goes down, only affects nodes on walks that reach B, never exceeds the
+hard-wall loss (`d_eff ≤ 1`), keeps A4 (`q_C` stays bounded by the probability of reaching B)
+and gives B nothing. It is a bounded variant of the suicide-bomber drag already accepted in D11.
+Hard walls are unaffected.
+
+## D17 — The denominator is exactly W
+
+**Decision**: `score_A(X) = (credits_X − λ·blame_X) / W`, where W is `walks_per_ego`
+(`MERITRANK_NUM_WALKS`). Without walls a score is the probability that a walk of A visits X. The
+alternative "`W·α/(1−α)`" in D5 is dropped: it differs from W only by a constant factor and has
+no meaning of its own.
+
+**Scale check**: every score grows by roughly `L̄` (≈6 at α = 0.85) against today's
+realised-hits normalisation, and the ego scores ≈ 1. Tentura is insensitive to this: it uses MR
+scores only through per-ego quantile clusters (`service/src/aug_graph/scores.rs:25-76`), ordering
+within one viewer, and sign checks `forward_mr > 0` / `reverse_mr > 0`
+(`tentura/.../m0193.dart:3807-3813`). No absolute score threshold exists in its SQL. MR tests
+with hard-coded score values must be re-derived.
+
+Realised-hits normalisation also skews comparisons between egos: an ego whose only friend is a
+dead end gets that friend's score inflated ~3× relative to an ego whose only friend has a large
+network behind him, only because of the walk length. Under W both get `α`.
+
+## D18 — Walls are User→User only
+
+**Context**: current Tentura publishes only `U` nodes to MR; beacon, comment and opinion
+triggers are defined but not attached, and there is no ownership (Tentura `m0193.dart`,
+`trust_rebuild_effective_edge` at `:4311`; poll edges exist only in `meritrank_init` and carry no
+nodes in practice). Every wall in Tentura's §17.4 plan is user-to-user.
+
+**Decision**: a negative weight is accepted only on a User→User edge in the null context. MR
+rejects any other negative write with an error (`mr_put_edge`, bulk load, service), rather than
+clamping it silently. Removing ownership logic from MR is a separate track; walls do not depend
+on it.
+
+## D19 — Walls inside the optimized incremental invalidation
+
+**Context**: the optimizer (`OPTIMIZE_INVALIDATION`) is mandatory: without it a hub edge change
+invalidates every walk through the hub, which does not scale. Statistical tests confirmed it is
+unbiased for the current semantics (`core/tests/test_incremental_bias.rs`: chain and multi-ego
+star vs fresh generation and analytic values; two independent adversarial suites found no bias in
+the coupling itself, D20).
+
+**Decisions**:
+
+- **Positive edge change at X** (all egos' walks): the current algorithm, collapsed to one regime
+  with `p = w / (pos_sum + w)`; the `neg_start` logic disappears. The terminal position of a walk
+  absorbed at X is never re-coupled: that walk never departed X. Every place that extends a walk
+  (fresh generation, the `random < α` push after invalidation, the forced step on deletion)
+  calls one function that performs the absorption trial.
+- **Wall change `A⊣B`, `d₀ → d₁`** (only A's walks, R16): per-arrival re-coupling as in D16.
+  Candidates come from `visits[B]` filtered by A's walk-id block, or from scanning A's W walks,
+  whichever is smaller (adaptive; protects against hubs). The whole contribution of a touched walk
+  (credits and blame) is removed and re-added. `|w| > 1` changes are no-ops for walks.
+- **Sign transition** `+w ↔ −d` on one pair: two exact operations in sequence, a positive-edge
+  deletion (all frames) then a wall addition (A's frame), or the reverse. The intermediate
+  "no edge" graph is valid; composition of exact steps is exact. This is how `set_edge` already
+  replaces a weight.
+- **Cached sums are recomputed exactly** (`pos_sum` over the node's positive edges, O(degree)) on
+  every change: the `WeightedIndex` cache is rebuilt at the same cost on the next sample anyway.
+  Incremental `+=`/`−=` cancels catastrophically for weight ratios > 2^53 (D20).
+- **Blame is stored as `Σ b` without λ**; λ is applied at read time. Debug builds check it
+  against a from-scratch recount after every repair.
+- **Clearing a walk resets all of its metadata** (`absorbed_at`), the lesson of D20.
+
+## D20 — Findings of the adversarial optimizer tests
+
+Two independent adversarial suites (codex GPT-6 Astra: `core/tests/test_incremental_adversarial.rs`;
+a Fable subagent: `core/tests/test_incremental_adversarial_fable.rs`) tried to break the optimizer
+for the current signed semantics. Both found the same three defects and no bias in the coupling:
+
+1. **Stale `negative_segment_start` after `RandomWalk::clear`** (live in production: Tentura runs
+   walk eviction, `MERITRANK_WALKS_CACHE_SIZE=200`). Recalculating an ego, or `clear_ego` +
+   `calculate`, reused walk slots that kept the marker, so regenerated walks ran positive-only: a
+   negative edge out of the ego was taken with probability `(1−α)·α ≈ 0.13` instead of `α`.
+   **Fixed in `main`** (`8285bde`, meritrank_core 0.10.1), with regression tests.
+2. **Catastrophic cancellation in `pos_sum`/`neg_sum`** (`graph.rs:232, 294`): after adding and
+   removing a weight 2^54 times larger than another, the cached sum is 0 while an edge remains,
+   and the invalidation probability becomes 1. Numeric edge case; fixed by D19.
+3. **Panic on `set_edge` with `|w| ≤ ε` on an absent edge** (`rank.rs:205` treats it as a
+   deletion, `graph.rs:310` panics). Fixed in the feature: such a write is a no-op; a wall is
+   deleted only by an exact 0 (R19).
+
+## D21 — The ego on absorbed walks
+
+**Decision**: an absorbed walk credits nobody, the ego included, and the ego never takes blame.
+Hence `score_A(A) = 1 − P(a walk of A is absorbed)`, and the closed form `n_C·(1 − q_C)` holds for
+the ego too (`n = 1`, `q` = absorption probability) without a special case. Tentura never reads
+the ego's own score.
+
+## D22 — Service consistency is a separate track that lands before walls
+
+**Context** (2026-09-26, verified against the code, second opinion by codex GPT-6 Astra): the
+service's double buffer, caches and sync barrier do not meet R16/R21/R22 today, independently of
+walls:
+
+- **Two non-replica copies.** Each subgraph keeps two `AugGraph` copies fed by
+  `FanoutSender::send`, which awaits the two queues separately (`state_manager.rs:25-45`). Two
+  concurrent senders can interleave (`a1, a2, b2, b1`), so the copies can apply non-commuting
+  writes in different orders and diverge in graph state. Their walks are different Monte Carlo
+  samples, so reads jitter across swaps (±0.016 at W = 1000, Tentura's production value).
+- **`mr_sync` is not a barrier.** The connector's stamp counter starts at 0 in every PostgreSQL
+  backend process (`psql-connector/src/rpc.rs:38`); the service waits for published stamp `≥`
+  requested (`state_manager.rs:295`), and `Stamp` assigns rather than maximises
+  (`aug_graph/absorb.rs:85`). A new backend's `sync(1)` returns at once if any stamp ≥ 1 was ever
+  published. `mr_sync` is also declared `IMMUTABLE` (`psql-connector/src/lib.rs:286`).
+- **Reader stall.** `process_read` loads the published Arc, then takes its read lock
+  (`state_manager.rs:253-261`); if a swap happens in between, the worker holds that copy's write
+  lock while blocking for the next op, so the read waits until the next write arrives.
+- **Liveness.** With `min_ops_before_swap > 1` a barrier cannot publish without further traffic;
+  `queue_len = 1, min_ops = 2` deadlocks.
+- **Caches.** `cached_scores` (TTL 1 h) and `cached_score_clusters` (TTL 6 h) are never
+  invalidated and are shared by both copies (moka clones share storage). Reverse scores (the
+  viewer's score in a peer's frame, Tentura's `reverse_mr`) are read cache-first
+  (`scores.rs:219-241`): for `mr_mutual_scores` a fresh value exists but a stale cached one wins;
+  for an evicted peer the reverse score lives only in the cache.
+- `mr_mutual_scores` calculates every user, but only the ego is tracked for eviction, so the walk
+  cache is not bounded.
+
+**Decisions** (the track):
+
+1. **One ordered operation sequence** with sequence numbers and a replay log that both copies
+   apply; the copies are exact replicas (same seed, same order). Publication only from a copy at
+   least as advanced as the published position. Ordering also holds across contexts for fanned-out
+   User→User writes. Readers acquire a copy safely (no stall behind the worker).
+2. **Server-owned barrier**: a marker in the sequence with a completion handle, forced
+   publication at a barrier regardless of batching, errors propagated. `mr_sync` becomes
+   `VOLATILE`. This is R21.
+3. **No score cache.** A score read is two counter lookups. Cluster bounds stay cached, keyed by
+   `(ego, kind, generation(ego), zero-opinion revision)`, one cache per copy. The core reports the
+   egos whose walks changed during an operation (union over all nested `set_edge` calls, including
+   VSIDS rescales), plus `calculate`/`clear_ego`; the service bumps their generations. A wall
+   change always bumps its owner, even an evicted one. Bulk load and reset start a new epoch.
+4. **Reverse scores are computed, not remembered**: before answering, the service calculates the
+   peers it actually needs (positive-forward candidates, deduplicated, inside the worker, protected
+   until the response is built). A "last known" value never grants visibility.
+5. **RNG owned by `MeritRank`**, every random draw through it, one seed for both copies
+   (`MERITRANK_SEED`, or drawn once at start-up); deterministic bulk ordering and score-tie
+   ordering (R22).
+
+The wall feature then needs only "a wall change marks its owner dirty".
+
+## D23 — Read privacy is not MR's concern (replaces D10)
+
+**Decision**: MR does not filter negative edges out of `mr_graph`, `mr_neighbors`, `mr_connected`
+or `mr_fetch_new_edges`; users have no direct access to MR, and hiding walls from clients is the
+application's job (Tentura forces `positive_only = true` in its own `graph()`, §17.4 checklist).
+R14 is withdrawn.
+
+One read change is kept for consistency, not privacy: `mr_graph` normalises positive weights by the
+positive out-weight (`pos_sum`), matching the transition probabilities of R4, instead of by
+`abs_sum` (`service/src/aug_graph/graph_read.rs:184`). It ships with the feature, since under the
+current semantics `abs_sum` is correct.
+
+## D24 — Configuration
+
+| Setting | Meaning | Valid | Default |
+|---|---|---|---|
+| `MERITRANK_DISCREDIT_LAMBDA` | λ | finite, ≥ 0 | **0** |
+| `MERITRANK_BLAME_DECAY` | γ | [0, 1] | 0.8 |
+| `MERITRANK_BLAME_RADIUS` | `prefix` (γ-decayed whole prefix) or `voucher` (the wall and the direct voucher) | enum | `prefix` |
+| `MERITRANK_SEED` | RNG seed (R22) | u64 | unset: random at start-up, shared by both copies |
+
+λ defaults to 0: walls ship as withholding only, which has no attack surface; the application
+enables discredit after calibrating λ on the dump (journal recommendation 0.3–0.5 stands as a
+starting point). γ and the radius default to the notebook's values so that enabling λ reproduces
+the verified behaviour. All four are start-up only. An invalid value refuses start-up. Start-up
+also rejects `α ≥ 1` (`service/src/settings.rs:96` accepts 1 today; on a cyclic graph a walk then
+never ends).
+
+## D25 — Specification corrections from the implementation review
+
+- **R2's rationale was wrong**: MR's null context is last-write-wins, not a sum
+  (`state_manager.rs` test `context_aggregate_null_context_last_write_wins`; even the connector
+  test named `null_context_is_sum` asserts last-write-wins). User→User writes fan out to every
+  context whatever their `context` field says (`state_manager.rs:833`). The rule stands for a
+  different reason: walls belong to no context by construction.
+- **R15 is distributional**: different histories that reach the same graph give the same
+  distribution, not the same finite sample. R22 promises identical results only for the same seed
+  and the same ordered operation sequence, lazy calculations and evictions included.
+- **R19**: a wall write changes no positive weight other than the replaced positive edge of the
+  same pair in a sign transition.
+- **R7**: seeding a new context (`seed_context_from_aggregate`) copies walls with their exact `d`,
+  bypassing VSIDS.
+- **R18**: Tentura sets no zero opinion (no `mr_set_zero_opinion` call; `zerorec` exists only in
+  `service/src/legacy/`), so blending reduces to `0.98·score` there. The rule is unchanged.
+- **`mr_fetch_new_edges`** is not implemented in the service (`state_manager.rs:543` returns
+  `NotImplemented`).
+- **Bans in Tentura** currently publish 0, not −1 (`m0193.dart:4304`); −1 is part of their §17.4
+  checklist.
+
+---
+
 ## Axioms
 
 Candidates for the test suite. A1 and A6 are already checked live in the notebook. Test
@@ -323,7 +541,7 @@ formulations: `NEGATIVE_EDGES_FEATURE.md`, §7.
 
 | | Axiom |
 |---|---|
-| A1 | Changing any outgoing edge of B leaves `score_A(X)` unchanged for all `X ≠ B` (hard wall); for a soft wall, for all X not reachable from B, unless another wall is reachable from B (D13) |
+| A1 | Changing any outgoing edge of B leaves `score_A(X)` unchanged for all `X ≠ B` (hard wall). Soft wall: nodes not reachable from B change only through extra absorption (re-entry into B, D16, or a wall reachable from B), hence only downward and never beyond the hard-wall loss |
 | A2 | A node reachable from A only through B scores 0 (hard wall; soft wall: at most `(1 − d)` of its baseline) |
 | A3 | A node X with support independent of B and `q_X = 0` keeps a positive score (no collateral damage) |
 | A4 | C's multiplier is monotone in `q_C`, and C's loss never exceeds `(1+λ)` × its investment in B (`n_C·q_C`) |
@@ -352,23 +570,28 @@ formulations: `NEGATIVE_EDGES_FEATURE.md`, §7.
   either, at `d = 1`. Combined, they do (≈1.5%): Bob's protégés become reachable, enter the
   denominator, and Bob again moves third-party scores. Verified numerically in the notebook.
 - **Visibility of negative edges**: currently global graph data usable by every ego. Under A8 a
-  minus should only affect frames that transitively trust its issuer. Read access is settled by
-  D10. Probing through diffs of one's own frame remains possible once inheritance exists (D7);
+  minus should only affect frames that transitively trust its issuer. Read access is the
+  application's concern (D23). Probing through diffs of one's own frame remains possible once inheritance exists (D7);
   the application mitigates it by quantizing when walls are published.
 
 ---
 
 ## Implementation map
 
+The authoritative map is `NEGATIVE_EDGES_FEATURE.md`, §8. In short:
+
 | Concept | Code location |
 |---|---|
-| Absorption on B, `q_i` | `core/src/graph.rs::generate_walk_segment` — `random_neighbor` always `positive_only`, absorb on the ego-relative `D_A` |
-| `poisoned` instead of a negative suffix | `core/src/random_walk.rs` — `negative_segment_start: Option<usize>` → `absorbed_at: Option<NodeId>`; `positive_subsegment`/`negative_subsegment` collapse |
-| Blame weights `b_i` | new accounting step in `core/src/rank.rs::calculate` |
-| Fixed denominator | `core/src/rank.rs::get_node_score` (lines 108–112) — `total_hits` → `walks_per_ego` |
-| Invalidation on adding a minus | `core/src/walk_storage.rs::get_visits_through_node(B)` already yields the affected walks: cut at B, move the prefix from `pos_hits` to `neg_hits` |
-| Negative weight = wall, `d = min(|w|, 1)` (D8) | `mr_put_edge` unchanged; the core reads `D_A` from A's negative out-edges in the null context |
-| No negative edge in ego-facing reads (D10) | `psql-connector/src/lib.rs::mr_graph`, `mr_neighbors` — drop negative edges regardless of `positive_only` |
+| One stepping function with the absorption trial (D16, D19) | `core/src/graph.rs::generate_walk_segment`, the push in `core/src/rank.rs::set_edge_`, `Graph::extend_walk_in_case_of_edge_deletion` |
+| `absorbed_at` instead of a negative suffix | `core/src/random_walk.rs`; `clear()` resets it (D20) |
+| Blame `Σ b`, λ at read (D19) | `core/src/rank.rs` accounting; `get_node_score` divides by W (D17) |
+| Positive-edge invalidation, one regime, absorbed terminal excluded (D19) | `core/src/walk_storage.rs::decide_skip_invalidation_on_edge_addition`, `rank.rs::set_edge_` |
+| Wall change, per-arrival re-coupling, adaptive candidates (D16, D19) | new path in `rank.rs`; `walk_storage.rs::get_visits_through_node(B)` or A's walk block |
+| Exact cached sums (D19, D20) | `core/src/graph.rs::set_edge`, `remove_edge` |
+| User→User only, null context (D18) | `psql-connector/src/lib.rs::mr_put_edge`, bulk, `service/src/state_manager.rs` |
+| `mr_graph` normalised by `pos_sum` (D23) | `service/src/aug_graph/graph_read.rs:184` |
+| Consistency track (D22) | `service/src/state_manager.rs`, `aug_graph/scores.rs`, `aug_graph/mod.rs`, `psql-connector/src/{rpc,lib}.rs` |
+| Settings (D24) | `service/src/settings.rs` |
 
 ---
 
