@@ -45,3 +45,32 @@ impl WalkTracker {
     std::mem::take(&mut *self.evicted.lock())
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// S9 (SERVICE_CONSISTENCY_PLAN.md): the tracker must evict the least recently used ego, never
+  /// the one just touched. moka's default TinyLFU policy may reject a newly inserted rare key and
+  /// report it as `RemovalCause::Size`, which the service turns into `ClearEgo` for the ego it is
+  /// about to read.
+  #[ignore = "S9: fixed in phase 4 (own LRU with pins)"]
+  #[test]
+  fn evicts_least_recently_used_not_the_new_ego() {
+    let tracker = WalkTracker::new(2);
+    for _ in 0..20 {
+      tracker.touch(1);
+      tracker.touch(2);
+      tracker.cache.run_pending_tasks();
+    }
+    tracker.touch(3);
+    tracker.cache.run_pending_tasks();
+    let evicted = tracker.drain_evicted();
+    assert!(
+      !evicted.contains(&3),
+      "the just-touched ego was evicted: {:?}",
+      evicted
+    );
+    assert_eq!(evicted, vec![1], "expected the LRU ego 1 to be evicted");
+  }
+}

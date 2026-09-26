@@ -22,13 +22,14 @@ D22 and D26). Every defect listed in §1 exists in `main` today, independently o
 | S10 | **Only the request ego is tracked.** Peers calculated for mutual scores and egos calculated by explicit `WriteCalculate` are never tracked and never evicted | `state_manager.rs:370, 768` |
 | S11 | **Eviction frees no walk memory.** `clear_ego` keeps the ego's block in `ego_blocks` and `RandomWalk::clear` keeps each `Vec`'s capacity | `core/src/rank.rs:32`, `core/src/walk_storage.rs`, `core/src/random_walk.rs` |
 | S12 | **Nondeterminism.** Thread RNG; bulk aggregate edges assembled by iterating a `HashMap`; score ties ordered by a `HashSet` | `core/src/graph.rs`, `state_manager.rs:453`, `core/src/rank.rs:130` |
+| S14 | **The published state can move backwards.** `FanoutSender` fills queue A before queue B, so B lags by the operations whose second send has not happened yet. After publishing A, the worker catches B up with only what is already in B's queue and publishes it at once (`drained >= min_ops`): readers see an older state than a moment before, and it stays older until the next write. Found by the phase 0 tests | `state_manager.rs:25-45, 107-126` |
 | S13 | **Cached sums cancel.** `pos_sum` is maintained by `+=`/`−=`; after removing a weight 2^53 times larger than another, it is 0 while an edge remains | `core/src/graph.rs:232, 294` |
 
 ---
 
 ## 2. Target design
 
-### 2.1 Operation sequence and dispatcher (S1, S2, S5, S6)
+### 2.1 Operation sequence and dispatcher (S1, S2, S5, S6, S14)
 
 - **Dispatcher.** `MultiGraphProcessor` owns one async mutex through which every mutating
   operation passes: edge writes, bulk load, reset, context creation, `DeleteNode`, zero opinion,
@@ -38,7 +39,8 @@ D22 and D26). Every defect listed in §1 exists in `main` today, independently o
 - **One queue per subgraph.** The two per-copy channels are replaced by one. The worker applies
   each operation to the back copy and appends it (`Arc<AugGraphOp>`) to a replay log. On
   publication the copies swap and the new back copy replays the log, which is then cleared. The
-  copies are replicas by construction.
+  copies are replicas by construction, and a copy is published only after it has applied every
+  operation of the copy published before it, so publication is monotonic (S14).
 - **Publication policy.** Publish when the queue is empty, when `MERITRANK_MIN_OPS_BEFORE_SWAP`
   operations have been applied (reinterpreted as the maximum batch size; the name is kept for
   compatibility), or right after an **urgent** operation (`Barrier`, `EnsureCalculated`). The
@@ -162,9 +164,9 @@ Each phase lands in `main` separately with its tests.
 
 | # | Phase | Contents | Tests |
 |---|---|---|---|
-| 0 | **Failing tests first** | Tests that reproduce S1–S3, S5, S6, S7, S9 against current `main` | concurrent writes to one edge → copies differ; `sync(1)` after published stamp 100; reader stall; `queue_len=1, min_ops=2` deadlock; stale reverse score after a change; newly touched ego evicted by the tracker; order across contexts |
+| 0 | **Failing tests first** | Tests that reproduce S1–S3, S5–S7, S9, S14 against current `main`, marked `#[ignore = "S#: fixed in phase N"]` so `main` stays green; each phase removes its markers (`service/tests/consistency.rs`, `service/src/walk_tracker.rs`) | concurrent writes to one edge → copies differ; `sync(1)` after published stamp 100; reader stall; `queue_len=1, min_ops=2` deadlock; lone barrier below the batch threshold; stale reverse score after a change; newly touched ego evicted by the tracker; order across contexts; published state moving backwards |
 | 1 | **Core** | RNG arguments; lazy exact distributions; `p` only when visited; dirty egos; calculated set; `clear_ego` frees memory; stable tie order. core 0.11 | existing core tests; `test_incremental_bias.rs`; seeded determinism; weight-ratio > 2^53; memory reuse after eviction |
-| 2 | **Sequencing** | Dispatcher, single queue, replay log, publication policy, watermark, safe reader acquisition, per-operation RNG | copies bit-identical after concurrent writes; no stall; no deadlock at any threshold; order across contexts |
+| 2 | **Sequencing** | Dispatcher, single queue, replay log, publication policy, watermark, safe reader acquisition, per-operation RNG | copies bit-identical after concurrent writes; no stall; no deadlock at any threshold; order across contexts; publication monotonic |
 | 3 | **Barrier** | `Barrier` op, `mr_sync`, idempotent `EnsureCalculated`, bulk/reset/context creation through the dispatcher, connector volatility and upgrade script | two connector processes with overlapping stamps; sync covers every context incl. one created concurrently; prepared statements see fresh results |
 | 4 | **Residency and reads** | Own LRU with pins, `Lease`, two-phase reads, mutual in portions | no eviction of a pinned ego; concurrent acquires of one ego calculate once; mutual with more candidates than capacity; memory bounded by capacity |
 | 5 | **Caches** | Remove `cached_scores`; per-copy cluster cache keyed by generation and zero revision | reverse score fresh after a change + `mr_sync`; cluster bounds recomputed after a change; no cross-copy contamination |
