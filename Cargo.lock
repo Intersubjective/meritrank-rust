@@ -1305,7 +1305,7 @@ dependencies = [
 
 [[package]]
 name = "pgmer2"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "bincode",
  "csv",

@@ -173,7 +173,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
       data:     ReqData::Stamp(stamp),
     })
     .await;
-  processor.sync_future(stamp).await;
+  processor.sync_future().await;
   println!("Bulk load and sync done.");
 
   let node_list = processor
@@ -239,7 +239,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
       data:     ReqData::Stamp(warmup_stamp),
     })
     .await;
-  processor.sync_future(warmup_stamp).await;
+  processor.sync_future().await;
   let warmup_elapsed = warmup_start.elapsed();
   if warmup_elapsed > Duration::from_secs(30) {
     eprintln!(

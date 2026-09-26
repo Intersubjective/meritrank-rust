@@ -283,7 +283,6 @@ async fn s2_user_edges_reach_contexts_in_one_order() {
 
 /// Every PostgreSQL backend starts its stamp counter at 0. After any client synced with a large
 /// stamp, a new backend's `sync(1)` must still wait for its own preceding write.
-#[ignore = "S3: fixed in phase 3 (server-owned barrier)"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn s3_sync_waits_for_preceding_writes() {
   // A ring the ego walks around, so that a new edge out of the ego repairs many walks and the
@@ -545,4 +544,87 @@ fn s12_same_seed_same_scores() {
   };
   assert_eq!(run(11), run(11));
   assert_ne!(run(11), run(12));
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: barrier, context seeding, batch calculation
+// ---------------------------------------------------------------------------
+
+/// A context created implicitly by a write (not by `WriteCreateContext`) is seeded with the
+/// User→User edges already in the null context, and `mr_sync` covers it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn implicit_context_is_seeded_and_synced() {
+  let proc = MultiGraphProcessor::new(settings(100));
+  write(&proc, "", "U1", "U2", 1.0).await;
+  write(&proc, "", "U2", "U3", 2.0).await;
+  // A non-user edge into a context that does not exist yet creates it.
+  write(&proc, "Q", "B1", "U1", 1.0).await;
+  sync(&proc, 1).await;
+
+  let q = edges(&proc, "Q").await;
+  assert!(weight_of(&q, "U1", "U2").is_some(), "Q not seeded: {:?}", q);
+  assert!(weight_of(&q, "U2", "U3").is_some(), "Q not seeded: {:?}", q);
+  assert!(weight_of(&q, "B1", "U1").is_some(), "Q lost its own edge: {:?}", q);
+}
+
+/// Concurrent User→User writes while a context is being created: once synced, the new context
+/// agrees with the null context on every edge.
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn context_created_during_writes_agrees_with_null_context() {
+  for trial in 0..20 {
+    let proc = Arc::new(MultiGraphProcessor::new(settings(10)));
+    let mut js = JoinSet::new();
+    for i in 0..32 {
+      let p = Arc::clone(&proc);
+      js.spawn(async move {
+        write(&p, "", &format!("U{}", i % 7), &format!("U{}", (i + 1) % 7), 1.0 + i as f64)
+          .await
+      });
+    }
+    let p = Arc::clone(&proc);
+    js.spawn(async move {
+      request(&p, "N", ReqData::WriteCreateContext).await;
+    });
+    while let Some(r) = js.join_next().await {
+      r.unwrap();
+    }
+    sync(&proc, 1).await;
+    let mut null: Vec<_> = edges(&proc, "").await;
+    let mut n: Vec<_> = edges(&proc, "N").await;
+    null.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
+    n.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
+    let key = |v: &[(String, String, f64)]| {
+      v.iter().map(|(s, d, _)| (s.clone(), d.clone())).collect::<Vec<_>>()
+    };
+    assert_eq!(key(&null), key(&n), "trial {trial}: edge sets differ");
+  }
+}
+
+/// The first mutual-scores read already returns reverse scores: the peers are calculated in one
+/// batch before the read.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn mutual_scores_have_reverse_scores_on_first_read() {
+  let proc = MultiGraphProcessor::new(settings(2_000));
+  write(&proc, "", "U1", "U2", 1.0).await;
+  write(&proc, "", "U2", "U1", 1.0).await;
+  write(&proc, "", "U1", "U3", 1.0).await;
+  write(&proc, "", "U3", "U1", 1.0).await;
+  sync(&proc, 1).await;
+  match request(
+    &proc,
+    "",
+    ReqData::ReadMutualScores(OpReadMutualScores {
+      ego: "U1".into(),
+    }),
+  )
+  .await
+  {
+    Response::Scores(ResScores { scores }) => {
+      assert_eq!(scores.iter().filter(|s| s.target != "U1").count(), 2);
+      for s in scores.iter().filter(|s| s.target != "U1") {
+        assert!(s.reverse_score > 0.0, "no reverse score for {}", s.target);
+      }
+    },
+    other => panic!("expected scores, got {:?}", other),
+  }
 }

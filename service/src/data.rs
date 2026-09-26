@@ -170,6 +170,10 @@ pub enum AugGraphOp {
   ClearEgo(NodeId),
   DeleteNode(NodeName),
   Stamp(u64),
+  /// No-op marker; urgent, so the worker publishes right after it (the sync barrier).
+  Barrier,
+  /// Calculates the listed egos that are not calculated yet; urgent.
+  EnsureCalculated(Vec<NodeName>),
 }
 
 #[derive(Debug, Encode, Decode, Serialize, Deserialize)]

@@ -31,4 +31,22 @@ impl AugGraph {
       Err(e) => log_error!("{}", e),
     };
   }
+
+  /// Calculates the ego unless it already is. Unknown or non-user egos are ignored.
+  pub fn ensure_calculated(
+    &mut self,
+    ego: &NodeName,
+  ) {
+    let info = match self.nodes.get_by_name(ego) {
+      Some(x) => x,
+      None => return,
+    };
+    if info.kind != NodeKind::User || self.mr.is_calculated(info.id) {
+      return;
+    }
+    let ego_id = info.id;
+    if let Err(e) = self.mr.calculate(ego_id) {
+      log_error!("{}", e);
+    }
+  }
 }

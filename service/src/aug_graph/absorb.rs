@@ -83,6 +83,12 @@ impl AugGraph {
         }
       },
       AugGraphOp::Stamp(value) => self.stamp = *value,
+      AugGraphOp::Barrier => {},
+      AugGraphOp::EnsureCalculated(egos) => {
+        for ego in egos {
+          self.ensure_calculated(ego);
+        }
+      },
     }
   }
 }

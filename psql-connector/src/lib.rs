@@ -38,7 +38,8 @@ DROP FUNCTION IF EXISTS mr_bulk_load_edges;
 
 //  ================================================================
 //
-//    Immutable functions
+//    Constants are IMMUTABLE; network reads are STABLE (PostgreSQL may reuse a result within one
+//    statement, never across statements); writes and mr_sync are VOLATILE.
 //
 //  ================================================================
 
@@ -58,7 +59,7 @@ fn mr_service() -> &'static str {
   VERSION
 }
 
-#[pg_extern(immutable)]
+#[pg_extern(stable)]
 fn mr_node_score(
   src: Option<&str>,
   dst: Option<&str>,
@@ -82,7 +83,7 @@ fn mr_node_score(
   Ok(TableIterator::new(new_node_score(ego, target, ctx(context))?))
 }
 
-#[pg_extern(immutable)]
+#[pg_extern(stable)]
 fn mr_scores(
   src: Option<&str>,
   hide_personal: default!(Option<bool>, "false"),
@@ -123,7 +124,7 @@ fn mr_scores(
   )?))
 }
 
-#[pg_extern(immutable)]
+#[pg_extern(stable)]
 fn mr_graph(
   ego: Option<&str>,
   focus: Option<&str>,
@@ -158,7 +159,7 @@ fn mr_graph(
   )?))
 }
 
-#[pg_extern(immutable)]
+#[pg_extern(stable)]
 fn mr_neighbors(
   ego: Option<&str>,
   focus: Option<&str>,
@@ -212,7 +213,7 @@ fn mr_neighbors(
   )?))
 }
 
-#[pg_extern(immutable)]
+#[pg_extern(stable)]
 fn mr_nodelist(
   context: default!(Option<&str>, "''"),
 ) -> Result<
@@ -222,7 +223,7 @@ fn mr_nodelist(
   Ok(TableIterator::new(new_node_list(ctx(context))?))
 }
 
-#[pg_extern(immutable)]
+#[pg_extern(stable)]
 fn mr_edgelist(
   context: default!(Option<&str>, "''"),
 ) -> Result<
@@ -235,7 +236,7 @@ fn mr_edgelist(
   Ok(TableIterator::new(new_edgelist(ctx(context))?))
 }
 
-#[pg_extern(immutable)]
+#[pg_extern(stable)]
 fn mr_connected(
   src: Option<&str>,
   context: default!(Option<&str>, "''"),
@@ -247,7 +248,7 @@ fn mr_connected(
   Ok(TableIterator::new(new_connected(ego, ctx(context))?))
 }
 
-#[pg_extern(immutable)]
+#[pg_extern(stable)]
 fn mr_mutual_scores(
   src: Option<&str>,
   context: default!(Option<&str>, "''"),
@@ -283,7 +284,8 @@ fn mr_get_new_edges_filter(
 //
 //  ================================================================
 
-#[pg_extern(immutable)]
+//  A barrier with a side effect on what later reads see: VOLATILE, never cached.
+#[pg_extern]
 fn mr_sync(
   timeout_msec: default!(Option<i64>, "6000000"),
 ) -> Result<&'static str, Box<dyn Error + 'static>> {

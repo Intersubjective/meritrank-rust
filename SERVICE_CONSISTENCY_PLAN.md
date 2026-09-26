@@ -1,6 +1,6 @@
 # Plan: Service Consistency Track
 
-**Status: IN PROGRESS** — phases 0–2 done on `feature/service-consistency`. Agreed 2026-09-26. Lands in `main` before the negative-edges
+**Status: IN PROGRESS** — phases 0–3 done on `feature/service-consistency`. Agreed 2026-09-26. Lands in `main` before the negative-edges
 feature (`NEGATIVE_EDGES_FEATURE.md`, dependencies C1–C5; journal `NEGATIVE_EDGES_JOURNAL.md`,
 D22 and D26). Every defect listed in §1 exists in `main` today, independently of walls.
 
