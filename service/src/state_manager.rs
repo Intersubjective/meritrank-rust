@@ -572,19 +572,6 @@ impl MultiGraphProcessor {
     }
   }
 
-  /// Runs a read on the subgraph's published copy; `None` if the subgraph does not exist.
-  fn process_read_value<F, T>(
-    &self,
-    subgraph_name: &SubgraphName,
-    read: F,
-  ) -> Option<T>
-  where
-    F: FnOnce(&AugGraph) -> T,
-  {
-    let shared = Arc::clone(&self.subgraphs_map.get(subgraph_name)?.shared);
-    Some(read_published(&shared, read))
-  }
-
   pub fn process_read<F>(
     &self,
     subgraph_name: &SubgraphName,
@@ -694,6 +681,41 @@ impl MultiGraphProcessor {
     }
   }
 
+  /// An explicit (re)calculation: the `WriteCalculate` itself is the calculation. The ego is
+  /// registered as resident (evicting others if needed) in the same dispatcher section, and the
+  /// call returns once the operation is queued, like any write.
+  async fn explicit_calculate(
+    &self,
+    subgraph: &SubgraphName,
+    ego: &NodeName,
+  ) -> Response {
+    let op = AugGraphOp::WriteCalculate(OpWriteCalculate { ego: ego.clone() });
+    let known = self.subgraphs_map.get(subgraph).and_then(|p| {
+      let id = read_published(&p.shared, |g| {
+        g.nodes
+          .get_by_name(ego)
+          .filter(|i| i.kind == NodeKind::User)
+          .map(|i| i.id)
+      })?;
+      Some((Arc::clone(&p.residency), id))
+    });
+    let (residency, id) = match known {
+      // Unknown ego: the operation registers it; the first read makes it resident.
+      None => return self.send_op(subgraph, op).await,
+      Some(x) => x,
+    };
+    let mut state = self.dispatcher.lock().await;
+    let plan = residency.plan(&[id], false);
+    for victim in &plan.evict {
+      self
+        .dispatch_locked(&mut state, Targets::One(subgraph), AugGraphOp::ClearEgo(*victim))
+        .await;
+    }
+    let dispatched = self.dispatch_locked(&mut state, Targets::One(subgraph), op).await;
+    residency.set_ready(&plan.calculate, dispatched.seq);
+    dispatched.response()
+  }
+
   /// A read in an ego's frame, in two phases: pin the ego and read, recording which other frames
   /// the read needed (reverse scores); pin those, calculating absent ones, and read again. When
   /// the peers do not fit the capacity, they are pinned in portions and each row (one per peer:
@@ -728,6 +750,19 @@ impl MultiGraphProcessor {
       return read_published(&shared, &run);
     }
 
+    // The working set of one read exceeds the walk cache: frames will be recalculated on every
+    // such read. Logged sparsely (1st, 2nd, 4th, 8th … time).
+    static OVER_CAPACITY: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seen = OVER_CAPACITY.fetch_add(1, Ordering::Relaxed) + 1;
+    if seen.is_power_of_two() {
+      log_warning!(
+        "A read needs {} peer frames but MERITRANK_WALKS_CACHE_SIZE is {}: frames are recalculated \
+         on every such read ({} so far); raise the cache size to cover the working set.",
+        peers.len(),
+        capacity,
+        seen
+      );
+    }
     let mut merged = first;
     for portion in peers.chunks(capacity) {
       let _lease = self.acquire(subgraph, portion, true).await;
@@ -866,21 +901,7 @@ impl MultiGraphProcessor {
         }
       },
       ReqData::WriteCalculate(data) => {
-        // Register the ego as resident (possibly evicting others), then recalculate it.
-        let ego_id = self.process_read_value(&req.subgraph, |g| {
-          g.nodes.get_by_name(&data.ego).map(|i| i.id)
-        });
-        if let Some(Some(id)) = ego_id {
-          self.acquire(&req.subgraph, &[id], false).await;
-        }
-        self
-          .send_op(
-            &req.subgraph,
-            AugGraphOp::WriteCalculate(OpWriteCalculate {
-              ego: data.ego.clone(),
-            }),
-          )
-          .await
+        self.explicit_calculate(&req.subgraph, &data.ego).await
       },
       ReqData::WriteCreateContext => {
         let mut state = self.dispatcher.lock().await;
