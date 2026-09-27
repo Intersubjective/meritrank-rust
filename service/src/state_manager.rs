@@ -732,8 +732,23 @@ impl MultiGraphProcessor {
       Some((Arc::clone(&p.residency), id))
     });
     let (residency, id) = match known {
-      // Unknown ego: the operation registers it; the first read makes it resident.
-      None => return self.send_op(subgraph, op).await,
+      // Unknown ego: the operation registers the node; once that is published, register the
+      // frame as resident too (evicting others if needed), or it would never be evicted.
+      None => {
+        let dispatched = {
+          let mut state = self.dispatcher.lock().await;
+          self.dispatch_locked(&mut state, Targets::One(subgraph), op).await
+        };
+        let response = dispatched.response();
+        dispatched.wait_published().await;
+        let id = self.subgraphs_map.get(subgraph).and_then(|p| {
+          read_published(&p.shared, |g| g.nodes.get_by_name(ego).map(|i| i.id))
+        });
+        if let Some(id) = id {
+          self.acquire(subgraph, &[id], false).await;
+        }
+        return response;
+      },
       Some(x) => x,
     };
     let mut state = self.dispatcher.lock().await;

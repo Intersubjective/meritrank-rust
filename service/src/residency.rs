@@ -57,12 +57,17 @@ impl Residency {
   }
 
   /// Fast path, no dispatch needed: if every ego is resident and ready, pins them all and returns
-  /// the sequence number to wait for. Otherwise changes nothing.
+  /// the sequence number to wait for. Otherwise changes nothing. Not taken while the cache is
+  /// over capacity (after concurrent reads pinned more than it holds), so that the slow path
+  /// evicts back down instead of the excess lingering while reads keep hitting resident frames.
   pub fn try_pin_resident(
     &self,
     egos: &[NodeId],
   ) -> Option<u64> {
     let mut lru = self.lru.lock();
+    if self.capacity > 0 && lru.len() > self.capacity {
+      return None;
+    }
     if !egos
       .iter()
       .all(|e| lru.peek(e).map_or(false, |x| x.ready_seq != PENDING))
@@ -232,6 +237,19 @@ mod tests {
     assert_eq!(p.evict, vec![1]);
     assert!(p.calculate.is_empty());
     assert_eq!(r.len(), 2);
+  }
+
+  #[test]
+  fn fast_path_not_taken_over_capacity() {
+    let r = Residency::new(1);
+    r.plan(&[1, 2], true);
+    r.set_ready(&[1, 2], 1);
+    r.unpin(&[1, 2]);
+    assert_eq!(r.len(), 2, "over capacity after both were pinned");
+    assert_eq!(r.try_pin_resident(&[2]), None, "must go through plan to evict");
+    let p = r.plan(&[2], true);
+    assert_eq!(p.evict, vec![1]);
+    assert_eq!(r.len(), 1);
   }
 
   #[test]
