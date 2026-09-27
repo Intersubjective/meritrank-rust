@@ -43,6 +43,9 @@ pub struct Settings {
   pub blame_decay: f64,
   /// Who takes blame (MERITRANK_BLAME_RADIUS: `prefix` or `voucher`).
   pub blame_radius: BlameRadius,
+  /// Maximum number of named contexts (MERITRANK_MAX_CONTEXTS): each one is a worker thread and
+  /// two graph copies, and any write can name a new one.
+  pub max_contexts: usize,
 }
 
 impl Default for Settings {
@@ -70,6 +73,7 @@ impl Default for Settings {
       discredit_lambda: 0.0,
       blame_decay: 0.8,
       blame_radius: BlameRadius::Prefix,
+      max_contexts: 256,
     }
   }
 }
@@ -263,6 +267,7 @@ pub fn load_from_env() -> Settings {
   );
   load_var("MERITRANK_COLLECT_STATS", &mut s.collect_stats);
   load_var("MERITRANK_SEED", &mut s.seed);
+  load_var("MERITRANK_MAX_CONTEXTS", &mut s.max_contexts);
 
   s
 }

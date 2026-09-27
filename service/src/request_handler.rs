@@ -31,14 +31,33 @@ async fn write_message<T: Encode>(
   Ok(())
 }
 
-/// Reads a length-prefixed (4-byte big-endian) bincode message.
+/// Largest accepted frame (MERITRANK_MAX_FRAME_BYTES, default 256 MiB): the length prefix comes
+/// from the client and must not size an allocation by itself.
+pub fn max_frame_bytes() -> usize {
+  static MAX: std::sync::LazyLock<usize> = std::sync::LazyLock::new(|| {
+    std::env::var("MERITRANK_MAX_FRAME_BYTES")
+      .ok()
+      .and_then(|s| s.parse().ok())
+      .unwrap_or(256 * 1024 * 1024)
+  });
+  *MAX
+}
+
+/// Reads a length-prefixed (4-byte big-endian) bincode message. The body is read as it arrives,
+/// so memory grows with the bytes actually received, never with the claimed length alone.
 async fn read_message<T: Decode<()>>(stream: &mut TcpStream) -> Result<T, Box<dyn Error>> {
   log_trace!();
   let mut len_buf = [0u8; 4];
   stream.read_exact(&mut len_buf).await?;
   let len = u32::from_be_bytes(len_buf) as usize;
-  let mut buf = vec![0u8; len];
-  stream.read_exact(&mut buf).await?;
+  if len > max_frame_bytes() {
+    return Err(format!("frame of {} bytes exceeds the limit of {}", len, max_frame_bytes()).into());
+  }
+  let mut buf = Vec::with_capacity(len.min(64 * 1024));
+  (&mut *stream).take(len as u64).read_to_end(&mut buf).await?;
+  if buf.len() != len {
+    return Err("truncated frame".into());
+  }
   Ok(decode_from_slice(&buf, standard())?.0)
 }
 

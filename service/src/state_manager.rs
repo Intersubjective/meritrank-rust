@@ -488,19 +488,30 @@ impl MultiGraphProcessor {
   ) -> Dispatched {
     let op = Arc::new(op);
 
+    let refused = Dispatched {
+      ok:      false,
+      seq:     state.last_seq,
+      watches: vec![],
+    };
     let names: Vec<SubgraphName> = match targets {
       Targets::One(name) => {
-        self.create_subgraph_locked(state, name).await;
+        if !self.create_subgraph_locked(state, name).await {
+          return refused;
+        }
         vec![name.clone()]
       },
       Targets::List(names) => {
         for name in &names {
-          self.create_subgraph_locked(state, name).await;
+          if !self.create_subgraph_locked(state, name).await {
+            return refused;
+          }
         }
         names
       },
       Targets::All { ensure } => {
-        self.create_subgraph_locked(state, ensure).await;
+        if !self.create_subgraph_locked(state, ensure).await {
+          return refused;
+        }
         let mut names: Vec<SubgraphName> =
           self.subgraphs_map.iter().map(|r| r.key().clone()).collect();
         names.sort();
@@ -537,23 +548,33 @@ impl MultiGraphProcessor {
   /// Creates a subgraph if it is absent and seeds a new context with the User→User edges of the
   /// null context, after the null context has published everything dispatched to it. Called under
   /// the dispatcher lock, so no write can slip between the seed and later operations.
+  /// Returns false, creating nothing, when the subgraph is absent and the number of contexts has
+  /// reached MERITRANK_MAX_CONTEXTS (every subgraph costs a thread and two graph copies).
   async fn create_subgraph_locked(
     &self,
     state: &mut DispatchState,
     name: &SubgraphName,
-  ) {
+  ) -> bool {
     if self.subgraphs_map.contains_key(name) {
-      return;
+      return true;
+    }
+    if !name.is_empty() && self.subgraphs_map.len() > self.settings.max_contexts {
+      log_error!(
+        "Context {:?} not created: MERITRANK_MAX_CONTEXTS ({}) reached",
+        name,
+        self.settings.max_contexts
+      );
+      return false;
     }
     self.insert_subgraph_if_does_not_exist(name);
     if name.is_empty() {
-      return;
+      return true;
     }
 
     let null_ctx = String::new();
     let (shared, mut watch) = match self.subgraphs_map.get(&null_ctx) {
       Some(p) => (Arc::clone(&p.shared), p.published_seq.clone()),
-      None => return,
+      None => return true,
     };
     let caught_up = state.last_by_subgraph.get(&null_ctx).copied().unwrap_or(0);
     let _ = watch.wait_for(|v| *v >= caught_up).await;
@@ -561,7 +582,7 @@ impl MultiGraphProcessor {
 
     let sender = match self.subgraphs_map.get(name) {
       Some(p) => p.op_sender.clone(),
-      None => return,
+      None => return true,
     };
     for edge in edges {
       state.last_seq += 1;
@@ -572,10 +593,11 @@ impl MultiGraphProcessor {
         .is_err()
       {
         log_error!("Failed to seed context {:?}", name);
-        return;
+        return true;
       }
       state.last_by_subgraph.insert(name.clone(), seq);
     }
+    true
   }
 
   /// Clears every subgraph and recreates the null context, under the dispatcher lock.
@@ -881,6 +903,16 @@ impl MultiGraphProcessor {
       },
       ReqData::WriteBulkEdges(data) => {
         // Validate the whole batch before touching anything (R20).
+        let contexts: BTreeSet<&SubgraphName> =
+          data.edges.iter().map(|e| &e.context).filter(|c| !c.is_empty()).collect();
+        if contexts.len() > self.settings.max_contexts {
+          log_error!(
+            "Bulk load rejected: {} contexts exceed MERITRANK_MAX_CONTEXTS ({})",
+            contexts.len(),
+            self.settings.max_contexts
+          );
+          return Response::Fail;
+        }
         for edge in &data.edges {
           if let Err(e) =
             validate_edge_write(&edge.context, &edge.src, &edge.dst, edge.amount)
@@ -961,8 +993,11 @@ impl MultiGraphProcessor {
       },
       ReqData::WriteCreateContext => {
         let mut state = self.dispatcher.lock().await;
-        self.create_subgraph_locked(&mut state, &req.subgraph).await;
-        Response::Ok
+        if self.create_subgraph_locked(&mut state, &req.subgraph).await {
+          Response::Ok
+        } else {
+          Response::Fail
+        }
       },
       ReqData::WriteDeleteEdge(data) => {
         self
@@ -972,7 +1007,8 @@ impl MultiGraphProcessor {
               src:       data.src,
               dst:       data.dst,
               amount:    0.0,
-              magnitude: data.index as u32,
+              // A deletion needs no magnitude (and `index` defaults to -1).
+              magnitude: 0,
             },
           )
           .await
@@ -986,6 +1022,10 @@ impl MultiGraphProcessor {
           .await
       },
       ReqData::WriteZeroOpinion(data) => {
+        if !data.score.is_finite() {
+          log_error!("Zero opinion must be finite: {} = {}", data.node, data.score);
+          return Response::Fail;
+        }
         self
           .send_op(&req.subgraph, AugGraphOp::WriteZeroOpinion(data.clone()))
           .await
