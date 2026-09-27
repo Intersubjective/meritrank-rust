@@ -336,7 +336,11 @@ impl MeritRank {
       );
     }
 
-    if old_weight != 0.0 && new_weight != 0.0 && old_weight != new_weight {
+    // Wall → wall is a change of strength, re-coupled in place (R16). Anything else that
+    // replaces an existing weight — trust → trust, and sign transitions — is a deletion followed
+    // by an addition.
+    let wall_to_wall = old_weight < 0.0 && new_weight < 0.0;
+    if old_weight != 0.0 && new_weight != 0.0 && old_weight != new_weight && !wall_to_wall {
       self.set_edge_(src, dest, 0.0)?;
     }
     self.set_edge_(src, dest, new_weight)
