@@ -1,13 +1,12 @@
 # Feature: Negative Edges as Absorbing Walls
 
-**Status: SPECIFIED, NOT IMPLEMENTED.** Phase 1 below is the agreed scope, including the
-implementation design review of 2026-09-26 (journal D16–D25). The code in `core/` still implements
-the forward-penalty semantics. The feature depends on the service-consistency track (§6,
-"Dependencies"), which lands in `main` first.
+**Status: IMPLEMENTED** on `feature/negative-edges` (2026-09-27), on top of the service-consistency
+track (`SERVICE_CONSISTENCY_PLAN.md`, merged into `main`). Implementation notes and deviations:
+journal D27. Phase 1 below is the scope.
 
 This document states *what* MeritRank must do: requirements, API contract and acceptance tests.
 The reasoning behind each decision lives in `NEGATIVE_EDGES_JOURNAL.md`, cited here as
-**J-P1, J-P2** (problems), **J-D1…J-D26** (decisions) and **A1…A9** (axioms).
+**J-P1, J-P2** (problems), **J-D1…J-D27** (decisions) and **A1…A9** (axioms).
 Requirement IDs are stable: a new requirement takes the next free number, and a withdrawn one keeps
 its number, so numbers within a section need not be consecutive. The interactive model is
 `scripts/negative_edges_demo.ipynb`. The application-side design (Tentura) is
@@ -459,7 +458,7 @@ API:
 
 ## 11. References
 
-- `NEGATIVE_EDGES_JOURNAL.md` — decisions J-D1…J-D26, axioms A1…A9, known attacks.
+- `NEGATIVE_EDGES_JOURNAL.md` — decisions J-D1…J-D27, axioms A1…A9, known attacks.
 - `scripts/negative_edges_demo.ipynb` — linear-chain model, analytic vs Monte-Carlo.
 - `core/tests/test_incremental_bias.rs`, `core/tests/test_incremental_adversarial.rs`,
   `core/tests/test_incremental_adversarial_fable.rs` — incremental-vs-fresh statistical harness

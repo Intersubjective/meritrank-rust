@@ -1,14 +1,14 @@
 # Design Journal: Negative Edges — Absorbing Wall
 
-**Status: DESIGN AGREED, NOT IMPLEMENTED.** The code in `core/` still implements the forward-penalty
-semantics described under "Problem" below. D16–D25 record the implementation design review of
+**Status: IMPLEMENTED** on `feature/negative-edges` (D27). The "Problem" section below describes
+the forward-penalty semantics the feature replaced. D16–D25 record the implementation design review of
 2026-09-26; the service-consistency track (D22) lands in `main` before the feature.
 
 Decision numbering is local to this document (`JOURNAL.md` covers the NNG→TCP migration and has
 its own D1, D2, …).
 
 Companion interactive demo: `scripts/negative_edges_demo.ipynb` (run via `scripts/run_demo.sh`).
-Requirements, glossary and acceptance tests: `NEGATIVE_EDGES_FEATURE.md` (decisions here: D1–D26). This journal records
+Requirements, glossary and acceptance tests: `NEGATIVE_EDGES_FEATURE.md` (decisions here: D1–D27). This journal records
 *why*; the feature document records *what*. Where they differ, the feature document is current.
 
 ---
@@ -562,6 +562,37 @@ of its decisions and one of D19.
   `published_seq`, urgent operations forcing publication.
 - **Volatility**: writes and `mr_sync` `VOLATILE`, reads `STABLE`.
 - **`MERITRANK_MIN_OPS_BEFORE_SWAP`** is reinterpreted as the maximum batch size, name kept.
+
+---
+
+## D27 — Implementation notes
+
+**Context** (2026-09-27): phase 1 implemented on `feature/negative-edges`, after the consistency
+track. Where the implementation differs from the text above, or tests found something:
+
+- **Wall → wall writes are re-coupled in place** (R16 with `d₀ > 0`). A first version split every
+  weight change into a removal plus an addition, as for trust. That is exact but does twice the
+  work, and mutation testing showed it left the `d₀ > 0` coupling unexercised: a wrong formula
+  there passed every test. Trust → trust and sign transitions still split.
+- **`mr_graph`** lists positive edges normalised by `pos_sum` (R24) and walls as `−min(|w|, 1)`,
+  not normalised.
+- **Non-finite weights are rejected at the service entry.** Before, NaN reached the core's
+  `panic!` and killed the subgraph worker.
+- **Legacy negative edges to non-user nodes** (old dislikes, 121 in the connector's test data) are
+  invalid walls (R2); the load test's loader drops them, as the application does before the switch
+  (D12).
+- **The ego's own score** is `1 − P(absorbed)` (D21); credits come only from unabsorbed walks.
+- **Blame** is a float sum per (ego, node); entries below `1e-9` are dropped as rounding residue.
+  Debug builds recount credits and blame from the walks after every change (`MeritRank::verify`).
+- Two walk-cache leaks found by the thrash test and fixed in the service: an explicit calculation
+  of an ego unknown to the subgraph produced an untracked frame, and the cache's fast path kept an
+  excess over capacity alive while reads hit resident frames.
+- **Tests:** `core/tests/test_walls.rs` (analytic values, axioms A1/A2/A3/A6/A9, incremental vs
+  fresh for every wall and trust change around walls), `core/tests/test_walls_fuzz.rs` (random
+  graphs and edit sequences, calculate mode vs incremental), `service/tests/walls.rs`
+  (R1–R3, R7, R19, R20, R23, R24, end to end), `service/tests/thrash.rs` (chaos), load test with
+  walls (`service/LOAD_TEST_ANALYSIS.md`). Not re-run: the notebook's regression table (the chain
+  values are checked analytically instead).
 
 ---
 

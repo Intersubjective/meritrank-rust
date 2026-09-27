@@ -399,8 +399,9 @@ fn node_score_context() {
       let (ego, dst, score_dst, score_ego, _, _) = x;
       assert_eq!(ego, "U1");
       assert_eq!(dst, "U2");
-      assert!(score_dst > 0.25);
-      assert!(score_dst < 0.45);
+      // Visit probability (a·2/3 + a²/3 = 0.808) blended with zero opinion (factor 0.2).
+      assert!(score_dst > 0.55);
+      assert!(score_dst < 0.75);
       assert!(score_ego > -0.1);
       assert!(score_ego < 0.1);
     })
@@ -447,19 +448,20 @@ fn scores_null_context() {
     assert_eq!(x.0, "U1");
 
     match x.1.as_str() {
+      // Visit probabilities (1, a·2/3, a/3 + a²·2/3) blended with zero opinion (factor 0.2).
       "U1" => {
-        assert!(x.2 > 0.2);
-        assert!(x.2 < 0.5);
+        assert!(x.2 > 0.7);
+        assert!(x.2 < 0.9);
       },
 
       "U2" => {
-        assert!(x.2 > 0.1);
-        assert!(x.2 < 0.4);
+        assert!(x.2 > 0.35);
+        assert!(x.2 < 0.56);
       },
 
       "U3" => {
-        assert!(x.2 > 0.2);
-        assert!(x.2 < 0.5);
+        assert!(x.2 > 0.5);
+        assert!(x.2 < 0.72);
       },
 
       _ => assert!(false),
@@ -520,19 +522,20 @@ fn scores_context() {
     assert_eq!(x.0, "U1");
 
     match x.1.as_str() {
+      // Visit probabilities (1, a·2/3, a/3 + a²·2/3) blended with zero opinion (factor 0.2).
       "U1" => {
-        assert!(x.2 > 0.2);
-        assert!(x.2 < 0.5);
+        assert!(x.2 > 0.7);
+        assert!(x.2 < 0.9);
       },
 
       "U2" => {
-        assert!(x.2 > 0.1);
-        assert!(x.2 < 0.4);
+        assert!(x.2 > 0.35);
+        assert!(x.2 < 0.56);
       },
 
       "U3" => {
-        assert!(x.2 > 0.2);
-        assert!(x.2 < 0.5);
+        assert!(x.2 > 0.5);
+        assert!(x.2 < 0.72);
       },
 
       _ => assert!(false),
@@ -593,19 +596,20 @@ fn scores_defaults() {
     assert_eq!(x.0, "U1");
 
     match x.1.as_str() {
+      // Visit probabilities (1, a·2/3, a/3 + a²·2/3) blended with zero opinion (factor 0.2).
       "U1" => {
-        assert!(x.2 > 0.2);
-        assert!(x.2 < 0.5);
+        assert!(x.2 > 0.7);
+        assert!(x.2 < 0.9);
       },
 
       "U2" => {
-        assert!(x.2 > 0.1);
-        assert!(x.2 < 0.4);
+        assert!(x.2 > 0.35);
+        assert!(x.2 < 0.56);
       },
 
       "U3" => {
-        assert!(x.2 > 0.2);
-        assert!(x.2 < 0.5);
+        assert!(x.2 > 0.5);
+        assert!(x.2 < 0.72);
       },
 
       _ => assert!(false),
@@ -705,29 +709,25 @@ fn mutual_scores() {
     assert_eq!(x.0, "U1");
 
     match x.1.as_str() {
+      // First-passage probabilities blended with zero opinion (factor 0.2):
+      // (score, reverse) = 0.8 × (1, 1), (0.796, 0.709), (0.700, 0.751).
       "U1" => {
-        assert!(res[0].2 > 0.15);
-        assert!(res[0].2 < 0.45);
-        assert!(res[0].3 > 0.15);
-        assert!(res[0].3 < 0.45);
+        assert!(x.2 > 0.7 && x.2 < 0.9, "{:?}", x);
+        assert!(x.3 > 0.7 && x.3 < 0.9, "{:?}", x);
         assert!(u1);
         u1 = false;
       },
 
       "U2" => {
-        assert!(res[1].2 > 0.15);
-        assert!(res[1].2 < 0.45);
-        assert!(res[1].3 > 0.05);
-        assert!(res[1].3 < 0.45);
+        assert!(x.2 > 0.52 && x.2 < 0.75, "{:?}", x);
+        assert!(x.3 > 0.45 && x.3 < 0.68, "{:?}", x);
         assert!(u2);
         u2 = false;
       },
 
       "U3" => {
-        assert!(res[2].2 > 0.05);
-        assert!(res[2].2 < 0.45);
-        assert!(res[2].3 > 0.15);
-        assert!(res[2].3 < 0.45);
+        assert!(x.2 > 0.45 && x.2 < 0.67, "{:?}", x);
+        assert!(x.3 > 0.49 && x.3 < 0.71, "{:?}", x);
         assert!(u3);
         u3 = false;
       },
