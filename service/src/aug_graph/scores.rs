@@ -193,10 +193,11 @@ impl AugGraph {
     index: u32,
     count: u32,
   ) -> Vec<ScoreResult> {
-    let start = index as usize;
-    let end = (index + count) as usize;
+    // Client-supplied: clamp instead of slicing out of range or overflowing.
+    let start = (index as usize).min(items.len());
+    let end = (index as usize).saturating_add(count as usize).min(items.len());
 
-    items[start..end.min(items.len())]
+    items[start..end]
       .iter()
       .map(|(target_info, score, cluster)| {
         let (reverse_score, reverse_cluster) =

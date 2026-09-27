@@ -795,3 +795,134 @@ async fn concurrent_first_reads_calculate_once() {
   let resident = null_ctx(&proc).residency.len();
   assert_eq!(null_ctx(&proc).read(|g| g.mr.allocated_walks()), resident * w);
 }
+
+// ---------------------------------------------------------------------------
+// Review fixes (codex GPT-6 Astra review of the track and the walls feature)
+// ---------------------------------------------------------------------------
+
+/// A panic while applying an operation does not kill the subgraph worker: later operations are
+/// still applied and published. (A NaN weight is rejected at the service entry; sent straight
+/// into a processor queue it reaches the core's panic.)
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn panicking_operation_does_not_kill_the_worker() {
+  let notify = Arc::new(Notify::new());
+  let proc = GraphProcessor::new(AugGraph::new(settings(10)), 8, 1, Arc::clone(&notify), None, 0);
+  proc
+    .op_sender
+    .send(AugGraphOp::WriteEdge(edge("U1", "U2", f64::NAN)))
+    .await
+    .unwrap();
+  proc.op_sender.send(AugGraphOp::WriteEdge(edge("U1", "U3", 1.0))).await.unwrap();
+  let mut stamp = 0;
+  flush(&proc, &notify, &mut stamp).await;
+  assert_eq!(published_weight(&proc, "U1", "U3"), Some(1.0));
+  proc.shutdown().ok();
+}
+
+/// Two concurrent bulk loads replace the state one after the other: the result is one of them,
+/// never their union.
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn concurrent_bulk_loads_do_not_merge() {
+  use meritrank_service::data::{BulkEdge, OpWriteBulkEdges};
+  let bulk = |edges: &[(&str, &str)]| {
+    ReqData::WriteBulkEdges(OpWriteBulkEdges {
+      edges: edges
+        .iter()
+        .map(|(s, d)| BulkEdge {
+          src:       (*s).into(),
+          dst:       (*d).into(),
+          amount:    1.0,
+          magnitude: 0,
+          context:   String::new(),
+        })
+        .collect(),
+    })
+  };
+  for _ in 0..20 {
+    let proc = Arc::new(MultiGraphProcessor::new(settings(10)));
+    let a: Vec<(&str, &str)> = vec![("U1", "U2"), ("U2", "U3")];
+    let b: Vec<(&str, &str)> = vec![("U7", "U8"), ("U8", "U9")];
+    let (p1, p2) = (Arc::clone(&proc), Arc::clone(&proc));
+    let (ra, rb) = (bulk(&a), bulk(&b));
+    let t1 = tokio::spawn(async move { request(&p1, "", ra).await });
+    let t2 = tokio::spawn(async move { request(&p2, "", rb).await });
+    let (r1, r2) = (t1.await.unwrap(), t2.await.unwrap());
+    assert!(matches!(r1, Response::Ok) && matches!(r2, Response::Ok), "{:?} {:?}", r1, r2);
+    sync(&proc, 1).await;
+    let now: Vec<(String, String)> =
+      edges(&proc, "").await.into_iter().map(|(s, d, _)| (s, d)).collect();
+    let as_pairs = |v: &[(&str, &str)]| {
+      v.iter().map(|(s, d)| (s.to_string(), d.to_string())).collect::<Vec<_>>()
+    };
+    let mut sorted = now.clone();
+    sorted.sort();
+    assert!(sorted == as_pairs(&a) || sorted == as_pairs(&b), "merged state: {:?}", sorted);
+  }
+}
+
+/// Reverse scores of objects are taken from their owners' frames; with more owners than the walk
+/// cache, the portions must match rows by owner, not by the object's own name.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn object_reverse_scores_survive_portions() {
+  let proc = MultiGraphProcessor::new(cache_settings(2_000, 1));
+  for (o, u) in [("B1", "U1"), ("B2", "U2"), ("B3", "U3")] {
+    write(&proc, "", o, u, 1.0).await; // object → owner
+    write(&proc, "", "U0", o, 1.0).await; // the ego likes the object
+    write(&proc, "", u, "U0", 1.0).await; // the owner trusts the ego
+  }
+  sync(&proc, 1).await;
+  let rows = mutual(
+    request(
+      &proc,
+      "",
+      ReqData::ReadScores(meritrank_service::data::OpReadScores {
+        ego:           "U0".into(),
+        score_options: Default::default(),
+      }),
+    )
+    .await,
+  );
+  for o in ["B1", "B2", "B3"] {
+    let r = rows.iter().find(|r| r.target == o).unwrap_or_else(|| panic!("{o} row: {:?}", rows));
+    assert!(r.reverse_score > 0.0, "{o}: reverse score lost: {:?}", r);
+  }
+}
+
+/// Reads cancelled while their frames are being calculated leave no pins behind: the cache can
+/// still evict back to its capacity.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn cancelled_reads_leave_no_pins() {
+  let capacity = 2;
+  let proc = Arc::new(MultiGraphProcessor::new(cache_settings(20_000, capacity)));
+  for i in 0..12 {
+    write(&proc, "", &format!("U{i}"), &format!("U{}", (i + 1) % 12), 1.0).await;
+  }
+  sync(&proc, 1).await;
+  for i in 0..12 {
+    let p = Arc::clone(&proc);
+    let read = async move {
+      request(
+        &p,
+        "",
+        ReqData::ReadMutualScores(OpReadMutualScores {
+          ego: format!("U{i}"),
+        }),
+      )
+      .await
+    };
+    let _ = timeout(Duration::from_micros(300), read).await; // cancelled mid-flight
+  }
+  sync(&proc, 2).await;
+  // A normal read plans again: with no leaked pins, the cache returns to its capacity.
+  request(
+    &proc,
+    "",
+    ReqData::ReadScores(meritrank_service::data::OpReadScores {
+      ego:           "U0".into(),
+      score_options: Default::default(),
+    }),
+  )
+  .await;
+  let len = null_ctx(&proc).residency.len();
+  assert!(len <= capacity + 1, "{len} frames resident after cancelled reads (capacity {capacity})");
+}

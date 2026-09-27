@@ -80,6 +80,29 @@ reads, no score cache). Both runs on the same machine, one after another.
   base of this dataset is ~100 MB. Evicted frames now free their memory and their slots are
   reused, so the cache size really bounds memory.
 
+## Run: negative edges as walls (2026-09-27)
+
+Same data and settings; `feature/negative-edges` (walks follow positive edges only, absorption on
+every entry into a wall, blame accounting). The loader now drops the 121 legacy negative edges to
+non-user nodes (old dislikes; walls are User→User only, R2); the 7 negative User→User edges load
+as walls. New knobs: `MERITRANK_LOAD_TEST_WALLS` (fraction of User→User writes that set a wall:
+20 % hard, the rest soft with d in [0.1, 1)) and `MERITRANK_LOAD_TEST_LAMBDA` (discredit).
+
+| | Consistency track, no walls | Walls feature, no walls | Walls feature, 30 % walls, λ = 0.5 |
+|---|---|---|---|
+| Warmup | 2.4 s | 2.1 s | 2.0 s |
+| high: reads / writes | 160,560 / 1,571 | 179,017 / 1,716 | **186,367 / 1,835** |
+| Final median / p95 / p99 | 12.9 / 42.2 / 81.5 ms | 11.6 / 35.5 / 69.6 ms | 9.4 / 30.6 / 53.6 ms |
+
+- **Walls cost nothing measurable.** A wall write touches only its owner's walks (R16), and
+  absorbed walks are shorter, so heavy wall traffic is if anything cheaper.
+- **Slightly faster without walls too:** walks sample positive edges only, with no second
+  (absolute-weight) distribution per node.
+
+Eviction mode (cache 20) with 30 % walls: eviction_low / medium / high reads 84 / 188 / 629,
+`pending=0`, p99 129 ms — the same working-set thrash as before (the warning fired 10 times,
+sparsely logged), no hang.
+
 ### Previous run (for reference, before the track)
 
 | Phase | Reads | Writes | Reads/s |

@@ -92,56 +92,48 @@ mod tests {
   #[test]
   fn test_random_walk_push() {
     let mut random_walk = RandomWalk::new();
-    random_walk.push(1, true).unwrap();
-    random_walk.push(2, false).unwrap();
-    random_walk.push(3, true).unwrap();
-    assert_eq!(random_walk.negative_segment_start.unwrap(), 1);
-    assert_eq!(random_walk.get_nodes(), &[1, 2, 3]);
-  }
-  #[test]
-  fn test_start_with_negative_step() {
-    let mut random_walk = RandomWalk::new();
-    random_walk.push(10, false).unwrap(); // Step 0: Negative
-    assert_eq!(random_walk.negative_segment_start.unwrap(), 0);
-    assert_eq!(random_walk.get_nodes(), &[10]);
-  }
-
-  #[test]
-  fn test_multiple_positive_steps_after_negative() {
-    let mut random_walk = RandomWalk::new();
-    random_walk.push(1, false).unwrap(); // Step 0: Negative
-    random_walk.push(2, true).unwrap(); // Step 1: Positive
-    random_walk.push(3, true).unwrap(); // Step 2: Positive
-
-    assert_eq!(random_walk.negative_segment_start.unwrap(), 0);
+    random_walk.push(1).unwrap();
+    random_walk.push(2).unwrap();
+    random_walk.push(3).unwrap();
+    assert!(!random_walk.absorbed);
     assert_eq!(random_walk.get_nodes(), &[1, 2, 3]);
   }
 
   #[test]
-  fn test_no_overlapping_negative_segments() {
+  fn test_push_rejects_self_loop() {
     let mut random_walk = RandomWalk::new();
-    random_walk.push(1, false).unwrap(); // Step 0: Negative
-    assert!(random_walk.push(2, false).is_err()); // Step 1: Negative
+    random_walk.push(1).unwrap();
+    assert!(random_walk.push(1).is_err());
   }
 
   #[test]
-  fn test_random_walk_extend_pos_to_neg() {
+  fn test_absorbed_walk_cannot_grow() {
+    let mut random_walk = RandomWalk::from_nodes(vec![1, 2]);
+    random_walk.absorbed = true;
+    assert!(random_walk.push(3).is_err());
+    assert!(random_walk.extend(&RandomWalk::from_nodes(vec![3])).is_err());
+  }
+
+  #[test]
+  fn test_random_walk_extend_takes_absorption() {
     let mut random_walk = RandomWalk::from_nodes(vec![1]);
     let mut new_segment = RandomWalk::from_nodes(vec![2, 3]);
-    new_segment.negative_segment_start = Some(0);
+    new_segment.absorbed = true;
     random_walk.extend(&new_segment).unwrap();
-    assert_eq!(random_walk.get_nodes(), &[1, 2, 3,]);
-    assert_eq!(random_walk.negative_segment_start.unwrap(), 1)
+    assert_eq!(random_walk.get_nodes(), &[1, 2, 3]);
+    assert!(random_walk.absorbed);
   }
 
   #[test]
-  fn test_random_walk_extend_net_to_pos() {
-    let mut random_walk = RandomWalk::from_nodes(vec![1, 2]);
-    let new_segment = RandomWalk::from_nodes(vec![3, 4]);
-    random_walk.negative_segment_start = Some(1);
-    random_walk.extend(&new_segment).unwrap();
-    assert_eq!(random_walk.get_nodes(), &[1, 2, 3, 4]);
-    assert_eq!(random_walk.negative_segment_start.unwrap(), 1)
+  fn test_split_moves_absorption_with_the_tail() {
+    let mut walk = RandomWalk::from_nodes(vec![1, 2, 3]);
+    walk.absorbed = true;
+    let tail = walk.split_from(3);
+    assert!(walk.absorbed && tail.is_empty() && !tail.absorbed);
+    let tail = walk.split_from(1);
+    assert!(!walk.absorbed);
+    assert!(tail.absorbed);
+    assert_eq!(tail.get_nodes(), &[2, 3]);
   }
 
   #[test]
@@ -163,13 +155,11 @@ mod tests {
   }
 
   #[test]
-  fn test_random_walk_clear_resets_negative_segment() {
-    let mut walk = RandomWalk::new();
-    walk.push(1, true).unwrap();
-    walk.push(2, false).unwrap();
-    assert_eq!(walk.negative_segment_start, Some(1));
+  fn test_random_walk_clear_resets_absorption() {
+    let mut walk = RandomWalk::from_nodes(vec![1, 2]);
+    walk.absorbed = true;
     walk.clear();
     assert!(walk.is_empty());
-    assert_eq!(walk.negative_segment_start, None);
+    assert!(!walk.absorbed);
   }
 }

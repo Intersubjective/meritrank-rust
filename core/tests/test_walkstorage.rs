@@ -51,12 +51,8 @@ mod tests {
     walk_storage.update_walk_bookkeeping(start1 + 1, 0);
     walk_storage.update_walk_bookkeeping(start2 + 0, 0);
 
-    // Clear block for ego 1 (decrement counters, remove from visits, clear walks).
-    let mut pos_hits = IntMap::default();
-    let mut neg_hits = IntMap::default();
-    walk_storage
-      .clear_block_for_ego(1, start1, &mut pos_hits, &mut neg_hits)
-      .unwrap();
+    // Clear block for ego 1 (remove from visits, clear walks; counters are rank's business).
+    walk_storage.clear_block(start1).unwrap();
 
     // Walks for ego 1 are cleared; ego 2's walk (start2+0) unchanged.
     assert!(walk_storage.get_walk(start1 + 0).unwrap().is_empty());

@@ -89,13 +89,22 @@ impl VSIDSManager {
       .copied()
       .unwrap_or((f64::MAX, 0.0, 0));
 
-    let new_scale_factor = self
-      .bump_factor
-      .powi((new_magnitude - current_mag_scale) as i32);
-    let mut scaled_weight = new_weight * new_scale_factor;
+    // Magnitudes are client-supplied u32: take the difference in i64 (a smaller magnitude after
+    // a rescale is negative) and clamp it into powi's range.
+    let exponent = (new_magnitude as i64 - current_mag_scale as i64)
+      .clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+    let new_scale_factor = self.bump_factor.powi(exponent);
+    // A deletion (weight 0) scales to 0; never 0 · inf = NaN for an extreme exponent.
+    let mut scaled_weight = if new_weight == 0.0 {
+      0.0
+    } else {
+      new_weight * new_scale_factor
+    };
     let scaled_weight_abs = scaled_weight.abs();
 
-    let current_scale_factor = self.bump_factor.powi(current_mag_scale as i32);
+    let current_scale_factor = self
+      .bump_factor
+      .powi(current_mag_scale.min(i32::MAX as u32) as i32);
 
     let mut updated_min = current_min.min(scaled_weight_abs);
     let mut updated_max = current_max.max(scaled_weight_abs);

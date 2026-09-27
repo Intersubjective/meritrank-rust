@@ -162,20 +162,26 @@ mod tests {
     //rank.print_walks();
   }
 
+  /// With discredit, a wall and the voucher that routes to it get negative scores: 0 → 1 → 2,
+  /// wall 0 ⊣ 2, λ = 1. Credits of 1 are a(1 − a) ≈ 0.13, its blame γ·a² ≈ 0.58.
   #[test]
   fn test_return_strictly_negative_scores() {
-    let walk_count = 100;
+    let walk_count = 2000;
     let mut rank = MeritRank::new(Graph::new(), walk_count);
+    rank.discredit = 1.0;
     rank.get_new_nodeid();
     rank.get_new_nodeid();
     rank.get_new_nodeid();
     rank.set_edge(0, 1, 1.0).unwrap();
+    rank.set_edge(1, 2, 1.0).unwrap();
     rank.set_edge(0, 2, -1.0).unwrap();
     rank.calculate(0).unwrap();
     let result = rank.get_all_scores(0, None).unwrap();
 
     assert_eq!(result.len(), 3);
-    assert!(result[2].1 < 0.0);
+    assert_eq!(result[0].0, 0, "the ego ranks first: {:?}", result);
+    assert!(result[1].1 < 0.0 && result[2].1 < 0.0, "{:?}", result);
+    assert_eq!(result[2].0, 2, "the wall is lowest: {:?}", result);
   }
 
   #[test]
@@ -334,37 +340,33 @@ mod tests {
     }
   }
 
-  /// Regression: recalculating an ego reuses its walk slots. A stale
-  /// `negative_segment_start` left by `RandomWalk::clear` put the regenerated
-  /// walks into positive-only mode, so the negative edge was taken with
-  /// probability (1 - a)·a ≈ 0.13 instead of a = 0.85. Covers both
-  /// `calculate` twice and the cache-eviction path `clear_ego` + `calculate`.
+  /// Regression: recalculating an ego reuses its walk slots, so clearing a walk must reset its
+  /// metadata (once `negative_segment_start`, now `absorbed`). Chain 0 → 1 → 2 with a hard wall
+  /// 0 ⊣ 2: a walk is absorbed iff it reaches 2 (probability a²), and node 1 is credited only by
+  /// walks that stop at 1 (a·(1 − a)). Covers `calculate` twice and `clear_ego` + `calculate`.
   #[test]
-  fn test_recalculate_resets_negative_segment() {
+  fn test_recalculate_resets_walk_metadata() {
     let walk_count = 20000;
     for evict in [false, true] {
       let mut rank = MeritRank::new(Graph::new(), walk_count);
       for _ in 0..3 {
         rank.get_new_nodeid();
       }
-      rank.set_edge(0, 1, -1.0).unwrap();
+      rank.set_edge(0, 1, 1.0).unwrap();
       rank.set_edge(1, 2, 1.0).unwrap();
+      rank.set_edge(0, 2, -1.0).unwrap();
       rank.calculate(0).unwrap();
       if evict {
         rank.clear_ego(0).unwrap();
       }
       rank.calculate(0).unwrap();
 
-      let neg_1 = rank.get_negative_hits()[&0].get_count(&1) as f64
-        / walk_count as f64;
-      // Binomial sd at W = 20000 is ~0.0025.
-      assert!(
-        (neg_1 - rank.alpha).abs() < 0.03,
-        "evict={}: negative-hit frequency of node 1 = {}, expected ~{}",
-        evict,
-        neg_1,
-        rank.alpha
-      );
+      let a = rank.alpha;
+      let freq = |n| rank.get_personal_hits()[&0].get_count(&n) as f64 / walk_count as f64;
+      // Binomial sd at W = 20000 is ~0.003.
+      assert!((freq(0) - (1.0 - a * a)).abs() < 0.02, "evict={}: ego credits {}", evict, freq(0));
+      assert!((freq(1) - a * (1.0 - a)).abs() < 0.02, "evict={}: node 1 {}", evict, freq(1));
+      assert_eq!(freq(2), 0.0, "evict={}: the wall must never be credited", evict);
     }
   }
 }

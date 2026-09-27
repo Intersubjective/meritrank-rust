@@ -23,8 +23,18 @@ pub fn read_response_sync(stream: &mut TcpStream) -> io::Result<Response> {
   let mut len_buf = [0u8; 4];
   stream.read_exact(&mut len_buf)?;
   let len = u32::from_be_bytes(len_buf) as usize;
-  let mut buf = vec![0u8; len];
-  stream.read_exact(&mut buf)?;
+  let max = crate::request_handler::max_frame_bytes();
+  if len > max {
+    return Err(io::Error::new(
+      io::ErrorKind::InvalidData,
+      format!("frame of {} bytes exceeds the limit of {}", len, max),
+    ));
+  }
+  let mut buf = Vec::with_capacity(len.min(64 * 1024));
+  stream.take(len as u64).read_to_end(&mut buf)?;
+  if buf.len() != len {
+    return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "truncated frame"));
+  }
   decode_from_slice(&buf, standard())
     .map(|(v, _)| v)
     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))

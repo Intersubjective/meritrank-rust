@@ -82,15 +82,23 @@ struct CsvEdge {
 enum LoadTestOp {
   ReadScores(String),
   ReadMutualScores(String),
-  WriteEdge(String, String),
+  WriteEdge(String, String, f64),
   WriteDeleteNode(String),
 }
 
+/// Loads the edges. Negative weights are walls, allowed only between users: legacy negative edges
+/// to other node kinds (old "dislikes") are skipped, as the application removes them before the
+/// switch (NEGATIVE_EDGES_JOURNAL.md, D12).
 fn load_edges_from_csv(path: &Path) -> Result<Vec<BulkEdge>, Box<dyn std::error::Error>> {
   let mut rdr = csv::Reader::from_path(path)?;
   let mut edges = Vec::new();
+  let mut skipped = 0;
   for result in rdr.deserialize() {
     let row: CsvEdge = result?;
+    if row.weight < 0.0 && !(row.src.starts_with('U') && row.dst.starts_with('U')) {
+      skipped += 1;
+      continue;
+    }
     edges.push(BulkEdge {
       src:       row.src,
       dst:       row.dst,
@@ -99,7 +107,26 @@ fn load_edges_from_csv(path: &Path) -> Result<Vec<BulkEdge>, Box<dyn std::error:
       context:   String::new(),
     });
   }
+  if skipped > 0 {
+    println!("Skipped {} legacy negative edges to non-user nodes", skipped);
+  }
   Ok(edges)
+}
+
+/// Fraction of User→User writes that set a wall instead of trust (MERITRANK_LOAD_TEST_WALLS).
+fn wall_fraction() -> f64 {
+  env::var("MERITRANK_LOAD_TEST_WALLS")
+    .ok()
+    .and_then(|s| s.parse().ok())
+    .unwrap_or(0.0)
+}
+
+/// λ, the discredit weight (MERITRANK_LOAD_TEST_LAMBDA).
+fn discredit_lambda() -> f64 {
+  env::var("MERITRANK_LOAD_TEST_LAMBDA")
+    .ok()
+    .and_then(|s| s.parse().ok())
+    .unwrap_or(0.0)
 }
 
 fn edges_path() -> std::path::PathBuf {
@@ -132,14 +159,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   let settings = match mode {
     LoadTestMode::Default => Settings {
       num_walks,
+      discredit_lambda: discredit_lambda(),
       ..Settings::default()
     },
     LoadTestMode::Eviction => Settings {
       num_walks,
       walks_cache_size: eviction_cache,
+      discredit_lambda: discredit_lambda(),
       ..Settings::default()
     },
   };
+  println!(
+    "Walls: {:.0}% of User→User writes, discredit lambda {}",
+    wall_fraction() * 100.0,
+    discredit_lambda()
+  );
   println!("Warmup: {} walks per ego (set MERITRANK_LOAD_TEST_NUM_WALKS to override)", num_walks);
   match mode {
     LoadTestMode::Default => println!("Mode: default (unlimited walk cache)"),
@@ -321,6 +355,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
       let start = start;
       let phase_duration = phase_duration;
       let delay = phase_cfg.delay;
+      let walls = wall_fraction();
       tokio::spawn(async move {
         let mut rng = rand::rngs::StdRng::seed_from_u64(
           start.elapsed().as_nanos() as u64,
@@ -337,14 +372,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
               let a = users.choose(&mut rng).unwrap().clone();
               let b = users.choose(&mut rng).unwrap().clone();
               if a != b {
-                Some(LoadTestOp::WriteEdge(a, b))
+                let amount = if rng.random_bool(walls) {
+                  if rng.random_bool(0.2) { -1.0 } else { -rng.random_range(0.1..1.0) }
+                } else {
+                  1.0
+                };
+                Some(LoadTestOp::WriteEdge(a, b, amount))
               } else {
                 None
               }
             } else if !beacons.is_empty() && !users.is_empty() {
               let u = users.choose(&mut rng).unwrap().clone();
               let b = beacons.choose(&mut rng).unwrap().clone();
-              Some(LoadTestOp::WriteEdge(u, b))
+              Some(LoadTestOp::WriteEdge(u, b, 1.0))
             } else if let Some(node) = write_targets.choose(&mut rng) {
               Some(LoadTestOp::WriteDeleteNode(node.clone()))
             } else {
@@ -403,12 +443,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
               subgraph: String::new(),
               data:     ReqData::ReadMutualScores(OpReadMutualScores { ego }),
             },
-            LoadTestOp::WriteEdge(src, dst) => Request {
+            LoadTestOp::WriteEdge(src, dst, amount) => Request {
               subgraph: String::new(),
               data:     ReqData::WriteEdge(OpWriteEdge {
                 src,
                 dst,
-                amount:    1.0,
+                amount,
                 magnitude: 0,
               }),
             },

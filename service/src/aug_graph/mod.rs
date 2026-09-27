@@ -12,6 +12,7 @@ use std::time::Duration;
 mod absorb;
 mod calc;
 mod edges;
+pub use edges::is_user_to_user;
 mod graph_read;
 mod neighbors;
 mod scores;
@@ -97,6 +98,9 @@ impl AugGraph {
   pub fn new(settings: Settings) -> AugGraph {
     let mut mr = MeritRank::new(Graph::new(), settings.num_walks);
     mr.alpha = settings.alpha;
+    mr.discredit = settings.discredit_lambda;
+    mr.blame_decay = settings.blame_decay;
+    mr.blame_radius = settings.blame_radius;
     // Both buffer copies start from the same stream; the subgraph worker reseeds it before every
     // operation.
     mr.reseed(settings.seed);
