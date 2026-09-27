@@ -20,8 +20,14 @@ pub enum BlameRadius {
   Voucher,
 }
 
-/// Blame is kept per node as a float sum; values this small are dropped as rounding residue.
-const BLAME_RESIDUE: f64 = 1e-9;
+/// Blame of one node in one frame: the float sum of `b` and the number of absorbed walks that
+/// contribute to it. The entry goes away when the last contributor does — never because the sum
+/// is small (with a tiny γ, legitimate blame can be arbitrarily small).
+#[derive(Clone, Copy, Default, Debug)]
+struct Blame {
+  sum:   f64,
+  walks: u32,
+}
 
 #[derive(Clone)]
 pub struct MeritRank {
@@ -30,7 +36,7 @@ pub struct MeritRank {
   /// Credits: for every ego, the number of its unabsorbed walks that visited each node.
   pos_hits:         IntMap<NodeId, Counter>,
   /// Blame: for every ego, `Σ b` over its absorbed walks, per node (λ is applied at read time).
-  blame:            IntMap<NodeId, IntMap<NodeId, f64>>,
+  blame:            IntMap<NodeId, IntMap<NodeId, Blame>>,
   /// Egos whose walks exist. An ego can be calculated with empty counters.
   calculated:       IntSet<NodeId>,
   /// Egos whose walks or counters changed since the last `take_dirty_egos`.
@@ -81,6 +87,13 @@ impl MeritRank {
     self.calculated.contains(&ego)
   }
 
+  /// The calculated egos, sorted.
+  pub fn calculated_egos(&self) -> Vec<NodeId> {
+    let mut egos: Vec<NodeId> = self.calculated.iter().copied().collect();
+    egos.sort_unstable();
+    egos
+  }
+
   /// Returns, sorted, the egos whose walks or counters changed since the previous call, and
   /// forgets them. Covers edge changes (every repaired walk's ego), wall changes (their owner),
   /// `calculate`, `clear_ego` and `clear_walks`.
@@ -93,6 +106,11 @@ impl MeritRank {
   /// Number of walk slots allocated, occupied or free.
   pub fn allocated_walks(&self) -> usize {
     self.walks.allocated_walks()
+  }
+
+  /// Total capacity of the visits index (memory accounting, tests).
+  pub fn visits_capacity(&self) -> usize {
+    self.walks.visits_capacity()
   }
 
   pub fn walks_per_ego(&self) -> usize {
@@ -154,7 +172,9 @@ impl MeritRank {
       let blame = self.walk_blame(walk);
       let map = self.blame.entry(ego).or_default();
       for (node, b) in blame {
-        *map.entry(node).or_insert(0.0) += b;
+        let entry = map.entry(node).or_default();
+        entry.sum += b;
+        entry.walks += 1;
       }
     } else {
       self
@@ -178,10 +198,12 @@ impl MeritRank {
       let blame = self.walk_blame(walk);
       if let Some(map) = self.blame.get_mut(&ego) {
         for (node, b) in blame {
-          if let Some(v) = map.get_mut(&node) {
-            *v -= b;
-            if v.abs() < BLAME_RESIDUE {
+          if let Some(entry) = map.get_mut(&node) {
+            entry.walks = entry.walks.saturating_sub(1);
+            if entry.walks == 0 {
               map.remove(&node);
+            } else {
+              entry.sum -= b;
             }
           }
         }
@@ -265,12 +287,7 @@ impl MeritRank {
       .get(&ego)
       .ok_or(MeritRankError::NodeIsNotCalculated)?
       .get_count(&target) as Weight;
-    let blame = self
-      .blame
-      .get(&ego)
-      .and_then(|m| m.get(&target))
-      .copied()
-      .unwrap_or(0.0);
+    let blame = self.blame_of(ego, target);
     Ok((credits - self.discredit * blame) / self.walks.walks_per_ego() as Weight)
   }
 
@@ -496,10 +513,14 @@ impl MeritRank {
     } else {
       new_weight.abs().min(1.0)
     };
-    if d0 == d1 || !self.calculated.contains(&ego) {
+    if d0 == d1 {
       return Ok(());
     }
+    // An effective wall change marks its owner even when evicted (R16).
     self.dirty_egos.insert(ego);
+    if !self.calculated.contains(&ego) {
+      return Ok(());
+    }
 
     // Candidates: the owner's walks that visit the wall, with their first arrival. Take them from
     // the wall's visits or from the owner's block, whichever is smaller (a hub wall is visited by
@@ -594,7 +615,7 @@ impl MeritRank {
   fn assert_counters_consistency(&self) -> Result<(), MeritRankError> {
     for &ego in &self.calculated {
       let mut credits = Counter::default();
-      let mut blame: IntMap<NodeId, f64> = IntMap::default();
+      let mut blame: IntMap<NodeId, (f64, u32)> = IntMap::default();
       if let Some(ids) = self.walks.block_walk_ids(ego) {
         for walk_id in ids {
           let walk = match self.walks.get_walk(walk_id) {
@@ -603,7 +624,9 @@ impl MeritRank {
           };
           if walk.absorbed {
             for (node, b) in self.walk_blame(walk) {
-              *blame.entry(node).or_insert(0.0) += b;
+              let e = blame.entry(node).or_insert((0.0, 0));
+              e.0 += b;
+              e.1 += 1;
             }
           } else {
             credits.increment_unique_counts(walk.get_nodes());
@@ -629,9 +652,9 @@ impl MeritRank {
       let mut nodes: IntSet<NodeId> = blame.keys().copied().collect();
       nodes.extend(stored_blame.keys().copied());
       for node in nodes {
-        let a = blame.get(&node).copied().unwrap_or(0.0);
-        let b = stored_blame.get(&node).copied().unwrap_or(0.0);
-        if (a - b).abs() > 1e-6 * a.abs().max(1.0) {
+        let (a, a_walks) = blame.get(&node).copied().unwrap_or((0.0, 0));
+        let (b, b_walks) = stored_blame.get(&node).map_or((0.0, 0), |x| (x.sum, x.walks));
+        if a_walks != b_walks || (a - b).abs() > 1e-9 * a.abs().max(1e-300) + 1e-12 * a.abs() {
           return Err(MeritRankError::InternalFatalError(Some(
             internal_fatal::RANK_ASSERT_BLAME,
           )));
@@ -650,9 +673,17 @@ impl MeritRank {
     &self.pos_hits
   }
 
-  /// Blame per ego and node: `Σ b` over absorbed walks, before λ.
-  pub fn get_blame(&self) -> &IntMap<NodeId, IntMap<NodeId, f64>> {
-    &self.blame
+  /// Blame of `node` in `ego`'s frame: `Σ b` over the absorbed walks, before λ.
+  pub fn blame_of(
+    &self,
+    ego: NodeId,
+    node: NodeId,
+  ) -> f64 {
+    self
+      .blame
+      .get(&ego)
+      .and_then(|m| m.get(&node))
+      .map_or(0.0, |b| b.sum)
   }
 
   /// Clears all walks and hit counters; graph structure is preserved. Used for bulk load cold start.

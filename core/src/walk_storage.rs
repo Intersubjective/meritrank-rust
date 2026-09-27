@@ -39,6 +39,11 @@ impl WalkStorage {
     self.walks.len()
   }
 
+  /// Total capacity of the visits index (entries it can hold without reallocating).
+  pub fn visits_capacity(&self) -> usize {
+    self.visits.iter().map(|m| m.capacity()).sum()
+  }
+
   pub fn walks_per_ego(&self) -> usize {
     self.walks_per_ego
   }
@@ -123,6 +128,11 @@ impl WalkStorage {
       for &node in walk.nodes.iter() {
         if let Some(visits) = self.visits.get_mut(node) {
           visits.remove(&walk_id);
+          // Release the allocation of a map that became empty, or the index keeps memory for
+          // every ego ever calculated despite eviction.
+          if visits.is_empty() && visits.capacity() > 0 {
+            *visits = IntMap::default();
+          }
         }
       }
       walk.clear();

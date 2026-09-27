@@ -44,11 +44,7 @@ fn blame(
   ego: NodeId,
   node: NodeId,
 ) -> f64 {
-  mr.get_blame()
-    .get(&ego)
-    .and_then(|m| m.get(&node))
-    .copied()
-    .unwrap_or(0.0)
+  mr.blame_of(ego, node)
     / W as f64
 }
 
@@ -448,4 +444,49 @@ fn inc_voucher_radius() {
     mr.blame_radius = BlameRadius::Voucher;
   };
   compare("voucher radius", 6, &web(), &[0], &[(0, 3, -0.6), (0, 5, -1.0), (3, 2, 1.0)], voucher);
+}
+
+/// Tiny legitimate blame survives: with γ = 1e-15 the voucher's blame per walk is 1e-15, far below
+/// any "rounding residue" threshold; weakening the wall so some walks survive must not wipe the
+/// blame of the walks that stay absorbed (entries go away only with their last contributor).
+#[test]
+fn tiny_blame_is_not_dropped() {
+  let mut mr = build(3, &[(0, 1, 1.0), (1, 2, 1.0), (0, 2, -1.0)], 60);
+  mr.blame_decay = 1e-15;
+  mr.discredit = 1e17;
+  mr.calculate(0).unwrap();
+  let before = mr.blame_of(0, 1);
+  assert!(before > 0.0);
+  mr.set_edge(0, 2, -0.5).unwrap();
+  let after = mr.blame_of(0, 1);
+  assert!(after > 0.0, "tiny blame dropped");
+  // About half of the absorbed walks stay absorbed.
+  let ratio = after / before;
+  assert!((ratio - 0.5).abs() < 0.05, "ratio {ratio}");
+  assert!(mr.get_node_score(0, 1).unwrap() < 0.0);
+  mr.verify().unwrap();
+}
+
+/// Evicting egos releases their visit-index memory: calculating and evicting many isolated egos
+/// one after another keeps the index at the size of one frame.
+#[test]
+fn eviction_releases_visit_index_memory() {
+  let mut mr = MeritRank::new(Graph::new(), 2_000);
+  for _ in 0..60 {
+    mr.get_new_nodeid();
+  }
+  mr.calculate(0).unwrap();
+  let one = mr.visits_capacity();
+  mr.clear_ego(0).unwrap();
+  for ego in 1..60 {
+    mr.calculate(ego).unwrap();
+    mr.clear_ego(ego).unwrap();
+  }
+  mr.calculate(0).unwrap();
+  assert!(
+    mr.visits_capacity() <= 2 * one,
+    "visit index grew from {} to {}",
+    one,
+    mr.visits_capacity()
+  );
 }

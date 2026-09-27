@@ -102,13 +102,7 @@ fn stats(
     .get(&ego)
     .map_or(0, |h| h.get_count(&node)) as f64
     / W as f64;
-  let b = mr
-    .get_blame()
-    .get(&ego)
-    .and_then(|m| m.get(&node))
-    .copied()
-    .unwrap_or(0.0)
-    / W as f64;
+  let b = mr.blame_of(ego, node) / W as f64;
   (c, b)
 }
 

@@ -104,6 +104,8 @@ pub struct MultiGraphProcessor {
   /// all of its target subgraphs before the lock is released, so every subgraph sees operations
   /// in one global order. Reads never take it.
   dispatcher:        tokio::sync::Mutex<DispatchState>,
+  /// Serializes whole replacements of the state (bulk load, reset) with each other.
+  lifecycle:         tokio::sync::Mutex<()>,
 }
 
 #[derive(Default)]
@@ -114,11 +116,12 @@ struct DispatchState {
   last_by_subgraph: HashMap<SubgraphName, u64>,
 }
 
-/// Result of a dispatch: its sequence number and the watermarks of its target subgraphs.
+/// Result of a dispatch: its sequence number and, per target subgraph, its identity (the
+/// published-copy slot) and watermark.
 struct Dispatched {
   ok:      bool,
   seq:     u64,
-  watches: Vec<watch::Receiver<u64>>,
+  watches: Vec<(SubgraphName, Arc<ArcSwap<RwLock<AugGraph>>>, watch::Receiver<u64>)>,
 }
 
 impl Dispatched {
@@ -130,14 +133,6 @@ impl Dispatched {
     }
   }
 
-  /// Waits until every target subgraph has published this operation. A subgraph that was
-  /// dropped meanwhile (reset, bulk load) no longer matters.
-  async fn wait_published(mut self) -> bool {
-    for w in &mut self.watches {
-      let _ = w.wait_for(|v| *v >= self.seq).await;
-    }
-    self.ok
-  }
 }
 
 /// Where a dispatched operation goes.
@@ -194,7 +189,15 @@ fn processing_loop(
     let start = Instant::now();
     let seed = op_seed(graph.settings.seed, stream, op.seq);
     graph.mr.reseed(seed);
-    graph.apply_op(&op.op);
+    // A panic must not kill the subgraph (its queue would never drain again and every later
+    // sync would fail). Both copies replay the same operation with the same stream, so they
+    // stay alike even then.
+    let applied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+      graph.apply_op(&op.op);
+    }));
+    if applied.is_err() {
+      log_error!("Operation {} panicked while being applied: {:?}", op.seq, op.op);
+    }
     if record_stats {
       if let Some(s) = &stats {
         s.record_applied(start.elapsed());
@@ -269,6 +272,15 @@ fn validate_edge_write(
     }
   }
   Ok(())
+}
+
+/// The peer of every row: a score's target, a graph edge's destination.
+fn row_peer_keys(response: &Response) -> Vec<String> {
+  match response {
+    Response::Scores(ResScores { scores }) => scores.iter().map(|r| r.target.clone()).collect(),
+    Response::Graph(ResGraph { graph }) => graph.iter().map(|r| r.dst.clone()).collect(),
+    _ => vec![],
+  }
 }
 
 /// Replaces, in `base`, every row whose peer (score target, graph edge destination) is in
@@ -464,6 +476,7 @@ impl MultiGraphProcessor {
       publish_notify:  Arc::new(tokio::sync::Notify::new()),
       stats,
       dispatcher:      tokio::sync::Mutex::new(DispatchState::default()),
+      lifecycle:       tokio::sync::Mutex::new(()),
     };
     mgp.insert_subgraph_if_does_not_exist(&String::new());
     mgp
@@ -477,6 +490,29 @@ impl MultiGraphProcessor {
   ) -> Response {
     let mut state = self.dispatcher.lock().await;
     self.dispatch_locked(&mut state, targets, op).await.response()
+  }
+
+  /// Waits until every target subgraph has published the dispatched operation. A subgraph that
+  /// was retired meanwhile (reset, bulk load) no longer matters; one whose worker died while it is
+  /// still the current subgraph is a failure (the operation will never be published).
+  async fn wait_dispatched(
+    &self,
+    dispatched: Dispatched,
+  ) -> bool {
+    let mut ok = dispatched.ok;
+    for (name, shared, mut watch) in dispatched.watches {
+      if watch.wait_for(|v| *v >= dispatched.seq).await.is_err() {
+        let current = self
+          .subgraphs_map
+          .get(&name)
+          .map_or(false, |p| Arc::ptr_eq(&p.shared, &shared));
+        if current {
+          log_error!("Subgraph {:?} stopped before publishing operation {}", name, dispatched.seq);
+          ok = false;
+        }
+      }
+    }
+    ok
   }
 
   /// `dispatch` for a caller that already holds the dispatcher lock.
@@ -519,12 +555,17 @@ impl MultiGraphProcessor {
       },
     };
     // Clone senders and watermarks out of the map: no map guard may be held across an await.
-    let targets: Vec<(SubgraphName, OpSender, watch::Receiver<u64>)> = names
+    let targets: Vec<(
+      SubgraphName,
+      OpSender,
+      Arc<ArcSwap<RwLock<AugGraph>>>,
+      watch::Receiver<u64>,
+    )> = names
       .into_iter()
       .filter_map(|n| {
         let p = self.subgraphs_map.get(&n)?;
-        let t = (p.op_sender.clone(), p.published_seq.clone());
-        Some((n, t.0, t.1))
+        let t = (p.op_sender.clone(), Arc::clone(&p.shared), p.published_seq.clone());
+        Some((n, t.0, t.1, t.2))
       })
       .collect();
 
@@ -532,15 +573,15 @@ impl MultiGraphProcessor {
     let seq = state.last_seq;
     let mut ok = true;
     let mut watches = vec![];
-    for (name, sender, watch) in targets {
+    for (name, sender, shared, watch) in targets {
       if let Some(s) = &self.stats {
         s.record_enqueue();
       }
       if sender.send_seq(seq, Arc::clone(&op)).await.is_err() {
         ok = false;
       }
-      state.last_by_subgraph.insert(name, seq);
-      watches.push(watch);
+      state.last_by_subgraph.insert(name.clone(), seq);
+      watches.push((name, shared, watch));
     }
     Dispatched { ok, seq, watches }
   }
@@ -662,52 +703,70 @@ impl MultiGraphProcessor {
         )
         .await
     };
-    dispatched.wait_published().await
+    self.wait_dispatched(dispatched).await
   }
 
   /// Makes the egos' frames resident in the subgraph and, with `pin`, keeps them so until the
   /// returned lease is dropped. Absent frames are calculated; evictions to stay within capacity
   /// are decided and dispatched under the dispatcher lock, so they are ordered with every other
   /// calculation. Waits until the frames are published. Non-user and unknown ids are ignored.
+  ///
+  /// Robustness: node ids are resolved against one subgraph and re-checked under the lock (a
+  /// reset or bulk load may have replaced it: then start over); pins are owned by a lease from the
+  /// moment they are taken, so a cancelled caller releases them; and before planning, frames the
+  /// cache does not know about (from an interrupted plan) are adopted so they can be evicted.
   async fn acquire(
     &self,
     subgraph: &SubgraphName,
     egos: &[NodeId],
     pin: bool,
   ) -> Option<Lease> {
-    let (residency, mut watch, shared) = match self.subgraphs_map.get(subgraph) {
-      Some(p) => (
-        Arc::clone(&p.residency),
-        p.published_seq.clone(),
-        Arc::clone(&p.shared),
-      ),
-      None => return None,
-    };
-    let mut egos: Vec<NodeId> = read_published(&shared, |g| {
-      egos
-        .iter()
-        .copied()
-        .filter(|id| {
-          g.nodes.get_by_id(*id).map_or(false, |i| i.kind == NodeKind::User)
-        })
-        .collect()
-    });
-    egos.sort_unstable();
-    egos.dedup();
-    if egos.is_empty() {
-      return None;
-    }
-
-    if pin {
-      if let Some(ready) = residency.try_pin_resident(&egos) {
-        let _ = watch.wait_for(|v| *v >= ready).await;
-        return Some(Lease::new(residency, egos));
+    for _attempt in 0..3 {
+      let (residency, mut watch, shared) = match self.subgraphs_map.get(subgraph) {
+        Some(p) => (
+          Arc::clone(&p.residency),
+          p.published_seq.clone(),
+          Arc::clone(&p.shared),
+        ),
+        None => return None,
+      };
+      let mut egos: Vec<NodeId> = read_published(&shared, |g| {
+        egos
+          .iter()
+          .copied()
+          .filter(|id| {
+            g.nodes.get_by_id(*id).map_or(false, |i| i.kind == NodeKind::User)
+          })
+          .collect()
+      });
+      egos.sort_unstable();
+      egos.dedup();
+      if egos.is_empty() {
+        return None;
       }
-    }
 
-    let wait_for = {
+      if pin {
+        if let Some(ready) = residency.try_pin_resident(&egos) {
+          let lease = Lease::new(residency, egos);
+          let _ = watch.wait_for(|v| *v >= ready).await;
+          return Some(lease);
+        }
+      }
+
       let mut state = self.dispatcher.lock().await;
+      let same = self
+        .subgraphs_map
+        .get(subgraph)
+        .map_or(false, |p| Arc::ptr_eq(&p.residency, &residency));
+      if !same {
+        continue; // replaced meanwhile: the ids belong to the old graph
+      }
+      if residency.capacity() > 0 {
+        let calculated = read_published(&shared, |g| g.mr.calculated_egos());
+        residency.adopt(&calculated);
+      }
       let plan = residency.plan(&egos, pin);
+      let lease = pin.then(|| Lease::new(Arc::clone(&residency), egos.clone()));
       for id in &plan.evict {
         self
           .dispatch_locked(&mut state, Targets::One(subgraph), AugGraphOp::ClearEgo(*id))
@@ -725,14 +784,11 @@ impl MultiGraphProcessor {
         residency.set_ready(&plan.calculate, d.seq);
         wait_for = wait_for.max(d.seq);
       }
-      wait_for
-    };
-    let _ = watch.wait_for(|v| *v >= wait_for).await;
-    if pin {
-      Some(Lease::new(residency, egos))
-    } else {
-      None
+      drop(state);
+      let _ = watch.wait_for(|v| *v >= wait_for).await;
+      return lease;
     }
+    None
   }
 
   /// An explicit (re)calculation: the `WriteCalculate` itself is the calculation. The ego is
@@ -762,7 +818,7 @@ impl MultiGraphProcessor {
           self.dispatch_locked(&mut state, Targets::One(subgraph), op).await
         };
         let response = dispatched.response();
-        dispatched.wait_published().await;
+        self.wait_dispatched(dispatched).await;
         let id = self.subgraphs_map.get(subgraph).and_then(|p| {
           read_published(&p.shared, |g| g.nodes.get_by_name(ego).map(|i| i.id))
         });
@@ -774,6 +830,14 @@ impl MultiGraphProcessor {
       Some(x) => x,
     };
     let mut state = self.dispatcher.lock().await;
+    let same = self
+      .subgraphs_map
+      .get(subgraph)
+      .map_or(false, |p| Arc::ptr_eq(&p.residency, &residency));
+    if !same {
+      // Replaced by a reset or bulk load since the lookup: the id belongs to the old graph.
+      return self.dispatch_locked(&mut state, Targets::One(subgraph), op).await.response();
+    }
     let plan = residency.plan(&[id], false);
     for victim in &plan.evict {
       self
@@ -815,7 +879,22 @@ impl MultiGraphProcessor {
     }
     let capacity = residency.capacity();
     if capacity == 0 || peers.len() <= capacity {
-      let _peers = self.acquire(subgraph, &peers, true).await;
+      // The graph may change between the passes; if the final read needs frames the first did
+      // not (a different page, a new peer), pin those too and read again.
+      let mut acquired: BTreeSet<NodeId> = peers.iter().copied().collect();
+      let mut leases = vec![self.acquire(subgraph, &peers, true).await];
+      for _attempt in 0..3 {
+        let (response, frames) = record_frames(|| read_published(&shared, &run));
+        let missing: Vec<NodeId> = frames
+          .into_iter()
+          .filter(|id| *id != ego_id && !acquired.contains(id))
+          .collect();
+        if missing.is_empty() {
+          return response;
+        }
+        acquired.extend(missing.iter().copied());
+        leases.push(self.acquire(subgraph, &missing, true).await);
+      }
       return read_published(&shared, &run);
     }
 
@@ -832,13 +911,23 @@ impl MultiGraphProcessor {
         seen
       );
     }
+    let keys = row_peer_keys(&first);
     let mut merged = first;
     for portion in peers.chunks(capacity) {
       let _lease = self.acquire(subgraph, portion, true).await;
+      // A row belongs to this portion when the frame its reverse score needs — the owner of
+      // its target (the target itself for a user) — is in the portion.
+      let owners: HashSet<NodeId> = portion.iter().copied().collect();
       let names: HashSet<String> = read_published(&shared, |g| {
-        portion
+        keys
           .iter()
-          .filter_map(|id| g.nodes.get_by_id(*id).map(|i| i.name.clone()))
+          .filter(|k| {
+            g.nodes
+              .get_by_name(k)
+              .and_then(|i| g.get_object_owner(i.id))
+              .map_or(false, |o| owners.contains(&o))
+          })
+          .cloned()
           .collect()
       });
       let portion_read = read_published(&shared, &run);
@@ -921,9 +1010,8 @@ impl MultiGraphProcessor {
             return Response::Fail;
           }
         }
+        let _lifecycle = self.lifecycle.lock().await;
         self.loading.store(true, Ordering::SeqCst);
-
-        self.clear_subgraphs().await;
 
         // Ordered collections: the load must not depend on hash iteration order.
         let mut contexts: BTreeSet<SubgraphName> = BTreeSet::new();
@@ -931,9 +1019,6 @@ impl MultiGraphProcessor {
           if !edge.context.is_empty() {
             contexts.insert(edge.context.clone());
           }
-        }
-        for ctx in &contexts {
-          self.insert_subgraph_if_does_not_exist(ctx);
         }
 
         let mut user_user_edges: Vec<OpWriteEdge> = vec![];
@@ -967,16 +1052,33 @@ impl MultiGraphProcessor {
         for edges in context_non_user_edges.values() {
           aggregate_edges.extend(edges.iter().cloned());
         }
-        let _ = self
-          .send_op(&String::new(), AugGraphOp::BulkLoadEdges(aggregate_edges))
-          .await;
 
-        for ctx in &contexts {
-          let mut ctx_edges = user_user_edges.clone();
-          if let Some(specific) = context_non_user_edges.get(ctx) {
-            ctx_edges.extend(specific.iter().cloned());
+        // Replace the state and enqueue the load in one dispatcher section: no concurrent write
+        // can land between the clearing and the load.
+        {
+          let mut state = self.dispatcher.lock().await;
+          self.subgraphs_map.clear();
+          state.last_by_subgraph.clear();
+          self.insert_subgraph_if_does_not_exist(&String::new());
+          for ctx in &contexts {
+            self.insert_subgraph_if_does_not_exist(ctx);
           }
-          let _ = self.send_op(ctx, AugGraphOp::BulkLoadEdges(ctx_edges)).await;
+          self
+            .dispatch_locked(
+              &mut state,
+              Targets::One(&String::new()),
+              AugGraphOp::BulkLoadEdges(aggregate_edges),
+            )
+            .await;
+          for ctx in &contexts {
+            let mut ctx_edges = user_user_edges.clone();
+            if let Some(specific) = context_non_user_edges.get(ctx) {
+              ctx_edges.extend(specific.iter().cloned());
+            }
+            self
+              .dispatch_locked(&mut state, Targets::One(ctx), AugGraphOp::BulkLoadEdges(ctx_edges))
+              .await;
+          }
         }
 
         let synced = self.sync_future().await;
@@ -1031,6 +1133,7 @@ impl MultiGraphProcessor {
           .await
       },
       ReqData::WriteReset => {
+        let _lifecycle = self.lifecycle.lock().await;
         self.clear_subgraphs().await;
         Response::Ok
       },

@@ -146,6 +146,21 @@ impl Residency {
     }
   }
 
+  /// Adds, as least recently used and unpinned, calculated frames the cache does not know about
+  /// (left by an interrupted plan), so that they can be evicted.
+  pub fn adopt(
+    &self,
+    calculated: &[NodeId],
+  ) {
+    let mut lru = self.lru.lock();
+    for &ego in calculated {
+      if !lru.contains(&ego) {
+        lru.push(ego, Entry { pins: 0, ready_seq: 0 });
+        lru.demote(&ego);
+      }
+    }
+  }
+
   /// Records the sequence number of the dispatched `EnsureCalculated` for egos still pending.
   pub fn set_ready(
     &self,
