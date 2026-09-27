@@ -583,6 +583,13 @@ impl MeritRank {
     Ok(())
   }
 
+  /// Full internal consistency check: the visits index against the walks, and every calculated
+  /// ego's credits and blame recounted from its walks. Debug builds run it after every change.
+  pub fn verify(&self) -> Result<(), MeritRankError> {
+    self.walks.assert_visits_consistency()?;
+    self.assert_counters_consistency()
+  }
+
   /// Recounts every calculated ego's credits and blame from its walks and compares (debug).
   fn assert_counters_consistency(&self) -> Result<(), MeritRankError> {
     for &ego in &self.calculated {
