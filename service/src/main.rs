@@ -1,6 +1,6 @@
 use meritrank_service::processor_stats::ProcessorStats;
 use meritrank_service::request_handler::run_server;
-use meritrank_service::settings::load_from_env;
+use meritrank_service::settings::load_from_env_checked;
 use meritrank_service::state_manager::MultiGraphProcessor;
 use meritrank_service::utils::log::{init_log_cmd_from_env, *};
 
@@ -21,7 +21,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
   log_info!("MeritRank Service");
 
-  let settings = load_from_env();
+  let settings = match load_from_env_checked() {
+    Ok(s) => s,
+    Err(e) => {
+      log_error!("Invalid settings: {}", e);
+      std::process::exit(2);
+    },
+  };
 
   let processor = if settings.collect_stats {
     let stats = Arc::new(ProcessorStats::new(DEFAULT_STATS_MAX_SAMPLES));

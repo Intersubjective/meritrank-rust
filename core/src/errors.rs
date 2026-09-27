@@ -57,10 +57,14 @@ pub mod internal_fatal {
     "decide_skip_invalidation_on_edge_addition pos >= walk.len";
   // random_walk.rs
   pub const RANDOM_WALK_PUSH_SELF_LOOP: &str = "random_walk::push self-loop";
-  pub const RANDOM_WALK_PUSH_NEG_SEGMENT: &str =
-    "random_walk::push negative_segment_start already Some";
-  pub const RANDOM_WALK_EXTEND_TWO_NEG: &str =
-    "random_walk::extend two negative segments";
+  pub const RANDOM_WALK_PUSH_ABSORBED: &str =
+    "random_walk::push onto an absorbed walk";
+  pub const RANDOM_WALK_EXTEND_ABSORBED: &str =
+    "random_walk::extend an absorbed walk";
+  // rank.rs, walls
+  pub const RANK_SET_WALL_GET_WALK: &str = "rank::set_wall get_walk None";
+  pub const RANK_ASSERT_BLAME: &str =
+    "rank::assert_counters_consistency blame mismatch";
 }
 
 #[derive(Debug, Clone)]

@@ -332,11 +332,13 @@ mod tests {
 
     match scores {
       Response::Scores(scores) => {
+        // Score = visit probability (denominator W), blended with zero opinion (k = 0.2):
+        // the ego 1.0 · 0.8, U2 alpha · 0.8 = 0.68.
         assert!(scores.scores.len() == 2);
-        assert!(scores.scores[0].score > 0.35);
-        assert!(scores.scores[0].score < 0.50);
-        assert!(scores.scores[1].score > 0.25);
-        assert!(scores.scores[1].score < 0.45);
+        assert!(scores.scores[0].score > 0.75);
+        assert!(scores.scores[0].score < 0.85);
+        assert!(scores.scores[1].score > 0.62);
+        assert!(scores.scores[1].score < 0.74);
       },
       _ => assert!(false),
     };

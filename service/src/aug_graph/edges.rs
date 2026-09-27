@@ -17,6 +17,22 @@ impl AugGraph {
   ) {
     log_trace!();
 
+    // Walls are stored exactly (R19): no VSIDS scaling, rescale, pruning or min/max tracking, and
+    // a wall write touches no positive edge. The same holds for deleting a wall.
+    let old_weight = self
+      .mr
+      .graph
+      .edge_weight(src_id, dst_id)
+      .ok()
+      .flatten()
+      .unwrap_or(0.0);
+    if amount < 0.0 || (amount == 0.0 && old_weight < 0.0) {
+      if let Err(e) = self.mr.set_edge(src_id, dst_id, amount) {
+        log_error!("{}", e);
+      }
+      return;
+    }
+
     let (new_weight_scaled, rescale_factor, new_max_weight, updated_min) =
       self.vsids.apply_edge_update(src_id, amount, magnitude);
 
@@ -72,8 +88,9 @@ impl AugGraph {
       },
     };
 
+    // Positive edges only: walls take no part in VSIDS.
     let (edges_to_modify, new_min_weight_from_scan) =
-      node_data.get_outgoing_edges().fold(
+      node_data.pos_edges.iter().map(|(&d, &w)| (d, w)).fold(
         (Vec::new(), current_min_weight), // Use passed current_min_weight
         |(mut to_modify, min), (dest, weight)| {
           let abs_weight = if must_rescale {
@@ -123,6 +140,14 @@ impl AugGraph {
   ) {
     log_trace!("{:?} {:?} {}", src, dst, amount);
 
+    if amount < 0.0 && !is_user_to_user(&src, &dst) {
+      log_error!(
+        "A negative weight (wall) is allowed only on User→User edges: {} -> {}",
+        src,
+        dst
+      );
+      return;
+    }
     match self.reg_owner_and_get_ids(src.clone(), dst.clone()) {
       Ok((src_id, dst_id)) => {
         self.set_edge_by_id(src_id, dst_id, amount, magnitude);
@@ -162,7 +187,7 @@ impl AugGraph {
     }
   }
 
-  fn reg_owner_and_get_ids(
+  pub(crate) fn reg_owner_and_get_ids(
     &mut self,
     src: NodeName,
     dst: NodeName,
@@ -197,6 +222,15 @@ impl AugGraph {
       _ => Err(AugGraphError::IncorrectNodeKinds(src, dst)),
     }
   }
+}
+
+/// A wall (negative weight) may only be set between two users (R2).
+pub fn is_user_to_user(
+  src: &str,
+  dst: &str,
+) -> bool {
+  node_kind_from_prefix(src) == Some(NodeKind::User)
+    && node_kind_from_prefix(dst) == Some(NodeKind::User)
 }
 
 #[cfg(test)]

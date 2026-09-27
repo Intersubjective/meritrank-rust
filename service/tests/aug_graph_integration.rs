@@ -127,7 +127,7 @@ fn read_neighbors_helper(
 #[test]
 fn scores_uncontexted() {
   let mut graph = AugGraph::new(Settings {
-    num_walks:              500,
+    num_walks:              2_000,
     zero_opinion_factor:    0.0,
     ..Settings::default()
   });
@@ -142,34 +142,33 @@ fn scores_uncontexted() {
 
   assert_eq!(res.len(), 3);
 
+  // Scores are visit probabilities (denominator W): U1 = 1, U2 = a·2/3 = 0.567,
+  // U3 = a/3 + a²·2/3 = 0.765.
   for x in &res {
     assert_eq!(x.ego, "U1");
-    match x.target.as_str() {
-      "U1" => {
-        assert!(x.score > 0.2);
-        assert!(x.score < 0.5);
-      },
-      "U2" => {
-        assert!(x.score > 0.18);
-        assert!(x.score < 0.5);
-      },
-      "U3" => {
-        assert!(x.score > 0.2);
-        assert!(x.score < 0.5);
-      },
+    let expected = match x.target.as_str() {
+      "U1" => 1.0,
+      "U2" => 0.567,
+      "U3" => 0.765,
       _ => panic!("Unexpected target: {}", x.target),
-    }
+    };
+    assert!((x.score - expected).abs() < 0.06, "{}: {} vs {}", x.target, x.score, expected);
   }
 }
 
 #[test]
 fn scores_reversed() {
-  let mut graph = default_graph();
+  let mut graph = AugGraph::new(Settings {
+    num_walks:              2_000,
+    zero_opinion_factor:    0.0,
+    ..Settings::default()
+  });
 
   graph.set_edge("U1".into(), "U2".into(), 2.0, 0);
   graph.set_edge("U1".into(), "U3".into(), 1.0, 0);
   graph.set_edge("U2".into(), "U3".into(), 3.0, 0);
   graph.set_edge("U2".into(), "U1".into(), 4.0, 0);
+  // U3 walls U1 and trusts nobody: in U3's frame U1 is never visited.
   graph.set_edge("U3".into(), "U1".into(), -5.0, 0);
 
   graph.calculate("U1".into());
@@ -178,32 +177,25 @@ fn scores_reversed() {
 
   let res = read_scores(&graph, "U1", "U", false, 10.0, false, 0.0, false, 0, u32::MAX);
 
-  assert!(res.len() >= 2);
-  assert!(res.len() <= 3);
+  assert_eq!(res.len(), 3);
 
+  // (score in U1's frame, U1's score in the target's frame), from first-passage probabilities.
   for x in &res {
     assert_eq!(x.ego, "U1");
-    match x.target.as_str() {
-      "U1" => {
-        assert!(x.score > 0.0);
-        assert!(x.score < 0.4);
-        assert!(x.reverse_score > 0.0);
-        assert!(x.reverse_score < 0.4);
-      },
-      "U2" => {
-        assert!(x.score > -0.1);
-        assert!(x.score < 0.3);
-        assert!(x.reverse_score > -0.3);
-        assert!(x.reverse_score < 0.1);
-      },
-      "U3" => {
-        assert!(x.score > -0.1);
-        assert!(x.score < 0.3);
-        assert!(x.reverse_score > -0.6);
-        assert!(x.reverse_score < 0.0);
-      },
+    let (score, reverse) = match x.target.as_str() {
+      "U1" => (1.0, 1.0),
+      "U2" => (0.567, 0.486),
+      "U3" => (0.676, 0.0),
       _ => panic!("Unexpected target: {}", x.target),
-    }
+    };
+    assert!((x.score - score).abs() < 0.06, "{}: score {} vs {}", x.target, x.score, score);
+    assert!(
+      (x.reverse_score - reverse).abs() < 0.06,
+      "{}: reverse {} vs {}",
+      x.target,
+      x.reverse_score,
+      reverse
+    );
   }
 }
 
@@ -260,7 +252,11 @@ fn scores_self() {
 
 #[test]
 fn node_score_uncontexted() {
-  let mut graph = default_graph();
+  let mut graph = AugGraph::new(Settings {
+    num_walks:              2_000,
+    zero_opinion_factor:    0.0,
+    ..Settings::default()
+  });
 
   graph.set_edge("U1".into(), "U2".into(), 2.0, 0);
   graph.set_edge("U1".into(), "U3".into(), 1.0, 0);
@@ -273,13 +269,16 @@ fn node_score_uncontexted() {
   assert_eq!(res.len(), 1);
   assert_eq!(res[0].ego, "U1");
   assert_eq!(res[0].target, "U2");
-  assert!(res[0].score > 0.3);
-  assert!(res[0].score < 0.45);
+  // a·2/3 + a/3·a = 0.808
+  assert!((res[0].score - 0.808).abs() < 0.06, "{}", res[0].score);
 }
 
 #[test]
 fn node_score_reversed() {
-  let mut graph = default_graph_zero();
+  let mut graph = AugGraph::new(Settings {
+    num_walks: 2_000,
+    ..Settings::default()
+  });
 
   graph.set_edge("U1".into(), "U2".into(), 2.0, 0);
   graph.set_edge("U1".into(), "U3".into(), 1.0, 0);
@@ -294,17 +293,17 @@ fn node_score_reversed() {
   assert_eq!(res.len(), 1);
   assert_eq!(res[0].ego, "U1");
   assert_eq!(res[0].target, "U2");
-  assert!(res[0].score > 0.2);
-  assert!(res[0].score < 0.4);
-  assert!(res[0].reverse_score > 0.2);
-  assert!(res[0].reverse_score < 0.4);
+  // Blended with zero opinion (factor 0.2, no zero scores): 0.8 × (0.808, a).
+  assert!((res[0].score - 0.8 * 0.808).abs() < 0.06, "{}", res[0].score);
+  assert!((res[0].reverse_score - 0.8 * 0.85).abs() < 0.06, "{}", res[0].reverse_score);
 }
-
-// --- Mutual score tests ---
 
 #[test]
 fn mutual_scores_uncontexted() {
-  let mut graph = default_graph_zero();
+  let mut graph = AugGraph::new(Settings {
+    num_walks: 2_000,
+    ..Settings::default()
+  });
 
   graph.set_edge("U1".into(), "U2".into(), 3.0, 0);
   graph.set_edge("U1".into(), "U3".into(), 1.0, 0);
@@ -321,39 +320,19 @@ fn mutual_scores_uncontexted() {
 
   assert_eq!(res.len(), 3);
 
-  let mut u1 = true;
-  let mut u2 = true;
-  let mut u3 = true;
-
+  // First-passage probabilities, blended with zero opinion (factor 0.2): 0.8 × p.
+  let mut seen = std::collections::HashSet::new();
   for x in &res {
     assert_eq!(x.ego, "U1");
-    match x.target.as_str() {
-      "U1" => {
-        assert!(x.score > 0.25);
-        assert!(x.score < 0.5);
-        assert!(x.reverse_score > 0.25);
-        assert!(x.reverse_score < 0.5);
-        assert!(u1);
-        u1 = false;
-      },
-      "U2" => {
-        assert!(x.score > 0.15);
-        assert!(x.score < 0.35);
-        assert!(x.reverse_score > 0.15);
-        assert!(x.reverse_score < 0.35);
-        assert!(u2);
-        u2 = false;
-      },
-      "U3" => {
-        assert!(x.score > 0.15);
-        assert!(x.score < 0.35);
-        assert!(x.reverse_score > 0.15);
-        assert!(x.reverse_score < 0.35);
-        assert!(u3);
-        u3 = false;
-      },
+    let (score, reverse) = match x.target.as_str() {
+      "U1" => (1.0, 1.0),
+      "U2" => (0.796, 0.709),
+      "U3" => (0.700, 0.751),
       _ => panic!("Unexpected target"),
-    }
+    };
+    assert!((x.score - 0.8 * score).abs() < 0.06, "{}: {}", x.target, x.score);
+    assert!((x.reverse_score - 0.8 * reverse).abs() < 0.06, "{}: {}", x.target, x.reverse_score);
+    assert!(seen.insert(x.target.clone()), "duplicate row {}", x.target);
   }
 }
 
@@ -436,7 +415,10 @@ fn graph_uncontexted() {
 
 #[test]
 fn graph_reversed() {
-  let mut graph = default_graph_zero();
+  let mut graph = AugGraph::new(Settings {
+    num_walks: 2_000,
+    ..Settings::default()
+  });
 
   graph.set_edge("U1".into(), "U2".into(), 2.0, 0);
   graph.set_edge("U1".into(), "U3".into(), 1.0, 0);
@@ -455,21 +437,21 @@ fn graph_reversed() {
         assert_eq!(x.dst, "U2");
         assert!(x.weight > 0.6);
         assert!(x.weight < 0.7);
-        assert!(x.score > 0.05);
-        assert!(x.score < 0.4);
+        // U2 in U1's frame: 0.8 × a·2/3
+        assert!((x.score - 0.8 * 0.567).abs() < 0.06, "{}", x.score);
       },
       "U2" => {
         if x.dst == "U1" {
           assert!(x.weight > 0.5);
           assert!(x.weight < 0.6);
-          assert!(x.score > 0.2);
-          assert!(x.score < 0.5);
+          // U1 in its own frame: 0.8 × 1
+          assert!((x.score - 0.8).abs() < 0.03, "{}", x.score);
         }
         if x.dst == "U3" {
           assert!(x.weight > 0.39);
           assert!(x.weight < 0.49);
-          assert!(x.score > 0.16);
-          assert!(x.score < 0.4);
+          // U3 in U1's frame: 0.8 × 0.676
+          assert!((x.score - 0.8 * 0.676).abs() < 0.06, "{}", x.score);
         }
       },
       _ => panic!("Unexpected src: {}", x.src),

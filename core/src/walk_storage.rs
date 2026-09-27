@@ -4,7 +4,6 @@ use rand::Rng;
 use integer_hasher::IntMap;
 
 use crate::constants::OPTIMIZE_INVALIDATION;
-use crate::counter::Counter;
 use crate::errors::internal_fatal;
 use crate::graph::{EdgeId, NodeId, Weight};
 use crate::random_walk::RandomWalk;
@@ -96,76 +95,56 @@ impl WalkStorage {
     Ok(start)
   }
 
-  /// Clears the ego's walks (as `clear_block_for_ego`), frees their memory and returns the block
-  /// to the free list. Used when an ego is evicted.
+
+  /// Walk ids of the ego's block, if it has one.
+  pub fn block_walk_ids(
+    &self,
+    ego: NodeId,
+  ) -> Option<std::ops::Range<WalkId>> {
+    let start = *self.ego_blocks.get(&ego)?;
+    Some(start..start + self.walks_per_ego)
+  }
+
+  /// Empties every walk of the block starting at `start_id` and removes them from the visits
+  /// index. Counters are the caller's (rank's) business: it removes the walks' contributions first.
+  pub fn clear_block(
+    &mut self,
+    start_id: WalkId,
+  ) -> Result<(), MeritRankError> {
+    for walk_id in start_id..start_id + self.walks_per_ego {
+      let walk = match self.walks.get_mut(walk_id) {
+        Some(w) => w,
+        None => {
+          return Err(MeritRankError::InternalFatalError(Some(
+            internal_fatal::WALK_STORAGE_SPLIT_GET_MUT,
+          )));
+        },
+      };
+      for &node in walk.nodes.iter() {
+        if let Some(visits) = self.visits.get_mut(node) {
+          visits.remove(&walk_id);
+        }
+      }
+      walk.clear();
+    }
+    Ok(())
+  }
+
+  /// Clears the ego's block (as `clear_block`), frees the walks' memory and returns the block to
+  /// the free list. Used when an ego is evicted.
   pub fn release_block_for_ego(
     &mut self,
     ego: NodeId,
-    pos_hits: &mut IntMap<NodeId, Counter>,
-    neg_hits: &mut IntMap<NodeId, Counter>,
   ) -> Result<(), MeritRankError> {
     let start = match self.ego_blocks.remove(&ego) {
       Some(start) => start,
       None => return Ok(()),
     };
-    self.clear_block_for_ego(ego, start, pos_hits, neg_hits)?;
+    self.clear_block(start)?;
     for walk in &mut self.walks[start..start + self.walks_per_ego] {
       *walk = RandomWalk::new();
     }
     self.free_blocks.push(start);
-    Ok(())
-  }
-
-  /// Clears all walks in the ego's block: decrements counters, removes from visits, clears walk storage.
-  pub fn clear_block_for_ego(
-    &mut self,
-    ego: NodeId,
-    start_id: WalkId,
-    pos_hits: &mut IntMap<NodeId, Counter>,
-    neg_hits: &mut IntMap<NodeId, Counter>,
-  ) -> Result<(), MeritRankError> {
-    for i in 0..self.walks_per_ego {
-      let walk_id = start_id + i;
-      let (pos_nodes, neg_nodes, node_positions) = {
-        let walk = match self.walks.get(walk_id) {
-          Some(w) => w,
-          None => {
-            return Err(MeritRankError::InternalFatalError(Some(
-              internal_fatal::WALK_STORAGE_SPLIT_GET_MUT,
-            )));
-          },
-        };
-        if walk.is_empty() {
-          continue;
-        }
-        (
-          walk.positive_subsegment().copied().collect::<Vec<_>>(),
-          walk.negative_subsegment().copied().collect::<Vec<_>>(),
-          walk
-            .get_nodes()
-            .iter()
-            .enumerate()
-            .map(|(pos, &node)| (node, pos))
-            .collect::<Vec<_>>(),
-        )
-      };
-      pos_hits
-        .entry(ego)
-        .or_default()
-        .decrement_unique_counts(&pos_nodes);
-      neg_hits
-        .entry(ego)
-        .or_default()
-        .decrement_unique_counts(&neg_nodes);
-      for (node, _pos) in node_positions {
-        if let Some(visits) = self.visits.get_mut(node) {
-          visits.remove(&walk_id);
-        }
-      }
-      if let Some(walk) = self.walks.get_mut(walk_id) {
-        walk.clear();
-      }
-    }
     Ok(())
   }
 
@@ -217,7 +196,7 @@ impl WalkStorage {
     &self,
     invalidated_node: NodeId,
     dst_node: Option<NodeId>,
-    step_recalc_probability: Option<(Weight, Weight)>,
+    step_recalc_probability: Option<Weight>,
     rng: &mut R,
   ) -> Result<Vec<(WalkId, usize)>, MeritRankError> {
     let mut invalidated_walks_ids = vec![];
@@ -303,21 +282,14 @@ pub fn decide_skip_invalidation<R>(
   walk: &RandomWalk,
   pos: usize,
   edge: EdgeId,
-  step_recalc_probability: Option<(Weight, Weight)>,
+  step_recalc_probability: Option<Weight>,
   rnd: Option<R>,
 ) -> Result<(bool, usize), MeritRankError>
 where
   R: RngCore,
 {
-  if let Some((prob_pos_segment, prob_neg_segment)) = step_recalc_probability {
-    decide_skip_invalidation_on_edge_addition(
-      walk,
-      pos,
-      edge,
-      prob_pos_segment,
-      prob_neg_segment,
-      rnd,
-    )
+  if let Some(prob) = step_recalc_probability {
+    decide_skip_invalidation_on_edge_addition(walk, pos, edge, prob, rnd)
   } else {
     decide_skip_invalidation_on_edge_deletion(walk, pos, edge)
   }
@@ -355,12 +327,16 @@ pub fn decide_skip_invalidation_on_edge_deletion(
   )
 }
 
+/// Edge addition at `invalidated_node`: every visit of the node re-decides its step, taking the
+/// new edge with probability `prob` (the coupling: stop stays `1 - alpha`, the new edge gets
+/// `alpha * prob`, old edges keep their share). The last position of an absorbed walk is not a
+/// visit that decided a step — the walk was absorbed on arrival — so it is never re-coupled
+/// (otherwise the out-edges of a wall would reach the nodes before it, breaking A1).
 pub fn decide_skip_invalidation_on_edge_addition<R>(
   walk: &RandomWalk,
   pos: usize,
   edge: EdgeId,
-  prob_pos_segment: Weight,
-  prob_neg_segment: Weight,
+  prob: Weight,
   mut rnd: Option<R>,
 ) -> Result<(bool, usize), MeritRankError>
 where
@@ -380,25 +356,19 @@ where
     .map(|r| r as &mut dyn RngCore)
     .unwrap_or(&mut fallback_rng);
 
-  // Positions at or after neg_start are in the negative subsegment (positive-only candidate set).
-  // Positions before neg_start are in the positive subsegment (full candidate set).
-  let neg_start = walk.negative_segment_start.unwrap_or(usize::MAX);
+  let decided_steps = if walk.absorbed {
+    walk.len() - 1
+  } else {
+    walk.len()
+  };
 
   let mut new_pos = pos;
-  let result = walk.get_nodes()[pos..]
+  let result = walk.get_nodes()[pos..decided_steps.max(pos)]
     .iter()
     .enumerate()
     .find_map(|(i, &node)| {
       if node == invalidated_node {
         new_pos = pos + i;
-        // Choose the probability matching the walk regime at this position.
-        // Positions before neg_start: full candidate set (pos+neg edges).
-        // Positions at or after neg_start: positive-only candidate set.
-        let prob = if new_pos >= neg_start {
-          prob_neg_segment
-        } else {
-          prob_pos_segment
-        };
         if prob > 0.0 && rng.random::<Weight>() < prob {
           Some(false) // invalidate at this position
         } else {

@@ -1,5 +1,6 @@
 use crate::aug_graph::*;
 use crate::aug_graph::record_frames;
+use crate::aug_graph::is_user_to_user;
 use crate::data::*;
 use crate::node_registry::*;
 use crate::settings::*;
@@ -237,6 +238,37 @@ fn processing_loop(
       apply(&mut back, op, false);
     }
   }
+}
+
+/// Rejects an edge write that must not reach a graph: self-edges, non-finite weights, and walls
+/// (negative weights) anywhere but on a User→User edge in the null context (R1–R3).
+fn validate_edge_write(
+  context: &SubgraphName,
+  src: &NodeName,
+  dst: &NodeName,
+  amount: Weight,
+) -> Result<(), String> {
+  if src == dst {
+    return Err(format!("Self-reference is not allowed: {}", src));
+  }
+  if !amount.is_finite() {
+    return Err(format!("Edge weight must be finite: {} -> {} = {}", src, dst, amount));
+  }
+  if amount < 0.0 {
+    if !context.is_empty() {
+      return Err(format!(
+        "A negative weight (wall) is allowed only in the null context: {} -> {} in {:?}",
+        src, dst, context
+      ));
+    }
+    if !is_user_to_user(src, dst) {
+      return Err(format!(
+        "A negative weight (wall) is allowed only on User→User edges: {} -> {}",
+        src, dst
+      ));
+    }
+  }
+  Ok(())
 }
 
 /// Replaces, in `base`, every row whose peer (score target, graph edge destination) is in
@@ -833,6 +865,15 @@ impl MultiGraphProcessor {
         self.process_write_edge(&req.subgraph, &data).await
       },
       ReqData::WriteBulkEdges(data) => {
+        // Validate the whole batch before touching anything (R20).
+        for edge in &data.edges {
+          if let Err(e) =
+            validate_edge_write(&edge.context, &edge.src, &edge.dst, edge.amount)
+          {
+            log_error!("Bulk load rejected: {}", e);
+            return Response::Fail;
+          }
+        }
         self.loading.store(true, Ordering::SeqCst);
 
         self.clear_subgraphs().await;
@@ -1072,8 +1113,8 @@ impl MultiGraphProcessor {
   ) -> Response {
     log_trace!("{:?} {:?}", subgraph_name, data);
 
-    if data.src == data.dst {
-      log_error!("Self-reference is not allowed.");
+    if let Err(e) = validate_edge_write(subgraph_name, &data.src, &data.dst, data.amount) {
+      log_error!("{}", e);
       return Response::Fail;
     }
 

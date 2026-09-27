@@ -8,7 +8,12 @@ impl fmt::Debug for RandomWalk {
   ) -> fmt::Result {
     // Implement the formatting logic for RandomWalk
     // Here you can format the RandomWalk fields as desired
-    write!(f, "RandomWalk {{ nodes: {:?} }}", self.get_nodes())
+    write!(
+      f,
+      "RandomWalk {{ nodes: {:?}, absorbed: {} }}",
+      self.get_nodes(),
+      self.absorbed
+    )
   }
 }
 

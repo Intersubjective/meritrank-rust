@@ -13,5 +13,5 @@ pub use errors::MeritRankError;
 pub use graph::{EdgeId, Graph, NodeId, Weight};
 pub use integer_hasher::IntMap;
 pub use random_walk::RandomWalk;
-pub use rank::MeritRank;
+pub use rank::{BlameRadius, MeritRank};
 pub use walk_storage::{WalkId, WalkStorage};

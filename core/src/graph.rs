@@ -45,16 +45,17 @@ impl EdgeDistr {
 
 #[derive(Debug, Clone, Default)]
 pub struct NodeData {
-  // Negative weights are stored as abs values, to simplify calculations
+  /// Trust: the only edges walks follow.
   pub pos_edges:     IntIndexMap<NodeId, Weight>,
+  /// Walls, stored as absolute weights: `neg_edges[B] = |w|` makes B a wall in this node's frame
+  /// with absorption probability `min(|w|, 1)`. Walks never traverse them.
   pub neg_edges:     IntIndexMap<NodeId, Weight>,
   pub inbound_edges: IntIndexMap<NodeId, Weight>, // Cache for inbound edges
 
-  // Distributions and weight sums are built lazily by the first consumer after a change and
+  // The distribution and weight sum are built lazily by the first consumer after a change and
   // reset in O(1) by every change. Eager building would cost O(degree) per inserted edge, i.e.
-  // O(Σ degree²) during a bulk load. `OnceLock` lets readers build them through `&self`.
+  // O(Σ degree²) during a bulk load. `OnceLock` lets readers build it through `&self`.
   pos_distr: OnceLock<Option<EdgeDistr>>,
-  abs_distr: OnceLock<Option<EdgeDistr>>,
 }
 
 impl NodeData {
@@ -93,96 +94,44 @@ impl NodeData {
       .as_ref()
   }
 
-  fn abs_distr(&self) -> Option<&EdgeDistr> {
-    self
-      .abs_distr
-      .get_or_init(|| {
-        EdgeDistr::build(
-          self.pos_edges.values().chain(self.neg_edges.values()).copied(),
-        )
-      })
-      .as_ref()
-  }
-
   /// Exact sum of the positive out-edge weights.
   pub fn pos_sum(&self) -> Weight {
     self.pos_distr().map_or(0.0, |d| d.sum)
   }
 
-  /// Exact sum of the absolute out-edge weights, positive and negative.
-  pub fn abs_sum(&self) -> Weight {
-    self.abs_distr().map_or(0.0, |d| d.sum)
+  /// Absorption probability of `node` as a wall in this node's frame (0 if it is not one).
+  pub fn wall_strength(
+    &self,
+    node: NodeId,
+  ) -> Weight {
+    self.neg_edges.get(&node).map_or(0.0, |w| w.min(1.0))
   }
 
-  /// Resets the cached distributions after a change of the out-edges.
+  /// Resets the cached distribution after a change of the out-edges.
   fn invalidate_distributions(&mut self) {
     self.pos_distr = OnceLock::new();
-    self.abs_distr = OnceLock::new();
   }
 
-  // Return a random neighbor and whether it's from positive or negative edges
+  /// A random positive out-neighbour, weighted by trust; `None` at a dead end.
   pub fn random_neighbor<R: Rng + ?Sized>(
     &self,
-    positive_only: bool,
     rng: &mut R,
-  ) -> Result<Option<(NodeId, bool)>, MeritRankError> {
-    if positive_only {
-      if self.pos_edges.is_empty() {
-        return Ok(None);
-      }
-      let distr = match self.pos_distr() {
-        Some(x) => x,
-        None => return Err(MeritRankError::InternalFatalError(Some(
-          internal_fatal::GRAPH_NODEDATA_POS_WEIGHTED_INDEX,
-        ))),
-      };
-      let index = distr.index.sample(rng);
-      let node_id = match self.pos_edges.get_index(index) {
-        Some((x, _)) => *x,
-        None => return Err(MeritRankError::InternalFatalError(Some(
-          internal_fatal::GRAPH_NODEDATA_POS_KEYS_NTH,
-        ))),
-      };
-      Ok(Some((node_id, true)))
-    } else {
-      if self.pos_edges.is_empty() && self.neg_edges.is_empty() {
-        return Ok(None);
-      }
-      let distr = match self.abs_distr() {
-        Some(x) => x,
-        None => return Err(MeritRankError::InternalFatalError(Some(
-          internal_fatal::GRAPH_NODEDATA_ABS_WEIGHTED_INDEX,
-        ))),
-      };
-      let index = distr.index.sample(rng);
-      self.get_node_at_index(index)
+  ) -> Result<Option<NodeId>, MeritRankError> {
+    if self.pos_edges.is_empty() {
+      return Ok(None);
     }
-  }
-
-  // Helper method to get the node at a given index from combined edges
-  fn get_node_at_index(
-    &self,
-    index: usize,
-  ) -> Result<Option<(NodeId, bool)>, MeritRankError> {
-    let pos_len = self.pos_edges.len();
-
-    if index < pos_len {
-      let node_id = match self.pos_edges.get_index(index) {
-        Some((x, _)) => *x,
-        None => return Err(MeritRankError::InternalFatalError(Some(
-          internal_fatal::GRAPH_GET_NODE_AT_INDEX_POS,
-        ))),
-      };
-      Ok(Some((node_id, true)))
-    } else {
-      let neg_index = index - pos_len;
-      let node_id = match self.neg_edges.get_index(neg_index) {
-        Some((x, _)) => *x,
-        None => return Err(MeritRankError::InternalFatalError(Some(
-          internal_fatal::GRAPH_GET_NODE_AT_INDEX_NEG,
-        ))),
-      };
-      Ok(Some((node_id, false)))
+    let distr = match self.pos_distr() {
+      Some(x) => x,
+      None => return Err(MeritRankError::InternalFatalError(Some(
+        internal_fatal::GRAPH_NODEDATA_POS_WEIGHTED_INDEX,
+      ))),
+    };
+    let index = distr.index.sample(rng);
+    match self.pos_edges.get_index(index) {
+      Some((x, _)) => Ok(Some(*x)),
+      None => Err(MeritRankError::InternalFatalError(Some(
+        internal_fatal::GRAPH_NODEDATA_POS_KEYS_NTH,
+      ))),
     }
   }
 }
@@ -254,12 +203,12 @@ impl Graph {
       },
       w if w > 0.0 => {
         node.pos_edges.insert(to, weight);
+        node.invalidate_distributions();
       },
       _ => {
         node.neg_edges.insert(to, weight.abs());
       },
     }
-    node.invalidate_distributions();
 
     // Update inbound edge cache for the target node
     self.nodes[to].inbound_edges.insert(from, weight);
@@ -305,7 +254,9 @@ impl Graph {
 
     // Both pos and neg weights should never be present at the same time.
     assert!(!(pos_weight.is_some() && neg_weight.is_some()));
-    node.invalidate_distributions();
+    if pos_weight.is_some() {
+      node.invalidate_distributions();
+    }
 
     Ok(if let Some(weight) = pos_weight {
       weight
@@ -334,27 +285,42 @@ impl Graph {
     })
   }
 
-  pub fn generate_walk_segment<R: Rng + ?Sized>(
+  /// Steps `walk` into `node` and runs the absorption trial if `node` is a wall of the walk's
+  /// ego: every entry is an independent trial with probability `d` (D16). Every place that
+  /// extends a walk goes through here.
+  pub fn step_into<R: Rng + ?Sized>(
     &self,
-    start_node: NodeId,
-    alpha: f64,
-    positive_only: bool,
+    walk: &mut RandomWalk,
+    node: NodeId,
     rng: &mut R,
-  ) -> Result<RandomWalk, MeritRankError> {
-    let mut node = start_node;
-    let mut segment = RandomWalk::new();
+  ) -> Result<(), MeritRankError> {
+    walk.push(node)?;
+    let ego = match walk.first_node() {
+      Some(x) => x,
+      None => return Ok(()),
+    };
+    let d = self.nodes.get(ego).map_or(0.0, |e| e.wall_strength(node));
+    if d > 0.0 && rng.random::<f64>() < d {
+      walk.absorbed = true;
+    }
+    Ok(())
+  }
 
-    let mut negative_continuation_mode = false;
-    // When this variable becomes true, it means that a walk has encountered a negative edge,
-    // followed it, and now the walk is in the "negative continuation mode", meaning we
-    // will only follow positive edges, from now on, storing the index of its
-    // start in "negative_segment_start" variable. Later, we will u "punish" the nodes that
-    // were encountered in the negative continuation mode:
-    //  +  +  -     +  +  +
-    // A->B->C->(-D)->E->F->G
-    // P  P  P    N   N  N  N
-
-    loop {
+  /// Continues `walk` from its last node until it stops (continuation probability `alpha`), hits
+  /// a dead end or is absorbed. An absorbed walk is left as it is.
+  pub fn continue_walk<R: Rng + ?Sized>(
+    &self,
+    walk: &mut RandomWalk,
+    alpha: f64,
+    rng: &mut R,
+  ) -> Result<(), MeritRankError> {
+    let mut node = match walk.last_node() {
+      Some(x) => x,
+      None => return Err(MeritRankError::InternalFatalError(Some(
+        internal_fatal::GRAPH_CONTINUE_WALK_LAST_NODE,
+      ))),
+    };
+    while !walk.absorbed {
       let node_data = match self.get_node_data(node) {
         Some(x) => x,
         None => return Err(MeritRankError::InternalFatalError(Some(
@@ -364,64 +330,29 @@ impl Graph {
       if rng.random::<f64>() > alpha {
         break;
       }
-      if let Some((next_step, step_is_positive)) = node_data
-        .random_neighbor(negative_continuation_mode || positive_only, rng)?
-      {
-        segment.push(next_step, step_is_positive)?;
-        if !step_is_positive {
-          assert!(!negative_continuation_mode);
-          negative_continuation_mode = true;
-        }
-        node = next_step;
-      } else {
-        // Dead-end encountered
-        break;
+      match node_data.random_neighbor(rng)? {
+        Some(next) => {
+          self.step_into(walk, next, rng)?;
+          node = next;
+        },
+        None => break, // dead end
       }
     }
-    Ok(segment)
+    Ok(())
   }
 
-  pub fn continue_walk<R: Rng + ?Sized>(
-    &self,
-    walk: &mut RandomWalk,
-    alpha: f64,
-    rng: &mut R,
-  ) -> Result<(), MeritRankError> {
-    // If the original walk is already in "negative mode",
-    // we should restrict segment generation to positive edges
-    let positive_only = walk.negative_segment_start.is_some();
-    let start_node = match walk.last_node() {
-      Some(x) => x,
-      None => return Err(MeritRankError::InternalFatalError(Some(
-        internal_fatal::GRAPH_CONTINUE_WALK_LAST_NODE,
-      ))),
-    };
-    let new_segment =
-      self.generate_walk_segment(start_node, alpha, positive_only, rng)?;
-
-    walk.extend(&new_segment)
-  }
-
+  /// Edge deletion in optimized mode: the walk had taken the deleted edge, i.e. it had already
+  /// passed the continuation trial at its last node, so one step is forced among the remaining
+  /// edges (no alpha trial, which would bias it).
   pub fn extend_walk_in_case_of_edge_deletion<R: Rng + ?Sized>(
     &self,
     walk: &mut RandomWalk,
     rng: &mut R,
   ) -> Result<(), MeritRankError> {
-    // No force_first_step, so this is "edge deletion mode"
-    //
-    // Force addition of the first step by extending the original walk with it.
-    // Make sure that positive/negative subsegment marking is taken into account.
-    // Forcing the step is neccessary in case of edge deletion in optimized mode:
-    // we simulate the situation when the actual edge that was taken in the first case
-    // was an edge different from the deleted one. Therefore, we should not apply
-    // alpha-based stop to it, as this would lead to bias.
     let src_node = walk.last_node().unwrap();
     let node_data = self.get_node_data(src_node).unwrap();
-    let adding_to_negative_subsegment = walk.negative_segment_start.is_some();
-    if let Some((forced_step, step_is_positive)) =
-      node_data.random_neighbor(adding_to_negative_subsegment, rng)?
-    {
-      walk.push(forced_step, step_is_positive)?;
+    if let Some(forced_step) = node_data.random_neighbor(rng)? {
+      self.step_into(walk, forced_step, rng)?;
     }
     Ok(())
   }

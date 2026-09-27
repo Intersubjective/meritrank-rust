@@ -175,21 +175,23 @@ impl AugGraph {
       Some(data) => {
         v.reserve_exact(data.pos_edges.len() + data.neg_edges.len());
 
-        let abs_sum = if data.pos_sum() < EPSILON {
+        // Positive weights as transition probabilities (R24: walks choose among positive edges
+        // only, so walls do not dilute them); walls are listed by strength, negated.
+        let pos_sum = if data.pos_sum() < EPSILON {
           log_warning!(
             "Unable to normalize node weight, positive sum is zero."
           );
           1.0
         } else {
-          data.abs_sum()
+          data.pos_sum()
         };
 
         for x in &data.pos_edges {
-          v.push((*x.0, *x.1 / abs_sum));
+          v.push((*x.0, *x.1 / pos_sum));
         }
 
         for x in &data.neg_edges {
-          v.push((*x.0, -*x.1 / abs_sum));
+          v.push((*x.0, -x.1.min(1.0)));
         }
       },
     }

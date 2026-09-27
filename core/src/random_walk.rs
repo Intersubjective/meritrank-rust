@@ -3,25 +3,25 @@ use crate::graph::NodeId;
 use crate::MeritRankError;
 use tinyset::SetUsize;
 
-/// Represents a random walk through a graph.
-#[derive(Clone)]
+/// A random walk through a graph, starting at its ego (the first node).
+///
+/// An absorbed walk ended because it stepped into one of its ego's walls: the wall is its last
+/// node. It credits nobody and, with discredit, blames its prefix.
+#[derive(Clone, Default)]
 pub struct RandomWalk {
-  pub nodes:                  Vec<NodeId>,
-  pub negative_segment_start: Option<usize>,
+  pub nodes:    Vec<NodeId>,
+  pub absorbed: bool,
 }
 
 impl RandomWalk {
   pub fn new() -> Self {
-    RandomWalk {
-      nodes:                  Vec::new(),
-      negative_segment_start: None,
-    }
+    RandomWalk::default()
   }
 
   pub fn from_nodes(nodes: Vec<NodeId>) -> Self {
     RandomWalk {
       nodes,
-      negative_segment_start: None,
+      absorbed: false,
     }
   }
 
@@ -74,9 +74,10 @@ impl RandomWalk {
     self.nodes.last().copied()
   }
 
+  /// Empties the walk and resets all of its metadata.
   pub fn clear(&mut self) {
     self.nodes.clear();
-    self.negative_segment_start = None;
+    self.absorbed = false;
   }
 
   pub fn iter(&self) -> impl Iterator<Item = &NodeId> {
@@ -86,11 +87,13 @@ impl RandomWalk {
   pub fn push(
     &mut self,
     node_id: NodeId,
-    step_is_positive: bool,
   ) -> Result<(), MeritRankError> {
-    let index = self.nodes.len();
-    // Ensure the node_id is not the same as the last node in the walk:
-    // direct self-loops are forbidden and should never happen.
+    if self.absorbed {
+      return Err(MeritRankError::InternalFatalError(Some(
+        internal_fatal::RANDOM_WALK_PUSH_ABSORBED,
+      )));
+    }
+    // Direct self-loops are forbidden and should never happen.
     if let Some(prev) = self.nodes.last() {
       if *prev == node_id {
         return Err(MeritRankError::InternalFatalError(Some(
@@ -99,16 +102,6 @@ impl RandomWalk {
       }
     }
     self.nodes.push(node_id);
-
-    // Update `negative_segment_start` based on `step_is_positive`
-    if !step_is_positive {
-      if !self.negative_segment_start.is_none() {
-        return Err(MeritRankError::InternalFatalError(Some(
-          internal_fatal::RANDOM_WALK_PUSH_NEG_SEGMENT,
-        )));
-      }
-      self.negative_segment_start = Some(index);
-    }
     Ok(())
   }
 
@@ -119,53 +112,34 @@ impl RandomWalk {
     self.nodes.insert(0, node_id);
   }
 
-  pub fn positive_subsegment(&self) -> impl Iterator<Item = &NodeId> {
-    self
-      .nodes
-      .iter()
-      .take(self.negative_segment_start.unwrap_or(self.nodes.len()))
-  }
-  pub fn negative_subsegment(&self) -> impl Iterator<Item = &NodeId> {
-    self
-      .nodes
-      .iter()
-      .skip(self.negative_segment_start.unwrap_or(self.nodes.len()))
-  }
-
   pub fn extend(
     &mut self,
     new_segment: &RandomWalk,
   ) -> Result<(), MeritRankError> {
-    if self.negative_segment_start.is_some()
-      && new_segment.negative_segment_start.is_some()
-    {
+    if self.absorbed {
       return Err(MeritRankError::InternalFatalError(Some(
-        internal_fatal::RANDOM_WALK_EXTEND_TWO_NEG,
+        internal_fatal::RANDOM_WALK_EXTEND_ABSORBED,
       )));
     }
-    if let Some(new_neg_start) = new_segment.negative_segment_start {
-      self.negative_segment_start = Some(self.nodes.len() + new_neg_start);
-    }
     self.nodes.extend(new_segment.get_nodes());
+    self.absorbed = new_segment.absorbed;
     Ok(())
   }
 
+  /// Cuts the walk at `at` and returns the tail. The absorbing arrival, if any, is the last node,
+  /// so it moves with a non-empty tail.
   pub fn split_from(
     &mut self,
     at: usize,
   ) -> RandomWalk {
-    let new_segment_neg_start = self
-      .negative_segment_start
-      .filter(|&neg_start| at <= neg_start)
-      .map(|neg_start| {
-        self.negative_segment_start = None;
-        neg_start - at
-      });
-
-    let split_segment = self.nodes.split_off(at);
+    let tail_absorbed = self.absorbed && at < self.nodes.len();
+    if tail_absorbed {
+      self.absorbed = false;
+    }
+    let tail = self.nodes.split_off(at.min(self.nodes.len()));
     RandomWalk {
-      nodes:                  split_segment,
-      negative_segment_start: new_segment_neg_start,
+      nodes:    tail,
+      absorbed: tail_absorbed,
     }
   }
 }

@@ -39,7 +39,7 @@ fn seeded_runs_are_identical() {
     mr.calculate(5).unwrap();
     mr.set_edge(3, 9, 2.0).unwrap();
     mr.set_edge(0, 1, 0.0).unwrap();
-    mr.set_edge(7, 2, -1.0).unwrap();
+    mr.set_edge(0, 7, -0.5).unwrap();
     (scores(&mr, 0), scores(&mr, 5))
   };
   assert_eq!(run(42), run(42));
@@ -81,20 +81,21 @@ fn sums_are_exact_after_removing_a_huge_weight() {
   mr.set_edge(0, 1, 0.0).unwrap();
   let data = mr.graph.get_node_data(0).unwrap();
   assert_eq!(data.pos_sum(), 1.0);
-  assert_eq!(data.abs_sum(), 1.0);
 }
 
-/// Deleting an absent edge, or writing a weight at or below the deletion epsilon to it, is a
-/// no-op rather than a panic.
+/// Deleting an absent edge, or writing a positive weight at or below the deletion epsilon to it,
+/// is a no-op rather than a panic. A tiny negative weight is a wall and is stored exactly (R19).
 #[test]
-fn tiny_weight_on_absent_edge_is_noop() {
+fn tiny_weights_on_absent_edges() {
   let mut mr = MeritRank::new(Graph::new(), W);
   mr.get_new_nodeid();
   mr.get_new_nodeid();
   mr.set_edge(0, 1, 1e-7).unwrap();
-  mr.set_edge(0, 1, -1e-6).unwrap();
   mr.set_edge(0, 1, 0.0).unwrap();
   assert_eq!(mr.graph.edge_weight(0, 1).unwrap(), None);
+  mr.set_edge(0, 1, -1e-6).unwrap();
+  assert_eq!(mr.graph.edge_weight(0, 1).unwrap(), Some(-1e-6));
+  assert_eq!(mr.graph.get_node_data(0).unwrap().wall_strength(1), 1e-6);
 }
 
 /// `calculate` marks the ego calculated and dirty; an edge change marks the egos whose walks it
