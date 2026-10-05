@@ -60,6 +60,8 @@ fn get_or_reconnect(timeout: Duration) -> io::Result<TcpStream> {
     for addr in &addrs {
       match TcpStream::connect_timeout(addr, timeout) {
         Ok(s) => {
+          //  Small request/response frames: never wait for Nagle.
+          s.set_nodelay(true)?;
           let cloned = s
             .try_clone()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
