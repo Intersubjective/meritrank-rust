@@ -25,9 +25,12 @@ async fn write_message<T: Encode>(
 ) -> Result<(), Box<dyn Error>> {
   log_trace!();
   let out = encode_to_vec(value, standard())?;
-  let len_bytes = (out.len() as u32).to_be_bytes();
-  stream.write_all(&len_bytes).await?;
-  stream.write_all(&out).await?;
+  //  One write per frame: a separate 4-byte length write followed by the
+  //  payload write trips Nagle + the peer's delayed ACK (~40 ms per frame).
+  let mut frame = Vec::with_capacity(4 + out.len());
+  frame.extend_from_slice(&(out.len() as u32).to_be_bytes());
+  frame.extend_from_slice(&out);
+  stream.write_all(&frame).await?;
   Ok(())
 }
 
@@ -114,7 +117,13 @@ pub async fn run_server(
       }
       accept_result = listener.accept() => {
         match accept_result {
-          Ok((s, _)) => stream = s,
+          Ok((s, _)) => {
+            //  Small request/response frames: never wait for Nagle.
+            if let Err(e) = s.set_nodelay(true) {
+              log_warning!("set_nodelay failed: {}", e);
+            }
+            stream = s;
+          },
           Err(e) => {
             log_error!("Socket accept failed: {}", e);
             break;
@@ -361,6 +370,50 @@ mod tests {
       },
       _ => assert!(false),
     };
+
+    running.cancel();
+    let _ = timeout(Duration::from_secs(1), &mut server_task)
+      .await
+      .unwrap();
+  }
+
+  /// Regression: frames were written as a 4-byte length write plus a payload
+  /// write, so with Nagle + delayed ACK every roundtrip on a kept-alive
+  /// connection stalled ~40 ms per direction (~88 ms per call in production).
+  /// Uses the blocking client the Postgres connector uses, without touching
+  /// its socket options, so both the client and the server framing are covered.
+  #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+  async fn sequential_roundtrips_do_not_stall_on_delayed_ack() {
+    let (mut server_task, running) = spawn_server(8090);
+    wait_for_server(8090).await;
+
+    let elapsed = tokio::task::spawn_blocking(|| {
+      let mut stream = std::net::TcpStream::connect("127.0.0.1:8090").unwrap();
+      let request = Request {
+        subgraph: "".into(),
+        data:     ReqData::Sync(1),
+      };
+      // Warm up: the first exchanges on a fresh connection run in quick-ACK mode.
+      for _ in 0..3 {
+        crate::rpc_sync::write_request_sync(&mut stream, &request).unwrap();
+        crate::rpc_sync::read_response_sync(&mut stream).unwrap();
+      }
+      let started = std::time::Instant::now();
+      for _ in 0..20 {
+        crate::rpc_sync::write_request_sync(&mut stream, &request).unwrap();
+        crate::rpc_sync::read_response_sync(&mut stream).unwrap();
+      }
+      started.elapsed()
+    })
+    .await
+    .unwrap();
+
+    // Stalled framing costs >= 20 x 40 ms; healthy loopback is a few ms total.
+    assert!(
+      elapsed < Duration::from_millis(400),
+      "20 roundtrips took {:?}; frames are stalling on Nagle/delayed ACK",
+      elapsed
+    );
 
     running.cancel();
     let _ = timeout(Duration::from_secs(1), &mut server_task)
