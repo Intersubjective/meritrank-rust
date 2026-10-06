@@ -54,7 +54,7 @@ fn freq(
   ego: NodeId,
   node: NodeId,
 ) -> f64 {
-  mr.get_personal_hits()[&ego].get_count(&node) as f64 / W as f64
+  mr.credits_of(ego, node) as f64 / W as f64
 }
 
 /// z-score of the difference between two Binomial(W, ·) proportions.

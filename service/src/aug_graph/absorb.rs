@@ -97,6 +97,9 @@ impl AugGraph {
           self.ensure_calculated(*ego);
         }
       },
+      AugGraphOp::AdmitSnapshots(_) | AugGraphOp::SetSnapshotQuota(_) => {
+        todo!("D14: snapshot operations")
+      },
     }
   }
 }

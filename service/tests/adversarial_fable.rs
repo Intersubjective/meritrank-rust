@@ -298,13 +298,15 @@ async fn fixed_nan_zero_opinion_rejected() {
 /// R2: a negative weight (wall) in a NAMED context is rejected, and nothing is mutated.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ok_negative_weight_in_named_context_rejected() {
+  // D14: contexts are isolated, so a wall in a named context is accepted — and stays there.
   let p = processor();
   let r = write_edge(&p, "X", "U1", "U2", -0.5, 0).await;
-  assert!(matches!(r, Response::Fail), "expected Fail for wall in named context, got {:?}", r);
+  assert!(matches!(r, Response::Ok), "expected Ok for a wall in a named context, got {:?}", r);
   sync(&p).await;
-  // The rejected write created nothing in the null context.
   let edges = read_edges_vec(req(&p, "", ReqData::ReadEdges).await);
-  assert!(edges.is_empty(), "rejected wall still mutated the graph: {:?}", edges);
+  assert!(edges.is_empty(), "a write in X reached the null context: {:?}", edges);
+  let edges = read_edges_vec(req(&p, "X", ReqData::ReadEdges).await);
+  assert_eq!(edges.len(), 1, "{:?}", edges);
 }
 
 /// R3: a negative self-edge is rejected.
@@ -377,12 +379,16 @@ async fn ok_read_unknown_subgraph() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ok_object_node_as_ego() {
   let p = processor();
-  write_edge(&p, "", "U1", "C1", 1.0, 0).await; // registers C1 (Comment) owned by U1
+  write_edge(&p, "", "U1", "C1", 1.0, 0).await;
   sync(&p).await;
+  // D14: one node class — C1 is an ordinary ego; its only walk target is itself.
   let r = read_scores(&p, "", "C1", FilterOptions::default()).await;
   match r {
-    Response::Scores(ResScores { scores }) => assert!(scores.is_empty()),
-    other => panic!("expected empty scores for object ego, got {:?}", other),
+    Response::Scores(ResScores { scores }) => {
+      assert_eq!(scores.len(), 1, "{:?}", scores);
+      assert_eq!(scores[0].target, "C1");
+    },
+    other => panic!("expected scores for C1 as ego, got {:?}", other),
   }
 }
 
@@ -470,8 +476,8 @@ async fn ok_bulk_load_with_invalid_wall_rejected_atomically() {
   let p = processor();
   let edges = vec![
     BulkEdge { src: "U1".into(), dst: "U2".into(), amount: 1.0, magnitude: 0, context: "".into() },
-    // Invalid: negative weight in a named context.
-    BulkEdge { src: "U3".into(), dst: "U4".into(), amount: -0.5, magnitude: 0, context: "X".into() },
+    // Invalid: a self-edge (walls in named contexts are valid since D14).
+    BulkEdge { src: "U3".into(), dst: "U3".into(), amount: -0.5, magnitude: 0, context: "X".into() },
   ];
   let r = req(&p, "", ReqData::WriteBulkEdges(OpWriteBulkEdges { edges })).await;
   assert!(matches!(r, Response::Fail), "invalid bulk batch should be rejected, got {:?}", r);

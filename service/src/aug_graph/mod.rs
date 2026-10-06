@@ -16,6 +16,10 @@ pub use edges::is_user_to_user;
 mod graph_read;
 mod neighbors;
 mod scores;
+mod snapshots;
+pub use snapshots::{
+  read_scope, FrameSnapshot, MUTATION_LOG_CAPACITY, STALENESS_DELTA, FrameSnapshots, GraphCounters, ReadReport, ReverseDiag, ReverseSource,
+};
 
 pub type ClusterGroupBounds = Vec<NodeScore>;
 
@@ -36,6 +40,15 @@ pub struct AugGraph {
   pub zero_revision:         u64,
   pub vsids:                 VSIDSManager,
   pub stamp:                 u64,
+  /// Reverse-score snapshots (D14); replicated state.
+  pub snapshots:             FrameSnapshots,
+  pub counters:              GraphCounters,
+  /// Identity of the processor incarnation (a new one per subgraph creation, reset, bulk load).
+  pub epoch:                 u64,
+  /// Sequence number of the last operation applied to this copy.
+  pub applied_seq:           u64,
+  /// Key of the subgraph's random streams.
+  pub stream:                u64,
 }
 
 fn cluster_cache(settings: &Settings) -> Cache<ClusterKey, ClusterGroupBounds> {
@@ -57,6 +70,11 @@ impl Clone for AugGraph {
       zero_revision:         self.zero_revision,
       vsids:                 self.vsids.clone(),
       stamp:                 self.stamp,
+      snapshots:             self.snapshots.clone(),
+      counters:              self.counters.clone(),
+      epoch:                 self.epoch,
+      applied_seq:           self.applied_seq,
+      stream:                self.stream,
     }
   }
 }
@@ -115,7 +133,33 @@ impl AugGraph {
       zero_revision: 0,
       vsids: VSIDSManager::new(),
       stamp: 0,
+      snapshots: FrameSnapshots::default(),
+      counters: GraphCounters::default(),
+      epoch: 0,
+      applied_seq: 0,
+      stream: 0,
     }
+  }
+
+  /// A graph for the subgraph `name`: its random streams are keyed by the name, and it gets a new
+  /// processor epoch.
+  pub fn with_stream(
+    settings: Settings,
+    name: &str,
+  ) -> AugGraph {
+    let _ = (settings, name);
+    todo!("D14: with_stream")
+  }
+
+  /// Applies operation `seq` as the subgraph worker does: reseeds the per-operation stream, then
+  /// applies it and records `seq` as applied. Replaying the same sequence reproduces the state.
+  pub fn apply_seq_op(
+    &mut self,
+    seq: u64,
+    op: &AugGraphOp,
+  ) {
+    let _ = (seq, op);
+    todo!("D14: apply_seq_op")
   }
 
   pub(crate) fn cluster_key(

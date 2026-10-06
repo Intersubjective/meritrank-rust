@@ -12,13 +12,12 @@ mod tests {
   use rand::Rng;
   use std::collections::HashMap;
 
-  // lets write test for get_personal_hits(&self) -> &HashMap<NodeId, Counter>
   #[test]
-  fn test_get_personal_hits() {
+  fn test_no_frames_initially() {
     let graph = Graph::new();
     let merit_rank = MeritRank::new(graph, 10000);
-    let result = merit_rank.get_personal_hits();
-    assert!(result.is_empty());
+    assert!(merit_rank.calculated_egos().is_empty());
+    assert_eq!(merit_rank.credits_of(0, 0), 0);
   }
 
   #[test]
@@ -362,7 +361,7 @@ mod tests {
       rank.calculate(0).unwrap();
 
       let a = rank.alpha;
-      let freq = |n| rank.get_personal_hits()[&0].get_count(&n) as f64 / walk_count as f64;
+      let freq = |n| rank.credits_of(0, n) as f64 / walk_count as f64;
       // Binomial sd at W = 20000 is ~0.003.
       assert!((freq(0) - (1.0 - a * a)).abs() < 0.02, "evict={}: ego credits {}", evict, freq(0));
       assert!((freq(1) - a * (1.0 - a)).abs() < 0.02, "evict={}: node 1 {}", evict, freq(1));

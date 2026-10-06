@@ -435,6 +435,11 @@ impl ConcurrentDataProcessor {
     }
   }
 
+  /// Both buffer copies (test support: replica checks).
+  pub fn copies(&self) -> [Arc<RwLock<AugGraph>>; 2] {
+    todo!("D14: copies")
+  }
+
   /// Runs `read` on the published copy (see `read_published`).
   pub fn read<F, T>(
     &self,
@@ -453,7 +458,62 @@ impl ConcurrentDataProcessor {
   }
 }
 
+/// Snapshot and reverse-score counters of a subgraph (D14).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SnapshotStats {
+  /// Deterministic counters, from the published copy.
+  pub graph:                 GraphCounters,
+  pub snapshot_count:        usize,
+  pub snapshot_bytes:        usize,
+  pub snapshot_quota:        usize,
+  /// Reverse scores taken by reads from resident frames, snapshots, and fresh samples.
+  pub reverse_from_frame:    u64,
+  pub reverse_from_snapshot: u64,
+  pub reverse_sampled:       u64,
+  pub sample_walks:          u64,
+  /// Samples not offered for admission (the queue budget was exhausted).
+  pub admissions_skipped:    u64,
+}
+
 impl MultiGraphProcessor {
+  /// Snapshot counters of a subgraph.
+  pub fn snapshot_stats(
+    &self,
+    subgraph: &str,
+  ) -> Option<SnapshotStats> {
+    let _ = subgraph;
+    todo!("D14: snapshot_stats")
+  }
+
+  /// Runs `read` on a subgraph's published copy.
+  pub fn read_subgraph<T>(
+    &self,
+    subgraph: &str,
+    read: impl FnOnce(&AugGraph) -> T,
+  ) -> Option<T> {
+    let _ = (subgraph, read);
+    todo!("D14: read_subgraph")
+  }
+
+  /// `process_request`, also returning, for an ego read, the (epoch, applied_seq) of the copy the
+  /// response was built from.
+  pub async fn process_request_traced(
+    &self,
+    req: &Request,
+  ) -> (Response, Option<(u64, u64)>) {
+    let _ = req;
+    todo!("D14: process_request_traced")
+  }
+
+  /// With `Settings::record_ops`: every operation the subgraph's worker applied, in order.
+  pub fn recorded_ops(
+    &self,
+    subgraph: &str,
+  ) -> Vec<(u64, AugGraphOp)> {
+    let _ = subgraph;
+    todo!("D14: recorded_ops")
+  }
+
   pub fn new(settings: Settings) -> Self {
     Self::with_stats(settings, None)
   }
@@ -1412,99 +1472,57 @@ mod tests {
     }
   }
 
-  #[tokio::test]
-  async fn context_aggregate_null_context_last_write_wins() {
-    // Verbatim aggregate: "" receives each edge write as-is; last write wins for same (src, dst).
-    let proc = default_processor();
+  async fn write_in(proc: &MultiGraphProcessor, ctx: &str, src: &str, dst: &str, amount: Weight) {
     let _ = proc.process_request(&Request {
-      subgraph: "X".into(),
+      subgraph: ctx.into(),
       data:     ReqData::WriteEdge(OpWriteEdge {
-        src:       "B1".into(),
-        dst:       "U2".into(),
-        amount:    1.0,
+        src:       src.into(),
+        dst:       dst.into(),
+        amount,
         magnitude: 0,
       }),
     }).await;
-    let _ = proc.process_request(&Request {
-      subgraph: "Y".into(),
-      data:     ReqData::WriteEdge(OpWriteEdge {
-        src:       "B1".into(),
-        dst:       "U2".into(),
-        amount:    2.0,
-        magnitude: 0,
-      }),
-    }).await;
-    sync(&proc).await;
-    let response = proc.process_request(&Request {
-      subgraph: String::new(),
+  }
+
+  async fn edges_in(proc: &MultiGraphProcessor, ctx: &str) -> Vec<(String, String, Weight)> {
+    let mut edges = edges_from_response(proc.process_request(&Request {
+      subgraph: ctx.into(),
       data:     ReqData::ReadEdges,
-    }).await;
-    let edges = edges_from_response(response);
-    assert_eq!(edges.len(), 1);
-    assert_eq!(edges[0].0, "B1");
-    assert_eq!(edges[0].1, "U2");
-    assert!((edges[0].2 - 2.0).abs() < 1e-6, "expected weight ~2.0 (last write wins), got {}", edges[0].2);
+    }).await);
+    edges.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
+    edges
+  }
+
+  /// Contexts are isolated (D14): a write reaches only the context it names; nothing is
+  /// aggregated into the null context.
+  #[tokio::test]
+  async fn contexts_are_isolated_null_gets_nothing() {
+    let proc = default_processor();
+    write_in(&proc, "X", "B1", "U2", 1.0).await;
+    write_in(&proc, "Y", "B1", "U2", 2.0).await;
+    sync(&proc).await;
+    assert!(edges_in(&proc, "").await.is_empty());
+    assert_eq!(edges_in(&proc, "X").await, vec![("B1".into(), "U2".into(), 1.0)]);
+    assert_eq!(edges_in(&proc, "Y").await, vec![("B1".into(), "U2".into(), 2.0)]);
   }
 
   #[tokio::test]
-  async fn context_aggregate_null_context_contains_all_users() {
+  async fn user_edges_stay_in_their_context() {
     let proc = default_processor();
-    let _ = proc.process_request(&Request {
-      subgraph: "X".into(),
-      data:     ReqData::WriteEdge(OpWriteEdge {
-        src:       "U1".into(),
-        dst:       "U2".into(),
-        amount:    1.0,
-        magnitude: 0,
-      }),
-    }).await;
-    let _ = proc.process_request(&Request {
-      subgraph: "Y".into(),
-      data:     ReqData::WriteEdge(OpWriteEdge {
-        src:       "U1".into(),
-        dst:       "U3".into(),
-        amount:    2.0,
-        magnitude: 0,
-      }),
-    }).await;
+    write_in(&proc, "X", "U1", "U2", 1.0).await;
+    write_in(&proc, "Y", "U1", "U3", 2.0).await;
+    write_in(&proc, "", "U4", "U5", 3.0).await;
     sync(&proc).await;
-    let response = proc.process_request(&Request {
-      subgraph: String::new(),
-      data:     ReqData::ReadEdges,
-    }).await;
-    let edges = edges_from_response(response);
-    let expected = vec![
-      ("U1".to_string(), "U2".to_string(), 1.0),
-      ("U1".to_string(), "U3".to_string(), 2.0),
-    ];
-    assert_eq!(edges.len(), expected.len());
-    for exp in &expected {
-      assert!(edges.iter().any(|e| e.0 == exp.0 && e.1 == exp.1 && (e.2 - exp.2).abs() < 1e-9));
-    }
+    assert_eq!(edges_in(&proc, "").await, vec![("U4".into(), "U5".into(), 3.0)]);
+    assert_eq!(edges_in(&proc, "X").await, vec![("U1".into(), "U2".into(), 1.0)]);
+    assert_eq!(edges_in(&proc, "Y").await, vec![("U1".into(), "U3".into(), 2.0)]);
   }
 
   #[tokio::test]
-  async fn context_aggregate_delete_contexted_edge() {
-    // Verbatim: deleting from X sends WriteEdge(0) to ""; edge is removed or zeroed in "".
+  async fn delete_reaches_only_its_context() {
     let proc = default_processor();
-    let _ = proc.process_request(&Request {
-      subgraph: "X".into(),
-      data:     ReqData::WriteEdge(OpWriteEdge {
-        src:       "B1".into(),
-        dst:       "U2".into(),
-        amount:    1.0,
-        magnitude: 0,
-      }),
-    }).await;
-    let _ = proc.process_request(&Request {
-      subgraph: "Y".into(),
-      data:     ReqData::WriteEdge(OpWriteEdge {
-        src:       "B1".into(),
-        dst:       "U2".into(),
-        amount:    2.0,
-        magnitude: 0,
-      }),
-    }).await;
+    write_in(&proc, "X", "B1", "U2", 1.0).await;
+    write_in(&proc, "Y", "B1", "U2", 2.0).await;
     let _ = proc.process_request(&Request {
       subgraph: "X".into(),
       data:     ReqData::WriteDeleteEdge(OpWriteDeleteEdge {
@@ -1514,136 +1532,41 @@ mod tests {
       }),
     }).await;
     sync(&proc).await;
-    let response = proc.process_request(&Request {
-      subgraph: String::new(),
-      data:     ReqData::ReadEdges,
-    }).await;
-    let edges = edges_from_response(response);
-    // After verbatim delete, "" has WriteEdge(0); graph may omit zero-weight edges from ReadEdges.
-    assert!(edges.is_empty() || (edges.len() == 1 && (edges[0].2 - 0.0).abs() < 1e-6),
-      "expected no edges or single edge with weight 0, got {} edges", edges.len());
+    assert!(edges_in(&proc, "X").await.is_empty());
+    assert_eq!(edges_in(&proc, "Y").await, vec![("B1".into(), "U2".into(), 2.0)]);
+    assert!(edges_in(&proc, "").await.is_empty());
   }
 
   #[tokio::test]
-  async fn context_aggregate_null_context_invariant() {
-    // Verbatim: delete from X (sends 0 to ""), then re-add 1.0 from X; "" ends with 1.0.
+  async fn delete_node_reaches_only_its_context() {
     let proc = default_processor();
+    write_in(&proc, "X", "U1", "U2", 1.0).await;
+    write_in(&proc, "", "U1", "U2", 1.0).await;
     let _ = proc.process_request(&Request {
       subgraph: "X".into(),
-      data:     ReqData::WriteEdge(OpWriteEdge {
-        src:       "B1".into(),
-        dst:       "U2".into(),
-        amount:    1.0,
-        magnitude: 0,
-      }),
-    }).await;
-    let _ = proc.process_request(&Request {
-      subgraph: "Y".into(),
-      data:     ReqData::WriteEdge(OpWriteEdge {
-        src:       "B1".into(),
-        dst:       "U2".into(),
-        amount:    2.0,
-        magnitude: 0,
-      }),
-    }).await;
-    let _ = proc.process_request(&Request {
-      subgraph: "X".into(),
-      data:     ReqData::WriteDeleteEdge(OpWriteDeleteEdge {
-        src:   "B1".into(),
-        dst:   "U2".into(),
+      data:     ReqData::WriteDeleteNode(OpWriteDeleteNode {
+        node:  "U1".into(),
         index: -1,
       }),
     }).await;
-    let _ = proc.process_request(&Request {
-      subgraph: "X".into(),
-      data:     ReqData::WriteEdge(OpWriteEdge {
-        src:       "B1".into(),
-        dst:       "U2".into(),
-        amount:    1.0,
-        magnitude: 0,
-      }),
-    }).await;
     sync(&proc).await;
-    let response = proc.process_request(&Request {
-      subgraph: String::new(),
-      data:     ReqData::ReadEdges,
-    }).await;
-    let edges = edges_from_response(response);
-    assert_eq!(edges.len(), 1);
-    assert_eq!(edges[0].0, "B1");
-    assert_eq!(edges[0].1, "U2");
-    assert!((edges[0].2 - 1.0).abs() < 1e-6, "expected weight ~1.0 (verbatim), got {}", edges[0].2);
+    assert!(edges_in(&proc, "X").await.is_empty());
+    assert_eq!(edges_in(&proc, "").await, vec![("U1".into(), "U2".into(), 1.0)]);
   }
 
+  /// A new context starts empty: it inherits nothing from the null context.
   #[tokio::test]
-  async fn context_aggregate_user_edges_dup() {
+  async fn new_context_starts_empty() {
     let proc = default_processor();
-    let _ = proc.process_request(&Request {
-      subgraph: "X".into(),
-      data:     ReqData::WriteEdge(OpWriteEdge {
-        src:       "U1".into(),
-        dst:       "U2".into(),
-        amount:    1.0,
-        magnitude: 0,
-      }),
-    }).await;
-    let _ = proc.process_request(&Request {
-      subgraph: "X".into(),
-      data:     ReqData::WriteEdge(OpWriteEdge {
-        src:       "U1".into(),
-        dst:       "U3".into(),
-        amount:    2.0,
-        magnitude: 0,
-      }),
-    }).await;
-    sync(&proc).await; // ensure "" has edges before we seed Y from it
+    write_in(&proc, "", "U1", "U2", 1.0).await;
+    write_in(&proc, "X", "U1", "U3", 2.0).await;
+    sync(&proc).await;
     let _ = proc.process_request(&Request {
       subgraph: "Y".into(),
       data:     ReqData::WriteCreateContext,
     }).await;
     sync(&proc).await;
-    let response = proc.process_request(&Request {
-      subgraph: "Y".into(),
-      data:     ReqData::ReadEdges,
-    }).await;
-    let edges = edges_from_response(response);
-    assert_eq!(edges.len(), 2);
-    assert!(edges.iter().any(|e| e.0 == "U1" && e.1 == "U2" && (e.2 - 1.0).abs() < 1e-9));
-    assert!(edges.iter().any(|e| e.0 == "U1" && e.1 == "U3" && (e.2 - 2.0).abs() < 1e-9));
-  }
-
-  #[tokio::test]
-  async fn context_aggregate_non_user_edges_no_dup() {
-    let proc = default_processor();
-    let _ = proc.process_request(&Request {
-      subgraph: "X".into(),
-      data:     ReqData::WriteEdge(OpWriteEdge {
-        src:       "U1".into(),
-        dst:       "C2".into(),
-        amount:    1.0,
-        magnitude: 0,
-      }),
-    }).await;
-    let _ = proc.process_request(&Request {
-      subgraph: "X".into(),
-      data:     ReqData::WriteEdge(OpWriteEdge {
-        src:       "U1".into(),
-        dst:       "C3".into(),
-        amount:    2.0,
-        magnitude: 0,
-      }),
-    }).await;
-    let _ = proc.process_request(&Request {
-      subgraph: "Y".into(),
-      data:     ReqData::WriteCreateContext,
-    }).await;
-    sync(&proc).await;
-    let response = proc.process_request(&Request {
-      subgraph: "Y".into(),
-      data:     ReqData::ReadEdges,
-    }).await;
-    let edges = edges_from_response(response);
-    assert_eq!(edges.len(), 0);
+    assert!(edges_in(&proc, "Y").await.is_empty());
   }
 
   #[tokio::test]
@@ -1727,7 +1650,7 @@ mod tests {
       })
       .await;
     let agg_edges = edges_from_response(agg);
-    assert_eq!(agg_edges.len(), 2);
+    assert_eq!(agg_edges.len(), 1, "the null context holds only its own edges");
     let ctx_x = proc
       .process_request(&Request {
         subgraph: "X".into(),
@@ -1735,7 +1658,8 @@ mod tests {
       })
       .await;
     let x_edges = edges_from_response(ctx_x);
-    assert_eq!(x_edges.len(), 2);
+    assert_eq!(x_edges.len(), 1, "X holds only its own edges");
+    assert_eq!(x_edges[0].1, "B1");
   }
 
   #[tokio::test]

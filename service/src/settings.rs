@@ -46,6 +46,22 @@ pub struct Settings {
   /// Maximum number of named contexts (MERITRANK_MAX_CONTEXTS): each one is a worker thread and
   /// two graph copies, and any write can name a new one.
   pub max_contexts: usize,
+  /// Retained reverse-score snapshots, MiB, for the whole process (both buffer copies of every
+  /// subgraph; MERITRANK_SNAPSHOTS_MB). 0 disables snapshots (D14).
+  pub snapshots_mb: usize,
+  /// Walks of an on-demand frame sampled for a reverse score (MERITRANK_ON_DEMAND_NUM_WALKS);
+  /// capped at `num_walks`.
+  pub on_demand_num_walks: usize,
+  /// c of the staleness heuristic (MERITRANK_SNAPSHOT_STALENESS): a snapshot serves while its
+  /// drift ≤ c·(1+λ)·sqrt(ln(2/δ)/(2n)). 0 = strict: any change in its footprint invalidates it.
+  pub snapshot_staleness: f64,
+  /// Reads that may sample frames at once (MERITRANK_SAMPLING_CONCURRENCY).
+  pub sampling_concurrency: usize,
+  /// Bytes of sampled frames queued for admission, MiB (MERITRANK_ADMIT_QUEUE_MB); beyond it the
+  /// samples are not kept.
+  pub admit_queue_mb: usize,
+  /// Test support: keep every operation each subgraph applies (`recorded_ops`).
+  pub record_ops: bool,
 }
 
 impl Default for Settings {
@@ -74,6 +90,14 @@ impl Default for Settings {
       blame_decay: 0.8,
       blame_radius: BlameRadius::Prefix,
       max_contexts: 256,
+      snapshots_mb: 256,
+      on_demand_num_walks: 1000,
+      snapshot_staleness: 1.0,
+      sampling_concurrency: std::thread::available_parallelism()
+        .map(|n| (n.get() / 2).max(1))
+        .unwrap_or(1),
+      admit_queue_mb: 64,
+      record_ops: false,
     }
   }
 }
@@ -140,6 +164,19 @@ fn load_strict<T: FromStr>(
 }
 
 impl Settings {
+  /// Walks of an on-demand frame: `on_demand_num_walks`, capped at `num_walks`.
+  pub fn on_demand_walks(&self) -> usize {
+    let _ = self;
+    todo!("D14: on_demand_walks")
+  }
+
+  /// Whether reverse scores use snapshots and on-demand samples (D14): snapshots are on and the
+  /// walk cache is bounded (with an unbounded cache every frame stays resident).
+  pub fn snapshots_enabled(&self) -> bool {
+    let _ = self;
+    todo!("D14: snapshots_enabled")
+  }
+
   /// Checks the settings the walk semantics depend on (R23).
   pub fn validate(&self) -> std::result::Result<(), String> {
     if !(self.alpha > 0.0 && self.alpha < 1.0) {

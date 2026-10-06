@@ -114,18 +114,27 @@ async fn node_score(
 async fn invalid_walls_are_rejected() {
   let proc = MultiGraphProcessor::new(settings());
   assert!(matches!(write(&proc, "", "U1", "U2", -0.5).await, Response::Ok));
-  // Named context (R2), non-user endpoint (R2), self-edge (R3), non-finite weights.
-  assert!(matches!(write(&proc, "X", "U1", "U3", -0.5).await, Response::Fail));
-  assert!(matches!(write(&proc, "", "U1", "B1", -0.5).await, Response::Fail));
-  assert!(matches!(write(&proc, "", "B1", "U1", -0.5).await, Response::Fail));
+  // One node class and isolated contexts (D14): a wall between any two nodes, in any context.
+  assert!(matches!(write(&proc, "X", "U1", "U3", -0.5).await, Response::Ok));
+  assert!(matches!(write(&proc, "", "U1", "B1", -0.5).await, Response::Ok));
+  assert!(matches!(write(&proc, "", "B1", "U1", -0.5).await, Response::Ok));
+  // Self-edge (R3) and non-finite weights stay invalid.
   assert!(matches!(write(&proc, "", "U1", "U1", -0.5).await, Response::Fail));
   assert!(matches!(write(&proc, "", "U1", "U2", f64::NAN).await, Response::Fail));
   assert!(matches!(write(&proc, "", "U1", "U2", f64::INFINITY).await, Response::Fail));
   sync(&proc).await;
   let now = edges(&proc, "").await;
-  assert_eq!(now, vec![("U1".into(), "U2".into(), -0.5)], "{:?}", now);
-  // A positive User→User edge in a named context is fine.
-  assert!(matches!(write(&proc, "X", "U1", "U3", 1.0).await, Response::Ok));
+  assert_eq!(
+    now,
+    vec![
+      ("B1".into(), "U1".into(), -0.5),
+      ("U1".into(), "B1".into(), -0.5),
+      ("U1".into(), "U2".into(), -0.5),
+    ],
+    "{:?}",
+    now
+  );
+  assert_eq!(edges(&proc, "X").await, vec![("U1".into(), "U3".into(), -0.5)]);
 }
 
 /// R20: a batch with one invalid wall changes nothing, and the service is not left loading.
@@ -151,7 +160,7 @@ async fn bulk_with_an_invalid_wall_changes_nothing() {
   let resp = request(
     &proc,
     "",
-    bulk(vec![("U5", "U6", 1.0, ""), ("U5", "U7", -1.0, "X"), ("U6", "U7", 1.0, "")]),
+    bulk(vec![("U5", "U6", 1.0, ""), ("U5", "U5", -1.0, "X"), ("U6", "U7", 1.0, "")]),
   )
   .await;
   assert!(matches!(resp, Response::Fail));
@@ -166,7 +175,8 @@ async fn bulk_with_an_invalid_wall_changes_nothing() {
   .await;
   assert!(matches!(resp, Response::Ok));
   assert_eq!(weight_of(&edges(&proc, "").await, "U5", "U7"), Some(-0.25));
-  assert_eq!(weight_of(&edges(&proc, "X").await, "U5", "U7"), Some(-0.25));
+  // Isolated contexts: X holds only its own edge.
+  assert_eq!(edges(&proc, "X").await, vec![("B1".into(), "U6".into(), 1.0)]);
 }
 
 // ---------------------------------------------------------------------------
@@ -221,23 +231,22 @@ async fn sign_transitions() {
 // R7: contexts
 // ---------------------------------------------------------------------------
 
-/// Walls reach every context, including one created afterwards, explicitly or implicitly, with
-/// their exact weight; incremental and bulk loading agree.
+/// Walls stay in the context they are written to (D14: isolated contexts), with their exact
+/// weight; incremental and bulk loading agree.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn walls_follow_contexts() {
   let proc = MultiGraphProcessor::new(settings());
   request(&proc, "A", ReqData::WriteCreateContext).await;
   write(&proc, "", "U1", "U2", 1.0).await;
   write(&proc, "", "U1", "U3", -0.6).await;
+  write(&proc, "A", "U1", "U3", -0.2).await;
   request(&proc, "B", ReqData::WriteCreateContext).await;
   write(&proc, "C", "B1", "U1", 1.0).await; // implicit creation
   sync(&proc).await;
-  for ctx in ["", "A", "B", "C"] {
-    assert_eq!(
-      weight_of(&edges(&proc, ctx).await, "U1", "U3"),
-      Some(-0.6),
-      "context {ctx:?}"
-    );
+  assert_eq!(weight_of(&edges(&proc, "").await, "U1", "U3"), Some(-0.6));
+  assert_eq!(weight_of(&edges(&proc, "A").await, "U1", "U3"), Some(-0.2));
+  for ctx in ["B", "C"] {
+    assert_eq!(weight_of(&edges(&proc, ctx).await, "U1", "U3"), None, "context {ctx:?}");
   }
 
   let bulk = MultiGraphProcessor::new(settings());
@@ -261,6 +270,13 @@ async fn walls_follow_contexts() {
           context:   "".into(),
         },
         BulkEdge {
+          src:       "U1".into(),
+          dst:       "U3".into(),
+          amount:    -0.2,
+          magnitude: 0,
+          context:   "A".into(),
+        },
+        BulkEdge {
           src:       "B1".into(),
           dst:       "U1".into(),
           amount:    1.0,
@@ -272,8 +288,9 @@ async fn walls_follow_contexts() {
   )
   .await;
   assert!(matches!(resp, Response::Ok));
-  for ctx in ["", "C"] {
-    assert_eq!(weight_of(&edges(&bulk, ctx).await, "U1", "U3"), Some(-0.6), "bulk {ctx:?}");
+  sync(&bulk).await;
+  for ctx in ["", "A", "C"] {
+    assert_eq!(edges(&bulk, ctx).await, edges(&proc, ctx).await, "bulk vs incremental {ctx:?}");
   }
 }
 

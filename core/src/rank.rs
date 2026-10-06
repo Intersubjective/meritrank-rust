@@ -668,6 +668,94 @@ impl MeritRank {
     self.walks.print_walks();
   }
 
+  // ------------------------------------------------------------------
+  // D14: frames outside the walk storage, canonical counters, mutations
+  // ------------------------------------------------------------------
+
+  /// `calculate` with its own random stream seeded by `seed` (the resident stream is untouched):
+  /// a fresh frame is a pure function of the graph, the ego, the walk count and the seed.
+  pub fn calculate_seeded(
+    &mut self,
+    ego: NodeId,
+    seed: u64,
+  ) -> Result<(), MeritRankError> {
+    let _ = (ego, seed);
+    todo!("D14: calculate_seeded")
+  }
+
+  /// A frame of `n` fresh walks of `ego`, generated exactly as `calculate_seeded(ego, seed)`
+  /// generates its first `n` walks, without touching the walk storage, the counters, the
+  /// resident random stream or the dirty set. Only the graph's lazy distributions may be built.
+  pub fn sample_frame(
+    &self,
+    ego: NodeId,
+    n: usize,
+    seed: u64,
+  ) -> Result<crate::frame::FrameSample, MeritRankError> {
+    let _ = (ego, n, seed);
+    todo!("D14: sample_frame")
+  }
+
+  /// A copy of a resident frame (its counters and footprint), `None` if not calculated.
+  pub fn frame_sample(
+    &self,
+    ego: NodeId,
+  ) -> Option<crate::frame::FrameSample> {
+    let _ = ego;
+    todo!("D14: frame_sample")
+  }
+
+  /// The counters maintained for a resident frame.
+  pub fn frame_counters(
+    &self,
+    ego: NodeId,
+  ) -> Option<&crate::frame::FrameCounters> {
+    let _ = ego;
+    todo!("D14: frame_counters")
+  }
+
+  /// The counters of a resident frame recounted from its stored walks.
+  pub fn recount_frame(
+    &self,
+    ego: NodeId,
+  ) -> Option<crate::frame::FrameCounters> {
+    let _ = ego;
+    todo!("D14: recount_frame")
+  }
+
+  /// The stored walks of a resident frame, in slot order.
+  pub fn ego_walks(
+    &self,
+    ego: NodeId,
+  ) -> Option<Vec<&RandomWalk>> {
+    let _ = ego;
+    todo!("D14: ego_walks")
+  }
+
+  /// Credits of `node` in `ego`'s frame (0 if none).
+  pub fn credits_of(
+    &self,
+    ego: NodeId,
+    node: NodeId,
+  ) -> u32 {
+    let _ = (ego, node);
+    todo!("D14: credits_of")
+  }
+
+  /// Graph changes since the previous call (see `frame::Mutations`).
+  pub fn take_mutations(&mut self) -> crate::frame::Mutations {
+    todo!("D14: take_mutations")
+  }
+
+  /// Whether `take_mutations` reports the TV of each changed source (costs O(degree) per write).
+  pub fn set_tv_tracking(
+    &mut self,
+    on: bool,
+  ) {
+    let _ = on;
+    todo!("D14: set_tv_tracking")
+  }
+
   /// Credits per ego: the number of unabsorbed walks that visited each node.
   pub fn get_personal_hits(&self) -> &IntMap<NodeId, Counter> {
     &self.pos_hits

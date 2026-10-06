@@ -159,7 +159,17 @@ pub struct OpWriteFetchNewEdges {
   pub prefix: NodeName,
 }
 
-#[derive(Debug, Encode, Decode, Clone)]
+/// Samples taken by a read, offered to the snapshot store (D14). Valid only for the processor
+/// incarnation `epoch` and the graph state after operation `base_seq`.
+#[derive(Debug, Clone)]
+pub struct AdmitBatch {
+  pub epoch:    u64,
+  pub base_seq: u64,
+  pub samples:  std::sync::Arc<Vec<meritrank_core::FrameSample>>,
+}
+
+/// Internal to a subgraph's worker; never on the wire.
+#[derive(Debug, Clone)]
 pub enum AugGraphOp {
   WriteEdge(OpWriteEdge),
   BulkLoadEdges(Vec<OpWriteEdge>),
@@ -175,6 +185,10 @@ pub enum AugGraphOp {
   /// Calculates the listed egos that are not calculated yet; urgent. Node ids are the same in
   /// both buffer copies (replicas).
   EnsureCalculated(Vec<NodeId>),
+  /// Keeps the samples whose footprint no write touched since they were taken (D14).
+  AdmitSnapshots(AdmitBatch),
+  /// Bytes this subgraph's snapshot store may retain (per buffer copy).
+  SetSnapshotQuota(usize),
 }
 
 #[derive(Debug, Encode, Decode, Serialize, Deserialize)]

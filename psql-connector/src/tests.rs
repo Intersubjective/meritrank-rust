@@ -214,19 +214,9 @@ fn create_context() {
   // sleep(Duration::from_millis(100));
   let _ = crate::mr_sync(Some(1000)).unwrap();
 
-  let res = crate::mr_edgelist(Some("X")).unwrap();
-
-  let _n = res
-    .map(|x| {
-      let (ego, target, score) = x;
-      assert_eq!(ego, "U1");
-      assert_eq!(target, "U2");
-      assert!(score > 0.99);
-      assert!(score < 1.01);
-    })
-    .count();
-
-  // assert_eq!(n, 1);
+  // Contexts are isolated (D14): a new context starts empty.
+  let res: Vec<_> = crate::mr_edgelist(Some("X")).unwrap().collect();
+  assert!(res.is_empty(), "{:?}", res);
 }
 
 #[pg_test]
@@ -252,14 +242,15 @@ fn null_context_is_sum() {
 
   let _ = crate::mr_sync(Some(1000)).unwrap();
 
-  let res = crate::mr_edgelist(None).unwrap();
-  let edges: Vec<_> = res.collect();
-  assert_eq!(edges.len(), 1);
-  let (ego, target, score) = &edges[0];
-  assert_eq!(ego, "B1");
-  assert_eq!(target, "U2");
-  // Null context is verbatim aggregate: last write wins (Y=2.0).
-  assert!(*score > 1.99 && *score < 2.01);
+  // Contexts are isolated (D14): nothing is aggregated into the null context.
+  let edges: Vec<_> = crate::mr_edgelist(None).unwrap().collect();
+  assert!(edges.is_empty(), "{:?}", edges);
+  let x: Vec<_> = crate::mr_edgelist(Some("X")).unwrap().collect();
+  assert_eq!(x.len(), 1);
+  assert!(x[0].2 > 0.99 && x[0].2 < 1.01);
+  let y: Vec<_> = crate::mr_edgelist(Some("Y")).unwrap().collect();
+  assert_eq!(y.len(), 1);
+  assert!(y[0].2 > 1.99 && y[0].2 < 2.01);
 }
 
 #[pg_test]
@@ -287,19 +278,12 @@ fn delete_contexted_edge() {
 
   let _ = crate::mr_sync(Some(1000)).unwrap();
 
-  let res = crate::mr_edgelist(None).unwrap();
-  let edges: Vec<_> = res.collect();
-  // Delete in X also zeros ""; expect no edges or one edge with weight 0.
-  assert!(
-    edges.is_empty()
-      || (edges.len() == 1 && (edges[0].2 - 0.0).abs() < 1e-6),
-    "expected no edges or single edge with weight 0, got {} edges",
-    edges.len()
-  );
-  if edges.len() == 1 {
-    assert_eq!(edges[0].0, "B1");
-    assert_eq!(edges[0].1, "U2");
-  }
+  // Isolated contexts (D14): the delete reached X only.
+  let x: Vec<_> = crate::mr_edgelist(Some("X")).unwrap().collect();
+  assert!(x.is_empty(), "{:?}", x);
+  let y: Vec<_> = crate::mr_edgelist(Some("Y")).unwrap().collect();
+  assert_eq!(y.len(), 1);
+  assert!(crate::mr_edgelist(None).unwrap().count() == 0);
 }
 
 #[pg_test]
@@ -350,13 +334,13 @@ fn null_context_invariant() {
 
   let _ = crate::mr_sync(Some(1000)).unwrap();
 
-  let res = crate::mr_edgelist(None).unwrap();
-  let edges: Vec<_> = res.collect();
-  assert_eq!(edges.len(), 1);
-  let (ego, target, score) = &edges[0];
+  // Isolated contexts (D14): X ends with its own re-added edge; "" holds nothing.
+  assert_eq!(crate::mr_edgelist(None).unwrap().count(), 0);
+  let x: Vec<_> = crate::mr_edgelist(Some("X")).unwrap().collect();
+  assert_eq!(x.len(), 1);
+  let (ego, target, score) = &x[0];
   assert_eq!(ego, "U1");
   assert_eq!(target, "B2");
-  // Delete then re-add in X: "" ends with 1.0 (verbatim).
   assert!(*score > 0.99 && *score < 1.01);
 }
 
@@ -969,10 +953,11 @@ fn bulk_load_with_contexts() {
   .unwrap();
   let _ = crate::mr_sync(Some(1000)).unwrap();
 
+  // Isolated contexts (D14): each context holds exactly its own edges.
   let agg: Vec<_> = crate::mr_edgelist(None).unwrap().collect();
-  assert_eq!(agg.len(), 3);
+  assert_eq!(agg.len(), 1);
   let ctx_x: Vec<_> = crate::mr_edgelist(Some("X")).unwrap().collect();
-  assert_eq!(ctx_x.len(), 3);
+  assert_eq!(ctx_x.len(), 2);
 }
 
 #[pg_test]
