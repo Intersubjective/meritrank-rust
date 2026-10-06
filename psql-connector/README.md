@@ -36,3 +36,15 @@ SELECT mr_bulk_load_edges(
 ```
 
 For incremental updates after the graph is loaded, use `mr_put_edge` as usual.
+
+## Timeouts
+
+Every call has one absolute deadline covering name resolution, connect, write, the
+complete response read and the single reconnect retry: `timeout_msec` where a function
+takes it, otherwise `MERITRANK_RECV_TIMEOUT_MSEC` (default 10000). Waiting calls also
+honour `statement_timeout` and `pg_cancel_backend()`, so a caller can bound a whole
+statement or transaction that makes several MeritRank calls with `SET LOCAL
+statement_timeout`.
+
+`mr_rpc_attempts()` returns the number of request frames this backend has sent,
+retries included; diff it around a statement to count real round trips.

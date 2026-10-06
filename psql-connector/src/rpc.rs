@@ -3,21 +3,25 @@
 //  D7 (timeout), D9 (magnitude).
 
 use meritrank_service::data::*;
-use meritrank_service::rpc_sync::{read_response_sync, set_read_timeout, write_request_sync};
+use meritrank_service::request_handler::max_frame_bytes;
+
+use bincode::{config::standard, decode_from_slice, encode_to_vec};
 
 use std::cell::RefCell;
 use std::env::var;
 use std::error::Error;
-use std::io;
-use std::net::{TcpStream, ToSocketAddrs};
+use std::io::{self, Read, Write};
+use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::sync::{
   atomic::{AtomicU64, Ordering},
-  LazyLock,
+  mpsc, LazyLock,
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+//  One cached connection per backend, tagged with the address it serves.
 thread_local! {
-  static CONN: RefCell<Option<TcpStream>> = RefCell::new(None);
+  static CONN: RefCell<Option<(String, TcpStream)>> = RefCell::new(None);
+  static ADDRS: RefCell<Option<(String, Vec<SocketAddr>)>> = RefCell::new(None);
 }
 
 //  D5 (JOURNAL): reuse MERITRANK_SERVICE_URL, default changes to port 8080.
@@ -27,6 +31,8 @@ pub static SERVICE_URL: LazyLock<String> = LazyLock::new(|| {
     .unwrap_or_else(|_| "tcp://127.0.0.1:8080".to_string())
 });
 
+//  The whole-call budget: DNS, connect, write, the complete response read and
+//  the one reconnect retry all fit inside it (D11, JOURNAL).
 pub static RECV_TIMEOUT_MSEC: LazyLock<u64> = LazyLock::new(|| {
   var("MERITRANK_RECV_TIMEOUT_MSEC")
     .ok()
@@ -34,8 +40,28 @@ pub static RECV_TIMEOUT_MSEC: LazyLock<u64> = LazyLock::new(|| {
     .unwrap_or(10000)
 });
 
+//  The longest single blocking socket wait. Between slices a call re-checks
+//  its deadline and lets PostgreSQL process interrupts, so statement_timeout
+//  and pg_cancel_backend() also bound a call that is waiting on the network.
+const IO_SLICE: Duration = Duration::from_millis(50);
+
 //  D4 (JOURNAL): monotonically-increasing stamp for Sync requests.
 static SYNC_STAMP: AtomicU64 = AtomicU64::new(0);
+
+//  Request frames put on the wire by this backend, retries included.
+static NETWORK_ATTEMPTS: AtomicU64 = AtomicU64::new(0);
+
+pub fn network_attempts() -> u64 {
+  NETWORK_ATTEMPTS.load(Ordering::Relaxed)
+}
+
+#[cfg(not(test))]
+fn check_interrupts() {
+  pgrx::check_for_interrupts!();
+}
+
+#[cfg(test)]
+fn check_interrupts() {}
 
 fn strip_scheme(url: &str) -> &str {
   if let Some(rest) = url.strip_prefix("tcp://") {
@@ -45,42 +71,194 @@ fn strip_scheme(url: &str) -> &str {
   }
 }
 
-fn get_or_reconnect(timeout: Duration) -> io::Result<TcpStream> {
-  CONN.with(|cell| {
-    let mut opt = cell.borrow_mut();
-    if let Some(ref stream) = *opt {
-      if let Ok(cloned) = stream.try_clone() {
-        return Ok(cloned);
-      }
-      *opt = None;
+fn deadline_exceeded() -> io::Error {
+  io::Error::new(io::ErrorKind::TimedOut, "meritrank: call deadline exceeded")
+}
+
+fn is_deadline(e: &io::Error) -> bool {
+  e.kind() == io::ErrorKind::TimedOut
+}
+
+fn is_wait_timeout(e: &io::Error) -> bool {
+  matches!(
+    e.kind(),
+    io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut | io::ErrorKind::Interrupted
+  )
+}
+
+//  The next blocking wait: at most IO_SLICE, never past the deadline.
+fn next_slice(deadline: Instant) -> io::Result<Duration> {
+  let remaining = deadline.saturating_duration_since(Instant::now());
+  if remaining.is_zero() {
+    return Err(deadline_exceeded());
+  }
+  Ok(remaining.min(IO_SLICE).max(Duration::from_millis(1)))
+}
+
+//  Name resolution can block indefinitely inside libc, so it runs on a helper
+//  thread that the call stops waiting for at the deadline. Results are cached
+//  per backend and dropped whenever connecting fails.
+fn resolve(addr: &str, deadline: Instant) -> io::Result<Vec<SocketAddr>> {
+  if let Ok(literal) = addr.parse::<SocketAddr>() {
+    return Ok(vec![literal]);
+  }
+  let cached = ADDRS.with(|cell| {
+    cell
+      .borrow()
+      .as_ref()
+      .filter(|(a, _)| a == addr)
+      .map(|(_, v)| v.clone())
+  });
+  if let Some(addrs) = cached {
+    return Ok(addrs);
+  }
+  let (tx, rx) = mpsc::channel();
+  let owned = addr.to_string();
+  std::thread::spawn(move || {
+    let _ = tx.send(owned.to_socket_addrs().map(|it| it.collect::<Vec<_>>()));
+  });
+  loop {
+    match rx.recv_timeout(next_slice(deadline)?) {
+      Ok(Ok(addrs)) if !addrs.is_empty() => {
+        ADDRS.with(|cell| *cell.borrow_mut() = Some((addr.to_string(), addrs.clone())));
+        return Ok(addrs);
+      },
+      Ok(Ok(_)) => {
+        return Err(io::Error::new(io::ErrorKind::Other, "no addresses resolved"))
+      },
+      Ok(Err(e)) => return Err(e),
+      Err(mpsc::RecvTimeoutError::Timeout) => check_interrupts(),
+      Err(mpsc::RecvTimeoutError::Disconnected) => {
+        return Err(io::Error::new(io::ErrorKind::Other, "name resolution failed"))
+      },
     }
-    let addr_str = strip_scheme(&SERVICE_URL);
-    let addrs: Vec<_> = addr_str.to_socket_addrs()?.collect();
-    let mut last_err = None;
-    for addr in &addrs {
-      match TcpStream::connect_timeout(addr, timeout) {
+  }
+}
+
+fn forget_addrs() {
+  ADDRS.with(|cell| *cell.borrow_mut() = None);
+}
+
+fn connect(addr: &str, deadline: Instant) -> io::Result<TcpStream> {
+  let addrs = resolve(addr, deadline)?;
+  loop {
+    for sa in &addrs {
+      match TcpStream::connect_timeout(sa, next_slice(deadline)?) {
         Ok(s) => {
           //  Small request/response frames: never wait for Nagle.
           s.set_nodelay(true)?;
-          let cloned = s
-            .try_clone()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-          *opt = Some(cloned);
           return Ok(s);
         },
-        Err(e) => last_err = Some(e),
+        Err(e) if is_wait_timeout(&e) => {},
+        Err(e) => {
+          forget_addrs();
+          return Err(e);
+        },
       }
+      check_interrupts();
     }
-    Err(last_err.unwrap_or_else(|| {
-      io::Error::new(io::ErrorKind::Other, "no addresses resolved")
-    }))
+    if Instant::now() >= deadline {
+      forget_addrs();
+      return Err(deadline_exceeded());
+    }
+  }
+}
+
+fn write_all_by(stream: &mut TcpStream, mut buf: &[u8], deadline: Instant) -> io::Result<()> {
+  while !buf.is_empty() {
+    stream.set_write_timeout(Some(next_slice(deadline)?))?;
+    match stream.write(buf) {
+      Ok(0) => return Err(io::ErrorKind::WriteZero.into()),
+      Ok(n) => buf = &buf[n..],
+      Err(e) if is_wait_timeout(&e) => {},
+      Err(e) => return Err(e),
+    }
+    check_interrupts();
+  }
+  Ok(())
+}
+
+fn read_exact_by(stream: &mut TcpStream, buf: &mut [u8], deadline: Instant) -> io::Result<()> {
+  let mut filled = 0;
+  while filled < buf.len() {
+    stream.set_read_timeout(Some(next_slice(deadline)?))?;
+    match stream.read(&mut buf[filled..]) {
+      Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
+      Ok(n) => filled += n,
+      Err(e) if is_wait_timeout(&e) => {},
+      Err(e) => return Err(e),
+    }
+    check_interrupts();
+  }
+  Ok(())
+}
+
+fn encode_frame(req: &Request) -> io::Result<Vec<u8>> {
+  let payload = encode_to_vec(req, standard())
+    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+  //  One write per frame (see rpc_sync::write_request_sync).
+  let mut frame = Vec::with_capacity(4 + payload.len());
+  frame.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+  frame.extend_from_slice(&payload);
+  Ok(frame)
+}
+
+//  Sends one frame and reads one complete response frame by the deadline.
+fn exchange(stream: &mut TcpStream, frame: &[u8], deadline: Instant) -> io::Result<Response> {
+  NETWORK_ATTEMPTS.fetch_add(1, Ordering::Relaxed);
+  write_all_by(stream, frame, deadline)?;
+  let mut len_buf = [0u8; 4];
+  read_exact_by(stream, &mut len_buf, deadline)?;
+  let len = u32::from_be_bytes(len_buf) as usize;
+  let max = max_frame_bytes();
+  if len > max {
+    return Err(io::Error::new(
+      io::ErrorKind::InvalidData,
+      format!("frame of {} bytes exceeds the limit of {}", len, max),
+    ));
+  }
+  let mut buf = vec![0u8; len];
+  read_exact_by(stream, &mut buf, deadline)?;
+  decode_from_slice(&buf, standard())
+    .map(|(v, _)| v)
+    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+}
+
+//  The cached connection is taken out for the duration of a call and put back
+//  only after a complete exchange, so a call that fails, times out or is
+//  interrupted never leaves a half-read stream behind.
+fn take_cached(addr: &str) -> Option<TcpStream> {
+  CONN.with(|cell| {
+    let mut slot = cell.borrow_mut();
+    match slot.take() {
+      Some((a, s)) if a == addr => Some(s),
+      _ => None,
+    }
   })
 }
 
-fn invalidate_conn() {
-  CONN.with(|cell| {
-    *cell.borrow_mut() = None;
-  });
+fn put_back(addr: &str, stream: TcpStream) {
+  CONN.with(|cell| *cell.borrow_mut() = Some((addr.to_string(), stream)));
+}
+
+fn call_by(addr: &str, frame: &[u8], deadline: Instant) -> io::Result<Response> {
+  //  A cached connection may have been closed by the peer while idle; one
+  //  failure on it is retried on a fresh connection within the same deadline.
+  //  A deadline miss is never retried, and a fresh connection is never retried.
+  if let Some(mut stream) = take_cached(addr) {
+    match exchange(&mut stream, frame, deadline) {
+      Ok(resp) => {
+        put_back(addr, stream);
+        return Ok(resp);
+      },
+      Err(e) if is_deadline(&e) => return Err(e),
+      Err(_) => {},
+    }
+  }
+  let mut stream = connect(addr, deadline)?;
+  let resp = exchange(&mut stream, frame, deadline)?;
+  put_back(addr, stream);
+  Ok(resp)
 }
 
 fn tcp_call(
@@ -88,31 +266,20 @@ fn tcp_call(
   data: ReqData,
   timeout_msec: Option<u64>,
 ) -> Result<Response, Box<dyn Error + 'static>> {
-  let timeout = timeout_msec.unwrap_or(*RECV_TIMEOUT_MSEC);
-  let timeout_dur = Duration::from_millis(timeout);
-
+  let budget_msec = timeout_msec.unwrap_or(*RECV_TIMEOUT_MSEC);
+  let deadline = Instant::now() + Duration::from_millis(budget_msec);
   let req = Request {
     subgraph: subgraph.to_string(),
     data,
   };
-
-  let result = (|| -> io::Result<Response> {
-    let mut stream = get_or_reconnect(timeout_dur)?;
-    set_read_timeout(&mut stream, Some(timeout))?;
-    write_request_sync(&mut stream, &req)?;
-    read_response_sync(&mut stream)
-  })();
-
-  match result {
-    Ok(resp) => Ok(resp),
-    Err(_) => {
-      invalidate_conn();
-      let mut stream = get_or_reconnect(timeout_dur)?;
-      set_read_timeout(&mut stream, Some(timeout))?;
-      write_request_sync(&mut stream, &req)?;
-      Ok(read_response_sync(&mut stream)?)
-    },
-  }
+  let frame = encode_frame(&req)?;
+  call_by(strip_scheme(&SERVICE_URL), &frame, deadline).map_err(|e| {
+    if is_deadline(&e) {
+      format!("meritrank: no complete response within {} ms", budget_msec).into()
+    } else {
+      e.into()
+    }
+  })
 }
 
 fn expect_ok(resp: Response) -> Result<&'static str, Box<dyn Error + 'static>> {
@@ -656,6 +823,174 @@ mod tests {
     let _ = new_sync(Some(50));
     let after = SYNC_STAMP.load(Ordering::SeqCst);
     assert!(after > before);
+  }
+
+  //  ---- deadline tests against local fake peers -------------------------
+
+  use std::net::TcpListener;
+  use std::thread;
+
+  fn ok_frame() -> Vec<u8> {
+    let payload = encode_to_vec(&Response::Ok, standard()).unwrap();
+    let mut f = (payload.len() as u32).to_be_bytes().to_vec();
+    f.extend_from_slice(&payload);
+    f
+  }
+
+  fn read_request(s: &mut TcpStream) -> bool {
+    let mut len = [0u8; 4];
+    if s.read_exact(&mut len).is_err() {
+      return false;
+    }
+    let mut body = vec![0u8; u32::from_be_bytes(len) as usize];
+    s.read_exact(&mut body).is_ok()
+  }
+
+  fn sync_frame() -> Vec<u8> {
+    encode_frame(&Request {
+      subgraph: String::new(),
+      data:     ReqData::Sync(1),
+    })
+    .unwrap()
+  }
+
+  fn within(deadline_ms: u64) -> Instant {
+    Instant::now() + Duration::from_millis(deadline_ms)
+  }
+
+  #[test]
+  fn blackhole_peer_fails_at_the_deadline_without_retrying() {
+    //  Accepts and reads, never answers.
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    thread::spawn(move || {
+      for s in listener.incoming() {
+        let mut s = s.unwrap();
+        thread::spawn(move || {
+          let mut sink = [0u8; 1024];
+          while s.read(&mut sink).map(|n| n > 0).unwrap_or(false) {}
+        });
+      }
+    });
+    let started = Instant::now();
+    let err = call_by(&addr, &sync_frame(), within(300)).unwrap_err();
+    let took = started.elapsed();
+    assert!(is_deadline(&err), "{err:?}");
+    assert!(took >= Duration::from_millis(280), "{took:?}");
+    assert!(took < Duration::from_millis(600), "{took:?}");
+  }
+
+  #[test]
+  fn trickled_response_is_bounded_by_the_whole_call_deadline() {
+    //  Sends the response one byte every 100 ms: each read makes progress, so
+    //  only an absolute deadline (not a per-read timeout) can stop it.
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    thread::spawn(move || {
+      let (mut s, _) = listener.accept().unwrap();
+      read_request(&mut s);
+      let mut frame = vec![0u8, 0, 1, 0];
+      frame.extend(std::iter::repeat(0u8).take(256));
+      for b in frame {
+        if s.write_all(&[b]).is_err() {
+          return;
+        }
+        thread::sleep(Duration::from_millis(100));
+      }
+    });
+    let started = Instant::now();
+    let err = call_by(&addr, &sync_frame(), within(400)).unwrap_err();
+    assert!(is_deadline(&err), "{err:?}");
+    assert!(started.elapsed() < Duration::from_millis(700));
+  }
+
+  #[test]
+  fn stalled_write_is_bounded_by_the_deadline() {
+    //  Accepts but never reads; a large frame fills both socket buffers.
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    thread::spawn(move || {
+      let (_s, _) = listener.accept().unwrap();
+      thread::sleep(Duration::from_secs(5));
+    });
+    let big = vec![7u8; 64 * 1024 * 1024];
+    let started = Instant::now();
+    let err = call_by(&addr, &big, within(300)).unwrap_err();
+    assert!(is_deadline(&err), "{err:?}");
+    assert!(started.elapsed() < Duration::from_millis(700));
+  }
+
+  #[test]
+  fn unreachable_peer_connect_is_bounded_by_the_deadline() {
+    //  A non-routable address: SYNs go unanswered.
+    let started = Instant::now();
+    let err = call_by("10.255.255.1:9", &sync_frame(), within(300)).unwrap_err();
+    assert!(started.elapsed() < Duration::from_millis(700), "{err:?}");
+  }
+
+  #[test]
+  fn healthy_peer_answers_and_connection_is_reused() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    let accepted = std::sync::Arc::new(AtomicU64::new(0));
+    let counter = accepted.clone();
+    thread::spawn(move || {
+      for s in listener.incoming() {
+        counter.fetch_add(1, Ordering::SeqCst);
+        let mut s = s.unwrap();
+        thread::spawn(move || {
+          while read_request(&mut s) {
+            if s.write_all(&ok_frame()).is_err() {
+              return;
+            }
+          }
+        });
+      }
+    });
+    let before = network_attempts();
+    for _ in 0..3 {
+      assert!(matches!(call_by(&addr, &sync_frame(), within(1000)).unwrap(), Response::Ok));
+    }
+    assert_eq!(network_attempts() - before, 3);
+    assert_eq!(accepted.load(Ordering::SeqCst), 1);
+  }
+
+  #[test]
+  fn recovers_on_a_fresh_connection_after_the_peer_drops_an_idle_one() {
+    //  First connection answers once and is closed by the peer; the next call
+    //  fails on the stale stream and succeeds on one retry within its deadline.
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    thread::spawn(move || {
+      let mut first = true;
+      for s in listener.incoming() {
+        let mut s = s.unwrap();
+        let once = first;
+        first = false;
+        thread::spawn(move || {
+          while read_request(&mut s) {
+            if s.write_all(&ok_frame()).is_err() || once {
+              return;
+            }
+          }
+        });
+      }
+    });
+    assert!(matches!(call_by(&addr, &sync_frame(), within(1000)).unwrap(), Response::Ok));
+    thread::sleep(Duration::from_millis(50));
+    assert!(matches!(call_by(&addr, &sync_frame(), within(1000)).unwrap(), Response::Ok));
+  }
+
+  #[test]
+  fn a_failed_call_leaves_no_cached_connection_behind() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    thread::spawn(move || {
+      let (_s, _) = listener.accept().unwrap();
+      thread::sleep(Duration::from_secs(2));
+    });
+    assert!(call_by(&addr, &sync_frame(), within(200)).is_err());
+    assert!(take_cached(&addr).is_none());
   }
 
   #[test]
