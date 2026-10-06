@@ -209,7 +209,17 @@ Ordinary users (≈ 1,100 peers at W 1k): warm 0.9–1.0 ms with snapshots vs 3.
   fires on every heavy read (cold and every warm read: 1 + 5).
 - **Memory.** A snapshot costs ~28 KB here (≈ 1,150 visited nodes); both buffer copies hold them
   (the table's snapshot MB is per copy). The unbounded cache needs 1.8 GB at W 1k and 19.4 GB at
-  W 10k for the same answers.
+  W 10k for the same answers: on this graph a resident frame costs ~0.31 MB at 1k walks and
+  ~3.2 MB at 10k walks per copy (≈ 6.7 nodes per walk; ~320 bytes per walk with its share of the
+  visit index) — 3× the ~1 MB measured on the production dump, whose walks are shorter.
+- **The W 10k unbounded cold read is super-linear (108 s, not ~42 s = 10 × the W 1k time).** A
+  core probe (`calculate_seeded` of frame after frame on this graph) shows a W 1k frame at a flat
+  ~1.8 ms, but a W 10k frame at 17 ms when the store is empty, growing to 30–60 ms (with spikes) as
+  resident frames accumulate. The visit index (`WalkStorage::visits`, one hash map per node) holds
+  every resident walk's arrivals — 100 M entries at 1,500 frames — so each insertion misses the
+  caches and hub nodes' maps rehash millions of entries. The same probe on the 0.11 core
+  (`2e8f4f0`) is 10–15 % slower, so this is not a D14 regression; D14 avoids it by not keeping
+  peers resident. A compact per-node visit index would fix it for resident-heavy setups.
 
 ### Writes between warm reads (50 random in-cluster writes before each warm read, W 1k, cache 200)
 

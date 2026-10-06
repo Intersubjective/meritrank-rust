@@ -63,8 +63,8 @@ nothing. Fresh frames are seeded per ego: a sample equals what a calculation wou
   reset and bulk load always drop it.
 
 Size: about **24 bytes per node a frame's walks visited** (+ 128 bytes, + 800 bytes of cluster
-bounds): 10–60 KB at 1,000 walks (dense graph: ~28 KB), versus ~1 MB for a resident frame at
-10,000 walks. Both buffer copies hold the snapshots; `MERITRANK_SNAPSHOTS_MB` counts both.
+bounds): 10–60 KB at 1,000 walks (dense graph: ~28 KB), versus ~1–3 MB for a resident frame at
+10,000 walks (production dump / dense benchmark), per copy. Both buffer copies hold the snapshots; `MERITRANK_SNAPSHOTS_MB` counts both.
 
 ## Batch loading
 
