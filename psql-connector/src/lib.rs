@@ -53,6 +53,13 @@ fn mr_connector() -> &'static str {
   VERSION
 }
 
+//  Request frames this backend has put on the wire, retries included. Tests and
+//  benchmarks diff it around a statement to count real MeritRank round trips.
+#[pg_extern(volatile)]
+fn mr_rpc_attempts() -> i64 {
+  network_attempts() as i64
+}
+
 //  D3 (JOURNAL): Return connector version; no network call needed.
 #[pg_extern(immutable)]
 fn mr_service() -> &'static str {

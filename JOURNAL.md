@@ -195,6 +195,26 @@ without re-declaring them.
 
 ---
 
+### D13 — One absolute deadline per call (supersedes D7's per-read timeout)
+
+**Context**: D7 set a per-read socket timeout and the connector retried every failure
+once. A silent or trickling peer could hold a PostgreSQL backend for 2 × the receive
+timeout (120 s with `MERITRANK_RECV_TIMEOUT_MSEC=60000`), and a response sent one byte
+at a time never timed out at all. DNS ran unbounded on the backend thread, and nothing
+let `statement_timeout` or a cancel interrupt a waiting call.
+
+**Decision** (pgmer2 0.8.3): `timeout_msec` / `MERITRANK_RECV_TIMEOUT_MSEC` is the budget
+for the **whole call**: name resolution, connect, write, the complete response read and
+the retry. Socket waits are cut into ≤ 50 ms slices; between slices the call re-checks
+the deadline and runs `CHECK_FOR_INTERRUPTS`, so `statement_timeout` and
+`pg_cancel_backend()` bound it too. DNS runs on a helper thread and is cached per backend
+until a connect fails. Only a non-deadline failure on a *reused* connection is retried,
+once, on a fresh connection within the same deadline. The cached connection is taken
+out for the call and returned only after a complete exchange. `mr_rpc_attempts()` reports
+the request frames this backend has sent, retries included.
+
+---
+
 ## Phase log
 
 | Phase | Status | Notes |
