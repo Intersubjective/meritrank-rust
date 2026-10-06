@@ -384,6 +384,27 @@ pub fn read_scope<T>(
   sampling: bool,
   read: impl FnOnce() -> T,
 ) -> (T, ReadReport) {
+  read_scope_with(sampling, vec![], read)
+}
+
+/// A sample taken before the final read of a request (in chunks, under short guards), with the
+/// cluster bounds computed from it.
+#[derive(Clone, Debug)]
+pub struct Presample {
+  pub sample:        Arc<FrameSample>,
+  pub bounds:        Option<Vec<f64>>,
+  /// Operation after which it was taken, and the zero-opinion revision of its bounds.
+  pub seq:           u64,
+  pub zero_revision: u64,
+}
+
+/// `read_scope` with samples taken beforehand: the caller vouches that they are valid for the
+/// state read (see `AugGraph::presample_valid`).
+pub fn read_scope_with<T>(
+  sampling: bool,
+  presamples: Vec<(Arc<FrameSample>, Option<Vec<f64>>)>,
+  read: impl FnOnce() -> T,
+) -> (T, ReadReport) {
   /// Restores the outer scope even if the read panics (threads are reused by the blocking pool).
   struct Restore(Option<Option<Scope>>);
   impl Drop for Restore {
@@ -393,7 +414,16 @@ pub fn read_scope<T>(
       }
     }
   }
-  let outer = SCOPE.with(|s| s.replace(Some(Scope { sampling, ..Default::default() })));
+  let mut scope = Scope { sampling, ..Default::default() };
+  for (sample, bounds) in presamples {
+    let ego = sample.ego;
+    if let Some(b) = bounds {
+      scope.bounds.insert(ego, b);
+    }
+    scope.samples.insert(ego, sample);
+    scope.order.push(ego);
+  }
+  let outer = SCOPE.with(|s| s.replace(Some(scope)));
   let mut restore = Restore(Some(outer));
   let result = read();
   let outer = restore.0.take().unwrap_or(None);
@@ -478,6 +508,41 @@ pub(crate) fn scope_bounds(
 // ---------------------------------------------------------------------------
 
 impl AugGraph {
+  /// A fresh sample of `ego` with its cluster bounds, taken now (a chunk of a request's samples).
+  pub fn presample(
+    &self,
+    ego: NodeId,
+  ) -> Option<Presample> {
+    if self.mr.is_calculated(ego) || self.snapshots.contains(ego) {
+      return None;
+    }
+    let sample = Arc::new(self.fresh_sample(ego)?);
+    let (bounds, _) = read_scope_with(true, vec![(Arc::clone(&sample), None)], || {
+      self.calculate_score_clusters_bounds_pub(ego)
+    });
+    Some(Presample { sample, bounds: Some(bounds), seq: self.applied_seq, zero_revision: self.zero_revision })
+  }
+
+  /// Whether a presample still equals a fresh sample now: same incarnation, no change in its
+  /// footprint or of its owner's walls since it was taken, and still neither resident nor in a
+  /// snapshot. Its bounds are kept only for the same zero-opinion revision.
+  pub fn presample_valid(
+    &self,
+    epoch: u64,
+    p: &Presample,
+  ) -> Option<(Arc<FrameSample>, Option<Vec<f64>>)> {
+    let ego = p.sample.ego;
+    if epoch != self.epoch
+      || self.mr.is_calculated(ego)
+      || self.snapshots.contains(ego)
+      || self.mutation_log.invalidates(p.seq, &p.sample)
+    {
+      return None;
+    }
+    let bounds = (p.zero_revision == self.zero_revision).then(|| p.bounds.clone()).flatten();
+    Some((Arc::clone(&p.sample), bounds))
+  }
+
   /// A fresh on-demand sample of `ego` (`Settings::on_demand_walks` walks).
   pub fn fresh_sample(
     &self,

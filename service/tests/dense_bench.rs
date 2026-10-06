@@ -15,6 +15,7 @@
 //! | BENCH_WARM | 5 | warm reads per ego |
 //! | BENCH_WRITES | 0 | random in-cluster writes before every warm read |
 //! | BENCH_ORDINARY | 2 | ordinary users measured besides the heavy ego |
+//! | BENCH_STALL | 0 | 1: also measure write+sync latency while the heavy ego's cold read runs |
 //! | BENCH_LABEL | config | label of the JSON line |
 //! | BENCH_OUT | — | file the JSON line is appended to |
 //!
@@ -131,7 +132,7 @@ async fn dense_reverse_scores_bench() {
     seed: 0xD14,
     ..Settings::default()
   };
-  let proc = MultiGraphProcessor::new(settings.clone());
+  let proc = std::sync::Arc::new(MultiGraphProcessor::new(settings.clone()));
 
   let rss_before = status_kb("VmRSS:");
   let t = Instant::now();
@@ -147,6 +148,13 @@ async fn dense_reverse_scores_bench() {
   .await;
   assert!(matches!(r, Response::Ok));
   let load_ms = t.elapsed().as_secs_f64() * 1e3;
+
+  // Write latency (write + sync) alone, then during the heavy ego's cold read.
+  let stall = if env::<u8>("BENCH_STALL", 0) == 1 {
+    Some(measure_stall(&proc).await)
+  } else {
+    None
+  };
 
   let mut egos = vec!["H".to_string()];
   for k in 0..ordinary {
@@ -247,10 +255,54 @@ async fn dense_reverse_scores_bench() {
     "snapshots_admitted": stats.graph.snapshots_admitted,
     "snapshots_rejected": stats.graph.snapshots_rejected,
     "egos": per_ego,
+    "stall": stall,
   });
   println!("BENCH {}", line);
   if let Ok(path) = std::env::var("BENCH_OUT") {
     let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
     writeln!(f, "{}", line).unwrap();
   }
+}
+
+/// Latencies (ms) of `write + sync` in the same subgraph: idle, and while a cold
+/// `ReadMutualScores` of the heavy ego (sampling ~all its peers) runs.
+async fn measure_stall(proc: &std::sync::Arc<MultiGraphProcessor>) -> serde_json::Value {
+  async fn writes(proc: &MultiGraphProcessor, n: usize, stop: Option<&std::sync::atomic::AtomicBool>) -> Vec<f64> {
+    let mut v = vec![];
+    for i in 0..n {
+      if stop.map_or(false, |s| s.load(std::sync::atomic::Ordering::Relaxed)) {
+        break;
+      }
+      let t = Instant::now();
+      request(
+        proc,
+        ReqData::WriteEdge(OpWriteEdge {
+          src:       user(0, i % PER_CLUSTER),
+          dst:       user(0, (i * 7 + 3) % PER_CLUSTER),
+          amount:    1.0 + (i % 3) as f64,
+          magnitude: 0,
+        }),
+      )
+      .await;
+      sync(proc).await;
+      v.push(t.elapsed().as_secs_f64() * 1e3);
+    }
+    v
+  }
+  let idle = writes(proc, 50, None).await;
+  let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+  let (p, st) = (std::sync::Arc::clone(proc), std::sync::Arc::clone(&stop));
+  let writer = tokio::spawn(async move { writes(&p, 100_000, Some(&st)).await });
+  let t = Instant::now();
+  request(proc, ReqData::ReadMutualScores(OpReadMutualScores { ego: "H".into() })).await;
+  let read_ms = t.elapsed().as_secs_f64() * 1e3;
+  stop.store(true, std::sync::atomic::Ordering::Relaxed);
+  let during = writer.await.unwrap();
+  let stats = |v: &[f64]| {
+    let mut v = v.to_vec();
+    v.sort_by(|a, b| a.total_cmp(b));
+    let q = |p: f64| v.get(((v.len() as f64 - 1.0) * p).round() as usize).copied().unwrap_or(0.0);
+    serde_json::json!({ "n": v.len(), "p50": q(0.5), "p95": q(0.95), "max": q(1.0) })
+  };
+  serde_json::json!({ "idle": stats(&idle), "during_cold_read": stats(&during), "cold_read_ms": read_ms })
 }

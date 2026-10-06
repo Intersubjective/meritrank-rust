@@ -28,6 +28,9 @@ pub fn over_capacity_reads() -> u64 {
   OVER_CAPACITY.load(Ordering::Relaxed)
 }
 
+/// Samples taken under one read guard (bounds the time a cold read holds a copy).
+const SAMPLE_CHUNK: usize = 32;
+
 /// Bytes of the admission budget held by samples on their way to a snapshot store.
 struct AdmitReservation {
   inflight: Arc<AtomicUsize>,
@@ -955,10 +958,25 @@ impl MultiGraphProcessor {
         };
         let shared = Arc::clone(&shared);
         let run = Arc::clone(&run);
+        let missing = first.1.missing.clone();
+        let epoch = first.2;
         tokio::task::spawn_blocking(move || {
           let _permit = permit;
+          // Sample in chunks, each under its own short read guard, so that the writer's replay
+          // into this copy is never held up for the whole read.
+          let mut pre: Vec<Presample> = vec![];
+          for chunk in missing.chunks(SAMPLE_CHUNK) {
+            read_published(&shared, |g| {
+              if g.epoch == epoch {
+                pre.extend(chunk.iter().filter_map(|x| g.presample(*x)));
+              }
+            });
+          }
+          // The final read: samples still valid at this state are used, the others (touched by
+          // a write meanwhile) are sampled again inline.
           read_published(&shared, |g| {
-            let (response, report) = read_scope(true, || run(g));
+            let valid = pre.iter().filter_map(|p| g.presample_valid(epoch, p)).collect();
+            let (response, report) = read_scope_with(true, valid, || run(g));
             (response, report, g.epoch, g.applied_seq, g.zero_revision, ego_id)
           })
         })

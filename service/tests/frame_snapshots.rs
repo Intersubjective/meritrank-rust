@@ -1164,6 +1164,31 @@ fn explicit_calculation_equals_fresh_sample() {
   assert_eq!(g.mr.frame_sample(u1), g.fresh_sample(u1));
 }
 
+/// A cold read samples in chunks under short guards; the final read keeps a chunk's sample only
+/// if nothing touched its footprint (or its owner's walls) since, in the same incarnation.
+#[test]
+fn presamples_are_revalidated_at_the_final_read() {
+  let s = settings(200, 1, 0.0);
+  let mut g = AugGraph::with_stream(s.clone(), "");
+  for (seq, (a, b)) in [("A", "C"), ("B", "D"), ("D", "B")].iter().enumerate() {
+    g.apply_seq_op(seq as u64 + 1, &edge_op(a, b, 1.0));
+  }
+  let (a, b) = (id(&g, "A"), id(&g, "B"));
+  let pa = g.presample(a).unwrap();
+  let pb = g.presample(b).unwrap();
+  assert_eq!(pa.sample.as_ref(), &g.fresh_sample(a).unwrap());
+  let epoch = g.epoch;
+  g.apply_seq_op(4, &edge_op("C", "X", 1.0)); // in A's footprint, not B's
+  assert!(g.presample_valid(epoch, &pa).is_none());
+  let (sb, bounds) = g.presample_valid(epoch, &pb).expect("B untouched");
+  assert_eq!(sb.as_ref(), &g.fresh_sample(b).unwrap());
+  assert!(bounds.is_some());
+  g.apply_seq_op(5, &AugGraphOp::WriteZeroOpinion(OpWriteZeroOpinion { node: "D".into(), score: 0.5 }));
+  let (_, bounds) = g.presample_valid(epoch, &pb).unwrap();
+  assert!(bounds.is_none(), "bounds of another zero-opinion revision are recomputed");
+  assert!(g.presample_valid(epoch + 1, &pb).is_none());
+}
+
 // ---------------------------------------------------------------------------
 // Seeds and settings
 // ---------------------------------------------------------------------------

@@ -17,7 +17,7 @@ mod neighbors;
 mod scores;
 mod snapshots;
 pub use snapshots::{
-  read_scope, FrameSnapshot, FrameSnapshots, GraphCounters, MutationLog, ReadReport, ReverseDiag,
+  read_scope, read_scope_with, FrameSnapshot, Presample, FrameSnapshots, GraphCounters, MutationLog, ReadReport, ReverseDiag,
   ReverseSource, MUTATION_LOG_CAPACITY, STALENESS_DELTA,
 };
 pub use snapshots::record_frames;

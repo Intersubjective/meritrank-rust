@@ -170,3 +170,72 @@ MERITRANK_LOAD_TEST_NUM_WALKS=10000 cargo run --release --bin load_test -p merit
   - **Lower reads/s** for the same worker count (each cold read is expensive).
   - **Similar or higher pending** (queue backs up when recalc is frequent).
 - **Comparison**: Run default and eviction with the same `MERITRANK_LOAD_TEST_EDGES` and `MERITRANK_LOAD_TEST_PHASE_SECS`, then compare `load_test_stats.csv` rows for `low`/`medium`/`high` vs `eviction_low`/`eviction_medium`/`eviction_high` (median_us, p95_us, p99_us, sample_count).
+
+## Run: reverse-score snapshots, dense graph (D14, 2026-10-06)
+
+`service/tests/dense_bench.rs` (`#[ignore]`; `cargo test --release -p meritrank_service --test
+dense_bench -- --ignored --nocapture`, configured by `BENCH_*` variables, one process per
+configuration). Graph: 3 clusters × 1,000 users, each choosing 15 random partners in its cluster
+with reciprocal positive edges (≈ 30 per user), plus a heavy ego `H` linked both ways with 1,000
+random users. α = 0.85, zero-opinion factor 0.2, seed fixed, bulk load (lazy calculation).
+`ReadMutualScores`: one cold read, then 5 warm reads, for `H` (2,408 mutual peers at W = 1,000;
+3,001 at W = 10,000) and two ordinary users. Release build, 16 cores, one run per configuration.
+
+### Heavy ego, `ReadMutualScores`
+
+| Configuration | Cold | Warm (median of 5) | Frames recalculated per warm read | RSS | Snapshots |
+|---|---|---|---|---|---|
+| W 1k, cache 200, snapshots (strict) | 1.32 s | **2.2 ms** | 0 | 334 MB | 2,808 / 78.6 MB |
+| W 1k, cache 50, snapshots | 1.34 s | 2.2 ms | 0 | 334 MB | 78.6 MB |
+| W 1k, cache 1,200, snapshots | 1.36 s | 2.3 ms | 0 | 334 MB | 78.6 MB |
+| W 1k, cache 200, on-demand 300 walks | 0.52 s | 2.0 ms | 0 | 229 MB | 53.3 MB |
+| W 1k, cache 0 (unbounded) | 4.15 s | 3.8 ms (1st: 130 ms) | 0 | 1,780 MB | — |
+| W 1k, cache 200, no snapshots (0.11 behaviour) | 7.47 s | **8.65 s** | 2,407 | 472 MB | — |
+| W 1k, cache 1,200, no snapshots | 8.82 s | 11.1 s | 2,407 | 1,767 MB | — |
+| W 10k, cache 200, on-demand 1k | 1.67 s | 2.9 ms | 0 | 392 MB | 2,998 / 83.8 MB |
+| W 10k, cache 0 (unbounded) | 108 s | 5.4 ms (1st: 226 ms) | 0 | 19,449 MB | — |
+| W 10k, cache 200, no snapshots | 160 s | 242 s | 3,000 | 5,098 MB | — |
+
+Ordinary users (≈ 1,100 peers at W 1k): warm 0.9–1.0 ms with snapshots vs 3.7–4.3 s without
+(cache 200); cold 72–151 ms vs 3.3–4.3 s.
+
+- **Equivalence.** With ON_DEMAND = NUM_WALKS and strict mode, every response of cache 200 / 50 /
+  1,200 with snapshots and of the no-snapshot path is byte-identical to the unbounded cache
+  (hashes `377ba5…`, `a0deae…`, `0adb33…`, cold and warm). With 300 on-demand walks the reverse
+  scores differ from the W = 1,000 reference by 0.0073 on average (max 0.037); W 10k with 1k
+  on-demand walks vs 10k-walk frames: mean 0.0044, max 0.027 — Monte Carlo noise of the smaller
+  frame.
+- **Over-capacity warning.** Never logged with snapshots (no read pins peers). Without them it
+  fires on every heavy read (cold and every warm read: 1 + 5).
+- **Memory.** A snapshot costs ~28 KB here (≈ 1,150 visited nodes); both buffer copies hold them
+  (the table's snapshot MB is per copy). The unbounded cache needs 1.8 GB at W 1k and 19.4 GB at
+  W 10k for the same answers.
+
+### Writes between warm reads (50 random in-cluster writes before each warm read, W 1k, cache 200)
+
+| Staleness | Heavy ego warm | Ordinary users warm | Snapshots invalidated |
+|---|---|---|---|
+| c = 0 (strict) | 1.26–1.28 s | 0.55–0.61 s | 25,669 |
+| c = 1 (default) | 15–33 ms | 15–185 ms | 2,051 |
+| c = 3 | 1.8–6.2 ms | 0.9–5.2 ms | 13 |
+| cache 0 (unbounded, incremental repair) | 0.25–0.27 s | 0.04–0.12 s | — |
+
+In a dense graph almost every write lands in most footprints, so strict mode resamples most peers
+after every write burst — still 7× faster than 0.11, but slower than resident frames repaired
+incrementally. The heuristic keeps snapshots whose drift stays within the Monte Carlo noise of
+their own sample; at c = 1 the ordinary user's latency grows as invalidations accumulate across
+bursts (each burst adds drift).
+
+### Write latency during a cold read (review M1)
+
+`write + sync` latency in the same subgraph while the heavy ego's cold read samples ~2,400–3,000
+peers. The read samples in chunks of 32 peers, each under its own read guard, and assembles the
+answer under one more, revalidating every sample against the mutation log.
+
+| Configuration | Idle p50 | During cold read p50 / p95 / max |
+|---|---|---|
+| W 1k, cache 200, snapshots | 0.008 ms | 33 / 38 / 39 ms |
+| W 10k, cache 200, on-demand 1k | 0.008 ms | 37 / 38 / 128 ms |
+| W 1k, cache 200, no snapshots (0.11) | 0.008 ms | 624 / 646 / 660 ms |
+
+(Before chunking, one guard for the whole cold read held writes for up to 1.35 s.)

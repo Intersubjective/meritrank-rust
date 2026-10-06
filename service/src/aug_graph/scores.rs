@@ -19,6 +19,13 @@ impl AugGraph {
     bounds
   }
 
+  pub(crate) fn calculate_score_clusters_bounds_pub(
+    &self,
+    ego: NodeId,
+  ) -> Vec<NodeScore> {
+    self.calculate_score_clusters_bounds(ego)
+  }
+
   /// Quantile bounds of the ego's positive scores over every node (one node class, D14).
   fn calculate_score_clusters_bounds(
     &self,
