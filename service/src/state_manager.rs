@@ -28,6 +28,18 @@ pub fn over_capacity_reads() -> u64 {
   OVER_CAPACITY.load(Ordering::Relaxed)
 }
 
+/// Bytes of the admission budget held by samples on their way to a snapshot store.
+struct AdmitReservation {
+  inflight: Arc<AtomicUsize>,
+  bytes:    usize,
+}
+
+impl Drop for AdmitReservation {
+  fn drop(&mut self) {
+    self.inflight.fetch_sub(self.bytes, Ordering::SeqCst);
+  }
+}
+
 /// A read run on a published copy (shared with a blocking thread).
 type ReadFn = Arc<dyn Fn(&AugGraph) -> Response + Send + Sync>;
 
@@ -926,15 +938,25 @@ impl MultiGraphProcessor {
         drop(lease);
         continue;
       }
-      // Take a sampling slot before the graph guard: never wait for one while holding it.
-      let permit = match Arc::clone(&self.sampling).acquire_owned().await {
-        Ok(p) => p,
-        Err(_) => return (Response::Fail, None),
-      };
-      let read = {
+      // A warm read (every peer resident or in a snapshot) runs right here, without sampling.
+      let first = read_published(&shared, |g| {
+        let (response, report) = read_scope(false, || run(g));
+        (response, report, g.epoch, g.applied_seq, g.zero_revision, ego_id)
+      });
+      let read = if first.1.missing.is_empty() {
+        Ok(first)
+      } else {
+        // Some peers must be sampled: take a sampling slot (before any graph guard, never while
+        // holding one) and read again on a blocking thread. The slot moves into the task, so a
+        // cancelled request does not free it while the sampling still runs.
+        let permit = match Arc::clone(&self.sampling).acquire_owned().await {
+          Ok(p) => p,
+          Err(_) => return (Response::Fail, None),
+        };
         let shared = Arc::clone(&shared);
         let run = Arc::clone(&run);
         tokio::task::spawn_blocking(move || {
+          let _permit = permit;
           read_published(&shared, |g| {
             let (response, report) = read_scope(true, || run(g));
             (response, report, g.epoch, g.applied_seq, g.zero_revision, ego_id)
@@ -942,7 +964,6 @@ impl MultiGraphProcessor {
         })
         .await
       };
-      drop(permit);
       drop(lease);
       let (response, report, epoch, applied_seq, zero_revision, ego_id) = match read {
         Ok(x) => x,
@@ -989,7 +1010,9 @@ impl MultiGraphProcessor {
     // Offer as many as the budget holds (in read order); the rest are sampled again by a later
     // read and offered then.
     let budget = self.settings.admit_queue_bytes();
-    let mut bytes = 0usize;
+    // Released on drop: after publication, or at once if the dispatch fails or the request is
+    // cancelled.
+    let mut reservation = AdmitReservation { inflight: Arc::clone(&self.admit_inflight), bytes: 0 };
     let mut samples: Vec<meritrank_core::FrameSample> = vec![];
     let mut kept_bounds: Vec<Option<Vec<f64>>> = vec![];
     let total = sampled.len();
@@ -1000,7 +1023,7 @@ impl MultiGraphProcessor {
         self.admit_inflight.fetch_sub(size, Ordering::SeqCst);
         break;
       }
-      bytes += size;
+      reservation.bytes += size;
       samples.push(Arc::try_unwrap(s).unwrap_or_else(|a| (*a).clone()));
       kept_bounds.push(b);
     }
@@ -1022,16 +1045,14 @@ impl MultiGraphProcessor {
       let mut state = self.dispatcher.lock().await;
       self.dispatch_locked(&mut state, Targets::Existing(subgraph), op).await
     };
-    let inflight = Arc::clone(&self.admit_inflight);
     if !dispatched.ok {
-      inflight.fetch_sub(bytes, Ordering::SeqCst);
       return;
     }
     let seq = dispatched.seq;
     // The budget is released once the admission is published (or the subgraph is gone).
     tokio::spawn(async move {
       let _ = published.wait_for(|v| *v >= seq).await;
-      inflight.fetch_sub(bytes, Ordering::SeqCst);
+      drop(reservation);
     });
   }
 

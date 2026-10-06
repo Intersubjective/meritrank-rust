@@ -260,7 +260,9 @@ one walk storage (allocator rework, fragmentation); statistical-only equivalence
 
 **Settings**: `MERITRANK_SNAPSHOTS_MB` (256, process-wide, both copies), `MERITRANK_ON_DEMAND_NUM_WALKS`
 (1000), `MERITRANK_SNAPSHOT_STALENESS` (1.0), `MERITRANK_SAMPLING_CONCURRENCY`,
-`MERITRANK_ADMIT_QUEUE_MB` (256). Versions: meritrank_core 0.13.0 (`get_personal_hits` removed in
+`MERITRANK_ADMIT_QUEUE_MB` (256; the architecture draft said 64, raised after the dense benchmark:
+one cold read of the heavy ego offers ~110 MB of samples). A read samples only when a peer has
+neither a frame nor a snapshot: a warm read runs on the request's task and takes no sampling slot. Versions: meritrank_core 0.13.0 (`get_personal_hits` removed in
 favour of `credits_of`; counters canonical), meritrank_service 0.12.0, pgmer2 0.9.0.
 
 ---

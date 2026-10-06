@@ -769,7 +769,17 @@ fn revisions_change_only_with_the_estimate() {
 /// - both buffer copies end with the same snapshots and counters.
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn a5_concurrent_reads_equal_replay() {
-  let s = Settings { record_ops: true, ..settings(100, 1, 0.0) };
+  a5_run(0.0).await;
+}
+
+/// The same with the staleness heuristic: replay equality, and both copies with the same drift.
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn a5_concurrent_reads_equal_replay_with_staleness() {
+  a5_run(1.0).await;
+}
+
+async fn a5_run(staleness: f64) {
+  let s = Settings { record_ops: true, ..settings(100, 1, staleness) };
   let proc = Arc::new(MultiGraphProcessor::new(s.clone()));
   for i in 0..12 {
     write(&proc, "", &format!("U{i}"), &format!("U{}", (i + 1) % 12), 1.0).await;
@@ -867,7 +877,9 @@ async fn a5_concurrent_reads_equal_replay() {
   let last = ops.last().unwrap().0;
   let g = replay(last);
   let (lambda, decay) = (s.discredit_lambda, s.blame_decay);
-  for x in g.snapshots.egos() {
+  // Exactness of surviving snapshots holds in strict mode only (the heuristic tolerates drift).
+  let strict_egos = if staleness == 0.0 { g.snapshots.egos() } else { vec![] };
+  for x in strict_egos {
     let snap = g.snapshots.get(x).unwrap();
     if evictions.contains(&snap.captured_seq) {
       continue; // a copy of a (possibly repaired) resident frame
@@ -1013,11 +1025,11 @@ fn graph_with_snapshots(
   (g, seq)
 }
 
-/// Deleting a node drops its snapshot (its out-edges are in its own footprint), in both modes,
-/// and a sample of it taken before is rejected.
+/// Deleting a node drops its snapshot — a hard event, whatever the staleness — and a sample of it
+/// taken before is rejected.
 #[test]
 fn delete_node_drops_its_snapshot() {
-  for c in [0.0, 1.0] {
+  for c in [0.0, 1.0, 1000.0] {
     let s = settings(300, 1, c);
     let (mut g, mut seq) = graph_with_snapshots(&s, &[("X", "Y", 1.0), ("Y", "X", 1.0)], &["X"]);
     let x = id(&g, "X");
@@ -1196,11 +1208,12 @@ fn write_reset_op_is_a_new_incarnation() {
   assert!(a.snapshots.is_empty() && a.nodes.is_empty());
   a.apply_seq_op(4, &edge_op("U1", "U2", 1.0));
   a.apply_seq_op(5, &edge_op("U2", "U1", 1.0));
+  // base_seq 5 is covered by the new log: only the epoch rejects it.
   a.apply_seq_op(
     6,
     &AugGraphOp::AdmitSnapshots(AdmitBatch {
       epoch: old_epoch,
-      base_seq: 2,
+      base_seq: 5,
       samples: Arc::new(vec![sample]),
       ..Default::default()
     }),

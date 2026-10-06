@@ -23,9 +23,23 @@ impl AugGraph {
       self.capture_frame(*ego);
     }
 
-    self.apply_op_inner(op);
+    // Deleting a node is a hard event for its snapshot (and for samples of it in flight).
+    let deleted = match op {
+      AugGraphOp::DeleteNode(name) => self.nodes.get_by_name(name).map(|i| i.id),
+      _ => None,
+    };
 
-    let mutations = self.mr.take_mutations();
+    // A panicking operation may have changed the graph partly: its mutations are still absorbed
+    // before the panic goes on (strict snapshots must never outlive a change).
+    let outcome =
+      std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.apply_op_inner(op)));
+
+    let mut mutations = self.mr.take_mutations();
+    if let Some(d) = deleted {
+      if let Err(i) = mutations.wall_owners.binary_search(&d) {
+        mutations.wall_owners.insert(i, d);
+      }
+    }
     let dirty = self.mr.take_dirty_egos();
     match op {
       AugGraphOp::BulkLoadEdges(_) => self.clear_snapshots(),
@@ -37,6 +51,9 @@ impl AugGraph {
         continue;
       }
       self.bump_revision(ego);
+    }
+    if let Err(panic) = outcome {
+      std::panic::resume_unwind(panic);
     }
   }
 

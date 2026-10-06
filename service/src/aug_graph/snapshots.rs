@@ -27,6 +27,18 @@ pub const MUTATION_LOG_CAPACITY: usize = 8192;
 /// δ of the staleness threshold `c·(1+λ)·sqrt(ln(2/δ)/(2n))`.
 pub const STALENESS_DELTA: f64 = 0.05;
 
+/// `c·(1+λ)·sqrt(ln(2/δ)/(2n))`; 0 in strict mode.
+fn staleness_threshold(
+  c: f64,
+  lambda: f64,
+  n: usize,
+) -> f64 {
+  if c <= 0.0 || n == 0 {
+    return 0.0;
+  }
+  c * (1.0 + lambda) * ((2.0 / STALENESS_DELTA).ln() / (2.0 * n as f64)).sqrt()
+}
+
 /// Fixed bytes counted per snapshot besides its vectors (map entry, FIFO entry, header).
 const SNAPSHOT_OVERHEAD: usize = 128;
 
@@ -344,12 +356,16 @@ pub struct ReadReport {
   pub sample_walks:  u64,
   /// Cluster bounds the read computed for its samples (aligned with `sampled`).
   pub bounds:        Vec<Option<Vec<f64>>>,
+  /// Egos the read needed but found neither resident nor in a snapshot (answered 0 without
+  /// sampling; a sampling read never has any).
+  pub missing:       Vec<NodeId>,
 }
 
 #[derive(Default)]
 struct Scope {
   sampling:  bool,
   frames:    BTreeSet<NodeId>,
+  missing:   BTreeSet<NodeId>,
   snapshots: BTreeSet<NodeId>,
   samples:   BTreeMap<NodeId, Arc<FrameSample>>,
   order:     Vec<NodeId>,
@@ -368,8 +384,19 @@ pub fn read_scope<T>(
   sampling: bool,
   read: impl FnOnce() -> T,
 ) -> (T, ReadReport) {
+  /// Restores the outer scope even if the read panics (threads are reused by the blocking pool).
+  struct Restore(Option<Option<Scope>>);
+  impl Drop for Restore {
+    fn drop(&mut self) {
+      if let Some(outer) = self.0.take() {
+        SCOPE.with(|s| *s.borrow_mut() = outer);
+      }
+    }
+  }
   let outer = SCOPE.with(|s| s.replace(Some(Scope { sampling, ..Default::default() })));
+  let mut restore = Restore(Some(outer));
   let result = read();
+  let outer = restore.0.take().unwrap_or(None);
   let scope = SCOPE.with(|s| s.replace(outer)).unwrap_or_default();
   let sampled: Vec<Arc<FrameSample>> =
     scope.order.iter().filter_map(|e| scope.samples.get(e).cloned()).collect();
@@ -380,6 +407,7 @@ pub fn read_scope<T>(
     from_snapshot: scope.snapshots.len() as u64,
     sample_walks:  sampled.iter().map(|s| s.n as u64).sum(),
     frames:        scope.frames.into_iter().collect(),
+    missing:       scope.missing.into_iter().collect(),
     sampled,
   };
   (result, report)
@@ -404,6 +432,14 @@ fn note_snapshot(ego: NodeId) {
   SCOPE.with(|s| {
     if let Some(scope) = s.borrow_mut().as_mut() {
       scope.snapshots.insert(ego);
+    }
+  });
+}
+
+fn note_missing(ego: NodeId) {
+  SCOPE.with(|s| {
+    if let Some(scope) = s.borrow_mut().as_mut() {
+      scope.missing.insert(ego);
     }
   });
 }
@@ -458,12 +494,7 @@ impl AugGraph {
     &self,
     n: usize,
   ) -> f64 {
-    let c = self.settings.snapshot_staleness;
-    if c <= 0.0 || n == 0 {
-      return 0.0;
-    }
-    c * (1.0 + self.settings.discredit_lambda)
-      * ((2.0 / STALENESS_DELTA).ln() / (2.0 * n as f64)).sqrt()
+    staleness_threshold(self.settings.snapshot_staleness, self.settings.discredit_lambda, n)
   }
 
   /// Where a reverse score of `peer` would come from now.
@@ -537,6 +568,7 @@ impl AugGraph {
       return Some(sample.score(dst, self.settings.discredit_lambda, self.settings.blame_decay));
     }
     record_frame_access(ego);
+    note_missing(ego);
     None
   }
 }
@@ -609,12 +641,8 @@ impl AugGraph {
       .copied()
       .filter(|o| self.snapshots.contains(*o))
       .collect();
-    let thresholds: BTreeMap<NodeId, f64> = self
-      .snapshots
-      .by_ego
-      .iter()
-      .map(|(e, s)| (*e, self.snapshot_threshold(s.n)))
-      .collect();
+    let (c, lambda) = (self.settings.snapshot_staleness, self.settings.discredit_lambda);
+    let mut thresholds: BTreeMap<usize, f64> = BTreeMap::new();
     for change in &m.sources {
       for (ego, snap) in self.snapshots.by_ego.iter_mut() {
         let Some(i) = snap.index(change.src) else { continue };
@@ -624,7 +652,8 @@ impl AugGraph {
         }
         let tv = change.tv.unwrap_or(1.0);
         snap.drift += factor * tv * snap.visits[i] as f64 / snap.n as f64;
-        if snap.drift > thresholds[ego] {
+        let limit = *thresholds.entry(snap.n).or_insert_with(|| staleness_threshold(c, lambda, snap.n));
+        if snap.drift > limit {
           dropped.insert(*ego);
         }
       }

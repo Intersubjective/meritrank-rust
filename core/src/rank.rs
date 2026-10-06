@@ -126,8 +126,8 @@ impl MeritRank {
     &mut self,
     ego: NodeId,
     walk_id: WalkId,
-  ) {
-    self.apply_contribution(ego, walk_id, true);
+  ) -> Result<(), MeritRankError> {
+    self.apply_contribution(ego, walk_id, true)
   }
 
   /// Reverts a stored walk's contribution, as if the walk never existed.
@@ -135,8 +135,8 @@ impl MeritRank {
     &mut self,
     ego: NodeId,
     walk_id: WalkId,
-  ) {
-    self.apply_contribution(ego, walk_id, false);
+  ) -> Result<(), MeritRankError> {
+    self.apply_contribution(ego, walk_id, false)
   }
 
   fn apply_contribution(
@@ -144,28 +144,33 @@ impl MeritRank {
     ego: NodeId,
     walk_id: WalkId,
     add: bool,
-  ) {
+  ) -> Result<(), MeritRankError> {
     let walk = match self.walks.get_walk(walk_id) {
       Some(w) if !w.is_empty() => w,
-      _ => return,
+      _ => return Ok(()),
     };
     let c = walk_contribution(walk, self.blame_radius, self.blame_decay);
-    if let Err(e) = self.frames.entry(ego).or_default().apply(&c, add) {
-      // Unreachable while the counters follow the walks; the consistency check reports it.
-      log::error!("frame counters of ego {}: {}", ego, e);
+    match self.frames.get_mut(&ego) {
+      Some(counters) => counters.apply(&c, add),
+      // Only calculated egos have walks, and every calculated ego has counters.
+      None => Err(MeritRankError::InternalFatalError(Some(
+        internal_fatal::RANK_ASSERT_POS_HITS_COUNT,
+      ))),
     }
   }
 
   fn remove_block_contributions(
     &mut self,
     ego: NodeId,
-  ) {
+  ) -> Result<(), MeritRankError> {
     if let Some(ids) = self.walks.block_walk_ids(ego) {
       for walk_id in ids {
-        self.remove_contribution(ego, walk_id);
+        self.remove_contribution(ego, walk_id)?;
       }
     }
+    Ok(())
   }
+
 
   // ------------------------------------------------------------------
   // Frames
@@ -177,7 +182,7 @@ impl MeritRank {
     &mut self,
     ego: NodeId,
   ) -> Result<(), MeritRankError> {
-    self.remove_block_contributions(ego);
+    self.remove_block_contributions(ego)?;
     self.walks.release_block_for_ego(ego)?;
     self.frames.remove(&ego);
     if self.calculated.remove(&ego) {
@@ -208,7 +213,7 @@ impl MeritRank {
     self.calculated.insert(ego);
     self.dirty_egos.insert(ego);
     let start_id = self.walks.ensure_block_for_ego(ego)?;
-    self.remove_block_contributions(ego);
+    self.remove_block_contributions(ego)?;
     self.walks.clear_block(start_id)?;
     self.frames.insert(ego, FrameCounters::new());
 
@@ -222,7 +227,7 @@ impl MeritRank {
         },
       };
       generate_walk_into(&self.graph, ego, self.alpha, rng, walk)?;
-      self.add_contribution(ego, walk_id);
+      self.add_contribution(ego, walk_id)?;
       self.walks.update_walk_bookkeeping(walk_id, 0);
     }
     if ASSERT {
@@ -390,7 +395,7 @@ impl MeritRank {
       };
       self.dirty_egos.insert(ego);
       // Revert the walk's contribution, as if the walk never existed.
-      self.remove_contribution(ego, *walk_id);
+      self.remove_contribution(ego, *walk_id)?;
 
       let cut_position = visit_pos + 1;
       self
@@ -420,7 +425,7 @@ impl MeritRank {
         self.graph.continue_walk(walk, self.alpha, &mut self.rng)?;
       }
 
-      self.add_contribution(ego, *walk_id);
+      self.add_contribution(ego, *walk_id)?;
       self.walks.update_walk_bookkeeping(*walk_id, cut_position);
     }
 
@@ -512,12 +517,12 @@ impl MeritRank {
           }
         }
         if let Some(i) = cut {
-          self.remove_contribution(ego, walk_id);
+          self.remove_contribution(ego, walk_id)?;
           self.walks.split_and_remove_from_bookkeeping(&walk_id, i + 1)?;
           if let Some(w) = self.walks.get_walk_mut(walk_id) {
             w.absorbed = true;
           }
-          self.add_contribution(ego, walk_id);
+          self.add_contribution(ego, walk_id)?;
         }
       } else {
         let walk = self.walks.get_walk(walk_id).ok_or(
@@ -530,7 +535,7 @@ impl MeritRank {
         if !absorbed_here || self.rng.random::<f64>() < d1 / d0 {
           continue;
         }
-        self.remove_contribution(ego, walk_id);
+        self.remove_contribution(ego, walk_id)?;
         let walk = self.walks.get_walk_mut(walk_id).ok_or(
           MeritRankError::InternalFatalError(Some(
             internal_fatal::RANK_SET_WALL_GET_WALK,
@@ -538,7 +543,7 @@ impl MeritRank {
         )?;
         walk.absorbed = false;
         self.graph.continue_walk(walk, self.alpha, &mut self.rng)?;
-        self.add_contribution(ego, walk_id);
+        self.add_contribution(ego, walk_id)?;
         self.walks.update_walk_bookkeeping(walk_id, old_len);
       }
     }
@@ -620,12 +625,21 @@ impl MeritRank {
     if !self.is_calculated(ego) {
       return None;
     }
-    let walks = self.ego_walks(ego)?;
-    let mut sample =
-      FrameSample::from_walks(ego, walks, self.blame_radius, self.blame_decay).ok()?;
-    sample.n = self.walks.walks_per_ego();
-    sample.counters = self.frames.get(&ego).cloned().unwrap_or_default();
-    Some(sample)
+    // The counters are maintained already; only the arrivals are counted from the walks.
+    let mut visits: IntMap<NodeId, u64> = IntMap::default();
+    for walk in self.ego_walks(ego)? {
+      for &node in walk.get_nodes() {
+        *visits.entry(node).or_insert(0) += 1;
+      }
+    }
+    let mut visits: Vec<(NodeId, u64)> = visits.into_iter().collect();
+    visits.sort_unstable();
+    Some(FrameSample {
+      ego,
+      n: self.walks.walks_per_ego(),
+      counters: self.frames.get(&ego).cloned().unwrap_or_default(),
+      visits,
+    })
   }
 
   /// The counters maintained for a resident frame.

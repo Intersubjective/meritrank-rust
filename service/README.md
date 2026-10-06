@@ -54,8 +54,8 @@ cache is kept as a snapshot too. So a read never pins peers' frames, and once wa
 nothing. Fresh frames are seeded per ego: a sample equals what a calculation would give.
 
 - Strict mode (`MERITRANK_SNAPSHOT_STALENESS=0`): a snapshot is dropped by any change of a
-  positive out-edge of a node its walks visited, and by a wall change of its owner — a snapshot
-  always equals a fresh calculation.
+  positive out-edge of a node its walks visited, and by a wall change of its owner — an admitted
+  sample then always equals a fresh calculation, and a kept evicted frame equals that frame.
 - Heuristic (`c > 0`): each such change adds `(1+λ)·α·tv·visits(S)/n` to the snapshot's drift
   (`tv` = total variation of S's next-step distribution); it is dropped once the drift exceeds
   `c·(1+λ)·sqrt(ln(2/δ)/(2n))`, δ = 0.05 — the Monte Carlo noise of the snapshot. Changes where
