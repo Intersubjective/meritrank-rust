@@ -59,8 +59,7 @@ impl AugGraph {
   ) -> Vec<ScoreResult> {
     log_command!("{:?}", data);
 
-    let kind_opt = data.kind;
-
+    // `data.kind` and `data.hide_personal` are ignored: one node class, no owners (D14).
     let dir = data.direction;
 
     if dir != NEIGHBORS_INBOUND
@@ -82,10 +81,6 @@ impl AugGraph {
       },
     };
 
-    if !self.ensure_ego_is_user(ego, ego_info) {
-      return vec![];
-    }
-
     let ego_id = ego_info.id;
 
     let focus_id = match self.nodes.get_by_name(focus) {
@@ -96,32 +91,14 @@ impl AugGraph {
       },
     };
 
-    // Handling the special case - dirty hack - of returning
-    // poll results through the neighbors method.
-
-    if kind_opt == Some(NodeKind::PollVariant)
-      && node_kind_from_prefix(ego) == Some(NodeKind::User)
-      && node_kind_from_prefix(focus) == Some(NodeKind::Poll)
-      && dir == NEIGHBORS_INBOUND
-    {
-      log_error!("Poll variant not implemented.");
-      return vec![];
-    }
-
-    let mut scores = self.fetch_neighbors(ego_id, focus_id, dir);
-
-    if kind_opt == Some(NodeKind::Opinion) && dir == NEIGHBORS_INBOUND {
-      scores.retain(|(node_info, _, _)| {
-        self.get_object_owner(node_info.id) != Some(focus_id)
-      });
-    }
+    let scores = self.fetch_neighbors(ego_id, focus_id, dir);
 
     self.apply_filters_and_pagination(
       scores,
       ego_info,
       &FilterOptions {
         node_kind:     None,
-        hide_personal: data.hide_personal,
+        hide_personal: false,
         score_lt:      data.lt,
         score_lte:     data.lte,
         score_gt:      data.gt,
@@ -129,7 +106,6 @@ impl AugGraph {
         index:         data.index,
         count:         data.count,
       },
-      true,
     )
   }
 
@@ -147,10 +123,6 @@ impl AugGraph {
       },
     };
 
-    if !self.ensure_ego_is_user(&data.ego, ego_info) {
-      return vec![];
-    }
-
     let ego_id = ego_info.id;
 
     let ranks = self.fetch_all_scores(ego_info);
@@ -158,12 +130,9 @@ impl AugGraph {
     v.reserve_exact(ranks.len());
 
     for (node, score_value_of_dst, score_cluster_of_dst) in ranks {
-      if score_value_of_dst > 0.0 && node.kind == NodeKind::User {
+      if score_value_of_dst > 0.0 {
         let (score_value_of_ego, score_cluster_of_ego) =
-          match self.get_object_owner(node.id) {
-            Some(dst_owner_id) => self.fetch_score_clustered(dst_owner_id, ego_id),
-            None => (0.0, 0),
-          };
+          self.fetch_score_clustered(node.id, ego_id);
         v.push(ScoreResult {
           ego:             data.ego.clone(),
           target:          node.name,

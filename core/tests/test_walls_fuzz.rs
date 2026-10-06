@@ -97,10 +97,7 @@ fn stats(
   ego: NodeId,
   node: NodeId,
 ) -> (f64, f64) {
-  let c = mr
-    .get_personal_hits()
-    .get(&ego)
-    .map_or(0, |h| h.get_count(&node)) as f64
+  let c = mr.credits_of(ego, node) as f64
     / W as f64;
   let b = mr.blame_of(ego, node) / W as f64;
   (c, b)

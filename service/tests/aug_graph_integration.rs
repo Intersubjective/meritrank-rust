@@ -6,7 +6,19 @@ use meritrank_service::data::{
   OpReadNeighbors, OpReadNodeScore, OpReadScores, ScoreResult,
   NEIGHBORS_ALL, NEIGHBORS_INBOUND, NEIGHBORS_OUTBOUND,
 };
-use meritrank_service::node_registry::node_kind_from_prefix;
+use meritrank_service::data::NodeKind;
+
+/// The wire still carries a kind filter (compatibility); the service ignores it (D14: one node
+/// class). The helpers keep sending one so that the tests exercise that it is ignored.
+fn node_kind_from_prefix(prefix: &str) -> Option<NodeKind> {
+  match prefix.chars().next() {
+    Some('U') => Some(NodeKind::User),
+    Some('B') => Some(NodeKind::Beacon),
+    Some('C') => Some(NodeKind::Comment),
+    Some('O') => Some(NodeKind::Opinion),
+    _ => None,
+  }
+}
 use meritrank_service::settings::Settings;
 
 // ================================================================
@@ -547,9 +559,11 @@ fn graph_no_direct_connectivity() {
 
   let res = read_graph_helper(&graph, "U1", "U2", false, 0, 10000);
 
-  assert_eq!(res.len(), 1);
-  assert_eq!(res[0].src, "U2");
-  assert_eq!(res[0].dst, "U3");
+  // One node class: B2 is a plain neighbour of the focus, listed directly.
+  assert_eq!(res.len(), 2);
+  let mut pairs: Vec<(&str, &str)> = res.iter().map(|r| (r.src.as_str(), r.dst.as_str())).collect();
+  pairs.sort();
+  assert_eq!(pairs, vec![("U2", "B2"), ("U2", "U3")]);
 }
 
 #[test]
@@ -566,11 +580,13 @@ fn graph_force_connectivity() {
 
   let res = read_graph_helper(&graph, "U1", "U2", false, 0, 10000);
 
-  assert_eq!(res.len(), 2);
+  assert_eq!(res.len(), 3);
   assert_eq!(res[0].src, "U1");
   assert_eq!(res[0].dst, "U2");
-  assert_eq!(res[1].src, "U2");
-  assert_eq!(res[1].dst, "U3");
+  let mut rest: Vec<(&str, &str)> =
+    res[1..].iter().map(|r| (r.src.as_str(), r.dst.as_str())).collect();
+  rest.sort();
+  assert_eq!(rest, vec![("U2", "B2"), ("U2", "U3")]);
 }
 
 // --- Clustering tests ---
@@ -607,6 +623,7 @@ fn five_user_scores_clustering() {
   assert!(res[4].cluster >= 1);
 }
 
+/// The kind filter is ignored: clusters span every node of the frame, the ego included.
 #[test]
 fn five_beacon_scores_clustering() {
   let mut graph = AugGraph::new(Settings {
@@ -624,7 +641,10 @@ fn five_beacon_scores_clustering() {
 
   let res = read_scores(&graph, "U1", "B", true, 100.0, false, -100.0, false, 0, u32::MAX);
 
-  assert_eq!(res.len(), 5);
+  assert_eq!(res.len(), 6, "the ego is listed too: {:?}", res);
+  assert_eq!(res[0].target, "U1");
+  assert_eq!(res[0].cluster, 100);
+  let res: Vec<_> = res.into_iter().skip(1).collect();
 
   assert!(res[0].cluster <= 100);
   assert!(res[0].cluster >= 40);
@@ -666,6 +686,7 @@ fn three_scores_chain_clustering() {
   assert!(res[2].cluster >= 1);
 }
 
+/// One node class: former users, beacons and comments share one set of cluster bounds.
 #[test]
 fn separate_clusters_without_users() {
   let mut graph = default_graph();
@@ -678,10 +699,9 @@ fn separate_clusters_without_users() {
   let res = read_scores(&graph, "U1", "", true, 100.0, false, -100.0, false, 0, u32::MAX);
 
   assert_eq!(res.len(), 3);
-
+  assert_eq!(res[0].target, "U1");
   assert_eq!(res[0].cluster, 100);
-  assert_eq!(res[1].cluster, 100);
-  assert_eq!(res[2].cluster, 100);
+  assert!(res[2].cluster < res[0].cluster, "{:?}", res);
 }
 
 #[test]
@@ -696,10 +716,11 @@ fn separate_clusters_self_score() {
 
   let res = read_scores(&graph, "U1", "U", true, 100.0, false, -100.0, false, 0, u32::MAX);
 
-  assert_eq!(res.len(), 2);
-
+  // The kind filter is ignored: U2, B1 and C1 are all listed, in one cluster set.
+  assert_eq!(res.len(), 4, "{:?}", res);
+  assert_eq!(res[0].target, "U1");
   assert_eq!(res[0].cluster, 100);
-  assert_eq!(res[1].cluster, 1);
+  assert_eq!(res[3].cluster, 1);
 }
 
 // --- Neighbor tests ---
@@ -783,6 +804,7 @@ fn neighbors_non_ego_score() {
   }
 }
 
+/// Owners are gone: no node is moved ahead of better-scored ones.
 #[test]
 fn neighbors_prioritize_ego_owned_objects() {
   let mut graph = default_graph();
@@ -798,10 +820,11 @@ fn neighbors_prioritize_ego_owned_objects() {
     false, 0, 100,
   );
 
+  assert_eq!(neighbors.len(), 2);
   assert_eq!(neighbors[0].ego, "U1");
-  assert_eq!(neighbors[0].target, "O1");
+  assert_eq!(neighbors[0].target, "U2");
   assert_eq!(neighbors[1].ego, "U1");
-  assert_eq!(neighbors[1].target, "U2");
+  assert_eq!(neighbors[1].target, "O1");
 }
 
 #[test]
@@ -823,9 +846,10 @@ fn neighbors_omit_opinions_from_self_to_focus() {
     false, 0, 100,
   );
 
-  assert_eq!(neighbors[0].ego, "U1");
-  assert_eq!(neighbors[0].target, "O2");
-  assert_eq!(neighbors.len(), 1);
+  // No owners: O3 (formerly U3's own opinion) is a plain inbound neighbour too.
+  let mut targets: Vec<&str> = neighbors.iter().map(|n| n.target.as_str()).collect();
+  targets.sort();
+  assert_eq!(targets, vec!["O2", "O3"]);
 }
 
 #[test]
@@ -859,9 +883,10 @@ fn neighbors_opinions_on_ego() {
     100,
   );
 
-  assert_eq!(neighbors[0].ego, "U1");
-  assert_eq!(neighbors[0].target, "O31");
-  assert_eq!(neighbors.len(), 1);
+  // No owners, no kind filter: every inbound neighbour of U1 is listed.
+  let mut targets: Vec<&str> = neighbors.iter().map(|n| n.target.as_str()).collect();
+  targets.sort();
+  assert_eq!(targets, vec!["O12", "O13", "O31"]);
 }
 
 // --- Zero opinion tests ---

@@ -5,37 +5,34 @@ use meritrank_core::{MeritRank, NodeId};
 
 use std::collections::HashMap;
 
+/// A node of the graph. There is one class of nodes (D14): no kinds, no owners.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeInfo {
-  pub id:    NodeId,
-  pub name:  NodeName,
-  pub kind:  NodeKind,
-  pub owner: Option<NodeId>,
+  pub id:   NodeId,
+  pub name: NodeName,
 }
 
 #[derive(Clone)]
 pub struct NodeRegistry {
-  pub name_to_id:   HashMap<NodeName, NodeId>,
-  pub id_to_info:   Vec<NodeInfo>,
-  pub kind_to_ids:  HashMap<NodeKind, Vec<NodeId>>,
-  pub next_id:      NodeId,
+  pub name_to_id: HashMap<NodeName, NodeId>,
+  pub id_to_info: Vec<NodeInfo>,
+  pub next_id:    NodeId,
 }
 
 impl NodeRegistry {
   pub fn new() -> Self {
     Self {
-      name_to_id:  HashMap::new(),
-      id_to_info:  Vec::new(),
-      kind_to_ids: HashMap::new(),
-      next_id:     0,
+      name_to_id: HashMap::new(),
+      id_to_info: Vec::new(),
+      next_id:    0,
     }
   }
 
+  /// The id of `name`, registering it (and its graph node) if it is new.
   pub fn register(
     &mut self,
     mr: &mut MeritRank,
     name: NodeName,
-    kind: NodeKind,
   ) -> NodeId {
     if let Some(&id) = self.name_to_id.get(&name) {
       return id;
@@ -48,46 +45,8 @@ impl NodeRegistry {
       log_error!("Got unexpected node id.");
     }
 
-    let info = NodeInfo {
-      id,
-      name: name.clone(),
-      kind,
-      owner: None,
-    };
-    self.name_to_id.insert(name, id);
-    self.id_to_info.push(info);
-    self.kind_to_ids.entry(kind).or_default().push(id);
-
-    id
-  }
-
-  pub fn register_with_owner(
-    &mut self,
-    mr: &mut MeritRank,
-    name: NodeName,
-    kind: NodeKind,
-    owner: NodeId,
-  ) -> NodeId {
-    if let Some(&id) = self.name_to_id.get(&name) {
-      return id;
-    }
-
-    let id = self.next_id;
-    self.next_id += 1;
-
-    if id != mr.get_new_nodeid() {
-      log_error!("Got unexpected node id.");
-    }
-
-    let info = NodeInfo {
-      id,
-      name: name.clone(),
-      kind,
-      owner: Some(owner),
-    };
-    self.name_to_id.insert(name, id);
-    self.id_to_info.push(info);
-    self.kind_to_ids.entry(kind).or_default().push(id);
+    self.name_to_id.insert(name.clone(), id);
+    self.id_to_info.push(NodeInfo { id, name });
 
     id
   }
@@ -109,25 +68,12 @@ impl NodeRegistry {
       .and_then(|&id| self.id_to_info.get(id))
   }
 
-  pub fn nodes_by_kind(
-    &self,
-    kind: NodeKind,
-  ) -> &[NodeId] {
-    self.kind_to_ids.get(&kind).map(Vec::as_slice).unwrap_or(&[])
+  /// Every registered node, by id.
+  pub fn len(&self) -> usize {
+    self.id_to_info.len()
   }
-}
 
-pub fn node_kind_from_prefix(name: &str) -> Option<NodeKind> {
-  if name.is_empty() {
-    return None;
-  }
-  match name.chars().next() {
-    Some('U') => Some(NodeKind::User),
-    Some('B') => Some(NodeKind::Beacon),
-    Some('C') => Some(NodeKind::Comment),
-    Some('O') => Some(NodeKind::Opinion),
-    Some('V') => Some(NodeKind::PollVariant),
-    Some('P') => Some(NodeKind::Poll),
-    _ => None,
+  pub fn is_empty(&self) -> bool {
+    self.id_to_info.is_empty()
   }
 }

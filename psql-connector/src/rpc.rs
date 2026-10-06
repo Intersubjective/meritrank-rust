@@ -495,7 +495,8 @@ pub fn new_scores(
   ego: &str,
   hide_personal: bool,
   context: &str,
-  kind: &str,
+  // Kept for the SQL signature; ignored (D14: one node class).
+  _kind: &str,
   lt: Option<f64>,
   lte: Option<f64>,
   gt: Option<f64>,
@@ -510,7 +511,8 @@ pub fn new_scores(
     ReqData::ReadScores(OpReadScores {
       ego:           ego.to_string(),
       score_options: FilterOptions {
-        node_kind: kind_from_prefix(kind),
+        // The service has one node class (D14): the kind filter is ignored.
+        node_kind: None,
         hide_personal,
         score_lt,
         score_lte,
@@ -559,7 +561,8 @@ pub fn new_neighbors(
   direction: i64,
   hide_personal: bool,
   context: &str,
-  kind: &str,
+  // Kept for the SQL signature; ignored (D14: one node class).
+  _kind: &str,
   lt: Option<f64>,
   lte: Option<f64>,
   gt: Option<f64>,
@@ -574,7 +577,8 @@ pub fn new_neighbors(
       ego:           ego.to_string(),
       focus:         focus.to_string(),
       direction,
-      kind:          kind_from_prefix(kind),
+      // The service has one node class (D14): the kind filter is ignored.
+      kind:          None,
       hide_personal,
       lt:            score_lt,
       lte:           score_lte,
@@ -733,17 +737,6 @@ fn graph_to_tuples(
     .collect()
 }
 
-fn kind_from_prefix(prefix: &str) -> Option<NodeKind> {
-  match prefix.chars().next() {
-    Some('U') => Some(NodeKind::User),
-    Some('B') => Some(NodeKind::Beacon),
-    Some('C') => Some(NodeKind::Comment),
-    Some('O') => Some(NodeKind::Opinion),
-    Some('V') => Some(NodeKind::PollVariant),
-    Some('P') => Some(NodeKind::Poll),
-    _ => None,
-  }
-}
 
 //  D8 (JOURNAL): map Option<f64> bounds to (value, flag) pairs.
 fn map_bounds(
@@ -991,14 +984,6 @@ mod tests {
     });
     assert!(call_by(&addr, &sync_frame(), within(200)).is_err());
     assert!(take_cached(&addr).is_none());
-  }
-
-  #[test]
-  fn kind_from_prefix_examples() {
-    assert_eq!(kind_from_prefix("U1"), Some(NodeKind::User));
-    assert_eq!(kind_from_prefix("B1"), Some(NodeKind::Beacon));
-    assert_eq!(kind_from_prefix(""), None);
-    assert_eq!(kind_from_prefix("?"), None);
   }
 
   #[test]

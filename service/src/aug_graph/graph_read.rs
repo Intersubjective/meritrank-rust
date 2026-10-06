@@ -1,6 +1,5 @@
 use crate::data::*;
 use crate::helpers::*;
-use crate::node_registry::*;
 use crate::utils::log::*;
 
 use meritrank_core::{constants::EPSILON, NodeId, Weight};
@@ -84,7 +83,6 @@ impl AugGraph {
 
   fn add_shortest_path_to_graph(
     &self,
-    node_infos: &Vec<NodeInfo>,
     ego_id: NodeId,
     focus_id: NodeId,
     indices: &mut HashMap<NodeId, NodeIndex>,
@@ -104,48 +102,11 @@ impl AugGraph {
 
     log_verbose!("Process shortest path.");
 
+    // One node class (D14): every step of the path is an edge of the result.
     for k in 0..ego_to_focus.len().saturating_sub(1) {
       let a = ego_to_focus[k];
       let b = ego_to_focus[k + 1];
-      let a_info_opt = node_infos.get(a);
-      let b_info_opt = node_infos.get(b);
-      let a_b_weight = self.edge_weight_normalized(a, b);
-
-      let a_kind_opt = match a_info_opt {
-        Some(info) => Some(info.kind),
-        None => None,
-      };
-
-      let b_kind_opt = match b_info_opt {
-        Some(info) => Some(info.kind),
-        None => None,
-      };
-
-      if k + 2 == ego_to_focus.len() {
-        if a_kind_opt == Some(NodeKind::User) {
-          edges.push((a, b, a_b_weight));
-        } else {
-          log_verbose!("Ignore node: {:?}", node_infos[a].name);
-        }
-      } else if b_kind_opt != Some(NodeKind::User) {
-        log_verbose!("Ignore node: {:?}", node_infos[b].name);
-        if k + 2 < ego_to_focus.len() {
-          let c = ego_to_focus[k + 2];
-          let b_c_weight = self.edge_weight_normalized(b, c);
-          let a_c_weight = a_b_weight
-            * b_c_weight
-            * if a_b_weight < 0.0 && b_c_weight < 0.0 {
-              -1.0
-            } else {
-              1.0
-            };
-          edges.push((a, c, a_c_weight));
-        }
-      } else if a_kind_opt == Some(NodeKind::User) {
-        edges.push((a, b, a_b_weight));
-      } else {
-        log_verbose!("Ignore node: {:?}", node_infos[a].name);
-      }
+      edges.push((a, b, self.edge_weight_normalized(a, b)));
     }
 
     log_verbose!("Add path to the graph.");
@@ -204,63 +165,17 @@ impl AugGraph {
     im_graph: &mut DiGraph<NodeId, Weight>,
     indices: &mut HashMap<NodeId, NodeIndex>,
     ids: &mut HashMap<NodeIndex, NodeId>,
-    node_infos: &Vec<NodeInfo>,
     positive_only: bool,
     focus_neighbors: &[(NodeId, Weight)],
   ) {
     log_trace!();
 
     for (dst_id, focus_dst_weight) in focus_neighbors.iter() {
-      let dst_kind_opt = match node_infos.get(*dst_id) {
-        Some(x) => Some(x.kind),
-        None => None,
-      };
-
       if positive_only && *focus_dst_weight <= 0.0 {
         continue;
       }
-
-      if dst_kind_opt == Some(NodeKind::User) {
-        add_edge_if_valid(
-          im_graph,
-          indices,
-          ids,
-          focus_id,
-          *dst_id,
-          *focus_dst_weight,
-        );
-      } else if dst_kind_opt == Some(NodeKind::Comment)
-        || dst_kind_opt == Some(NodeKind::Beacon)
-        || dst_kind_opt == Some(NodeKind::Opinion)
-      {
-        let dst_neighbors = self.all_outbound_neighbors_normalized(*dst_id);
-        for (ngh_id, dst_ngh_weight) in dst_neighbors {
-          if (positive_only && dst_ngh_weight <= 0.0)
-            || ngh_id == focus_id
-            || match node_infos.get(ngh_id) {
-              Some(x) => Some(x.kind),
-              None => None,
-            } != Some(NodeKind::User)
-          {
-            continue;
-          }
-          let focus_ngh_weight = (*focus_dst_weight)
-            * dst_ngh_weight
-            * if *focus_dst_weight < 0.0 && dst_ngh_weight < 0.0 {
-              -1.0
-            } else {
-              1.0
-            };
-          add_edge_if_valid(
-            im_graph,
-            indices,
-            ids,
-            focus_id,
-            ngh_id,
-            focus_ngh_weight,
-          );
-        }
-      }
+      // One node class (D14): every neighbour is listed directly.
+      add_edge_if_valid(im_graph, indices, ids, focus_id, *dst_id, *focus_dst_weight);
     }
   }
 
@@ -275,10 +190,7 @@ impl AugGraph {
         let (score_value_of_dst, score_cluster_of_dst) =
           self.fetch_score(ego_id, dst_id);
         let (score_value_of_ego, score_cluster_of_ego) =
-          match self.get_object_owner(dst_id) {
-            Some(dst_owner_id) => self.fetch_score_clustered(dst_owner_id, ego_id),
-            None => (0.0, 0),
-          };
+          self.fetch_score_clustered(dst_id, ego_id);
 
         GraphResult {
           src:             self.nodes.id_to_info[src_id].name.clone(),
@@ -364,13 +276,6 @@ impl AugGraph {
         },
       };
 
-    if let Some(ego_info) = self.nodes.get_by_name(ego_str) {
-      if !self.ensure_ego_is_user(ego_str, ego_info) {
-        return vec![];
-      }
-    }
-
-    let node_infos = self.nodes.id_to_info.clone();
     let force_read_graph_conn = self.settings.force_read_graph_conn;
 
     let mut path_edges = if ego_id == focus_id {
@@ -378,7 +283,6 @@ impl AugGraph {
       vec![]
     } else {
       self.add_shortest_path_to_graph(
-        &node_infos,
         ego_id,
         focus_id,
         &mut indices,
@@ -408,7 +312,6 @@ impl AugGraph {
       &mut im_graph,
       &mut indices,
       &mut ids,
-      &node_infos,
       positive_only,
       &focus_neighbors,
     );

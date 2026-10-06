@@ -213,6 +213,62 @@ once, on a fresh connection within the same deadline. The cached connection is t
 out for the call and returned only after a complete exchange. `mr_rpc_attempts()` reports
 the request frames this backend has sent, retries included.
 
+### D14 — One node class, isolated contexts, reverse-score snapshots (meritrank_service 0.12.0)
+
+**Context**: a reverse score (the ego's score in a peer's frame) needs the peer's frame. When one
+read's peers exceed `MERITRANK_WALKS_CACHE_SIZE`, `ego_read` pinned them in portions that evicted
+each other, so every such read recalculated them (owner's dense graph: ~5–6 s per warm
+`ReadMutualScores` with a cache of 200). The previous score cache had been removed (S7) because
+it served stale values. Separately, node kinds and owners were obsolete in the product, and the
+fan-out of user edges into every context made contexts non-isolated.
+
+**Decision**:
+1. *One node class.* No kinds, no owners: any non-empty name is a node; any node is an ego; the
+   reverse score of a target X is the ego's score in X's frame. `kind` and `hide_personal` stay in
+   the wire types and SQL signatures (old clients decode) and are ignored. Clusters are computed
+   over every node. The unused `service/src/legacy/` is removed.
+2. *Isolated contexts.* A write reaches only the context it names; the null context aggregates
+   nothing; a new context starts empty; bulk load sends each edge to its own context. Walls are
+   valid between any nodes, in any context.
+3. *Reverse-score snapshots.* A reverse score comes from the peer's resident frame, else from a
+   snapshot (raw scores + footprint with visit counts), else from a frame sampled by the read
+   itself, outside the walk storage (`MeritRank::sample_frame`, `MERITRANK_ON_DEMAND_NUM_WALKS`
+   walks). The read runs under one read guard of the published copy on a blocking thread; before
+   it returns, its samples (with the cluster bounds it computed) are enqueued as
+   `AdmitSnapshots`. Admission is validated against a log of the graph's mutations since the
+   read's `(epoch, applied_seq)`. A warm read (no missing peer) runs on the request's task; a
+   read with missing peers samples them in chunks of 32, each under its own short read guard
+   (the writer's replay into the copy waits at most one chunk: max 39 ms on the dense
+   benchmark instead of 1.35 s), then assembles the answer under one guard, keeping a chunk's
+   sample only if the same mutation-log check passes. Evicting a frame keeps it as a snapshot (same revision). The
+   store is replicated state (changed only in `apply_op`), FIFO within a byte quota per copy.
+4. *Validity.* Strict (`c = 0`): any change of a positive out-edge of a footprint node, or a wall
+   change of the owner, drops the snapshot — then a snapshot always equals a fresh calculation.
+   Heuristic (`c > 0`, owner's choice: honest heuristic, no guarantee): drift
+   `(1+λ)·α·tv·visits(S)/n` per change, threshold `c·(1+λ)·sqrt(ln(2/δ)/(2n))`; changes outside
+   the sampled footprint are not seen (Astra's counterexample, kept as a test).
+5. *One frame arithmetic.* `core/src/frame.rs`: one walk generator, one contribution rule, one
+   canonical counter type (blame as an integer histogram over depth, so incremental counters equal
+   a recount bit for bit; numerically this changes blame sums in their last bits versus 0.12), one
+   score formula. Fresh frames (calculations and samples) are seeded per (seed, subgraph, ego): a
+   sample of n walks is the first n walks of a calculation. Golden sample hash
+   `0x0bfa_1199_1414_1729` (`core/tests/test_frame.rs`, T5) — update it only with a deliberate
+   change of generation or accounting, and record why here.
+6. *Revisions* replace generations: they change when the estimate changes (calculation, repair,
+   invalidation, admission), not on eviction; cluster bounds are keyed by (ego, revision,
+   zero-opinion revision).
+
+**Rejected**: per-pair score caches with TTL (S7 again); reverse reachability as invalidation
+(O(V+E) per write, invalidates whole components); a global write epoch; frames of several sizes in
+one walk storage (allocator rework, fragmentation); statistical-only equivalence tests.
+
+**Settings**: `MERITRANK_SNAPSHOTS_MB` (256, process-wide, both copies), `MERITRANK_ON_DEMAND_NUM_WALKS`
+(1000), `MERITRANK_SNAPSHOT_STALENESS` (1.0), `MERITRANK_SAMPLING_CONCURRENCY`,
+`MERITRANK_ADMIT_QUEUE_MB` (256; the architecture draft said 64, raised after the dense benchmark:
+one cold read of the heavy ego offers ~110 MB of samples). A read samples only when a peer has
+neither a frame nor a snapshot: a warm read runs on the request's task and takes no sampling slot. Versions: meritrank_core 0.13.0 (`get_personal_hits` removed in
+favour of `credits_of`; counters canonical), meritrank_service 0.12.0, pgmer2 0.9.0.
+
 ---
 
 ## Phase log

@@ -236,7 +236,7 @@ async fn s1_buffer_copies_are_replicas() {
 }
 
 // ---------------------------------------------------------------------------
-// S2: fanned-out User→User writes must reach every context in one order
+// S2 (D14): concurrent writes to one context keep one order in both copies; no fan-out
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
@@ -250,30 +250,30 @@ async fn s2_user_edges_reach_contexts_in_one_order() {
     let mut js = JoinSet::new();
     for i in 1..=16 {
       let p = Arc::clone(&proc);
-      js.spawn(async move { write(&p, "", "U1", "U2", i as f64).await });
+      js.spawn(async move { write(&p, "X", "U1", "U2", i as f64).await });
     }
     while let Some(r) = js.join_next().await {
       r.unwrap();
     }
     sync(&proc, 1_000 + trial).await;
 
-    let weights: Vec<_> = ["", "X", "Y", "Z"]
-      .iter()
-      .map(|ctx| {
-        let proc = Arc::clone(&proc);
-        async move { weight_of(&edges(&proc, ctx).await, "U1", "U2") }
-      })
-      .collect();
-    let mut ws = vec![];
-    for w in weights {
-      ws.push(w.await);
+    // Isolated contexts: the writes reached X only, in one order in both copies.
+    assert!(weight_of(&edges(&proc, "X").await, "U1", "U2").is_some(), "trial {trial}");
+    let [a, b] = proc.subgraphs_map.get("X").unwrap().copies();
+    let weight = |g: &AugGraph| {
+      let (s, d) = (g.nodes.get_by_name("U1").unwrap().id, g.nodes.get_by_name("U2").unwrap().id);
+      g.mr.graph.edge_weight(s, d).ok().flatten()
+    };
+    for _ in 0..200 {
+      if a.read().applied_seq == b.read().applied_seq {
+        break;
+      }
+      tokio::time::sleep(Duration::from_millis(5)).await;
     }
-    let first = ws[0];
-    assert!(
-      ws.iter().all(|w| *w == first),
-      "trial {trial}: contexts disagree on U1→U2: {:?}",
-      ws
-    );
+    assert_eq!(weight(&a.read()), weight(&b.read()), "trial {trial}: copies diverged");
+    for ctx in ["", "Y", "Z"] {
+      assert_eq!(weight_of(&edges(&proc, ctx).await, "U1", "U2"), None, "trial {trial}: {ctx:?}");
+    }
   }
 }
 
@@ -549,25 +549,23 @@ fn s12_same_seed_same_scores() {
 // Phase 3: barrier, context seeding, batch calculation
 // ---------------------------------------------------------------------------
 
-/// A context created implicitly by a write (not by `WriteCreateContext`) is seeded with the
-/// User→User edges already in the null context, and `mr_sync` covers it.
+/// A context created implicitly by a write (not by `WriteCreateContext`) holds exactly its own
+/// writes (D14: no seeding from the null context), and `mr_sync` covers it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn implicit_context_is_seeded_and_synced() {
   let proc = MultiGraphProcessor::new(settings(100));
   write(&proc, "", "U1", "U2", 1.0).await;
   write(&proc, "", "U2", "U3", 2.0).await;
-  // A non-user edge into a context that does not exist yet creates it.
   write(&proc, "Q", "B1", "U1", 1.0).await;
   sync(&proc, 1).await;
 
   let q = edges(&proc, "Q").await;
-  assert!(weight_of(&q, "U1", "U2").is_some(), "Q not seeded: {:?}", q);
-  assert!(weight_of(&q, "U2", "U3").is_some(), "Q not seeded: {:?}", q);
+  assert_eq!(q.len(), 1, "Q must hold only its own edge: {:?}", q);
   assert!(weight_of(&q, "B1", "U1").is_some(), "Q lost its own edge: {:?}", q);
 }
 
-/// Concurrent User→User writes while a context is being created: once synced, the new context
-/// agrees with the null context on every edge.
+/// Concurrent writes to the null context while a context is being created: once synced, the new
+/// context is empty and the null context has every edge.
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn context_created_during_writes_agrees_with_null_context() {
   for trial in 0..20 {
@@ -588,14 +586,8 @@ async fn context_created_during_writes_agrees_with_null_context() {
       r.unwrap();
     }
     sync(&proc, 1).await;
-    let mut null: Vec<_> = edges(&proc, "").await;
-    let mut n: Vec<_> = edges(&proc, "N").await;
-    null.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
-    n.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
-    let key = |v: &[(String, String, f64)]| {
-      v.iter().map(|(s, d, _)| (s.clone(), d.clone())).collect::<Vec<_>>()
-    };
-    assert_eq!(key(&null), key(&n), "trial {trial}: edge sets differ");
+    assert_eq!(edges(&proc, "").await.len(), 7, "trial {trial}");
+    assert!(edges(&proc, "N").await.is_empty(), "trial {trial}: N inherited edges");
   }
 }
 
@@ -860,15 +852,24 @@ async fn concurrent_bulk_loads_do_not_merge() {
   }
 }
 
-/// Reverse scores of objects are taken from their owners' frames; with more owners than the walk
-/// cache, the portions must match rows by owner, not by the object's own name.
+/// D14: no owners — a former object's reverse score is the ego's score in the object's own
+/// frame; with more such peers than the walk cache, every row still gets it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn object_reverse_scores_survive_portions() {
-  let proc = MultiGraphProcessor::new(cache_settings(2_000, 1));
+  // Without snapshots the peers' frames are pinned in portions (the path kept for
+  // MERITRANK_SNAPSHOTS_MB=0); with them, they are sampled.
+  for snapshots_mb in [0, 256] {
+    object_reverse_scores_survive_portions_with(snapshots_mb).await;
+  }
+}
+
+async fn object_reverse_scores_survive_portions_with(snapshots_mb: usize) {
+  let proc =
+    MultiGraphProcessor::new(Settings { snapshots_mb, ..cache_settings(2_000, 1) });
   for (o, u) in [("B1", "U1"), ("B2", "U2"), ("B3", "U3")] {
-    write(&proc, "", o, u, 1.0).await; // object → owner
+    write(&proc, "", o, u, 1.0).await; // object → user
     write(&proc, "", "U0", o, 1.0).await; // the ego likes the object
-    write(&proc, "", u, "U0", 1.0).await; // the owner trusts the ego
+    write(&proc, "", u, "U0", 1.0).await; // the user trusts the ego
   }
   sync(&proc, 1).await;
   let rows = mutual(
@@ -884,6 +885,7 @@ async fn object_reverse_scores_survive_portions() {
   );
   for o in ["B1", "B2", "B3"] {
     let r = rows.iter().find(|r| r.target == o).unwrap_or_else(|| panic!("{o} row: {:?}", rows));
+    // Bx → Ux → U0: the ego is reached from the object's own frame.
     assert!(r.reverse_score > 0.0, "{o}: reverse score lost: {:?}", r);
   }
 }

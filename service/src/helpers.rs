@@ -173,46 +173,22 @@ pub fn extract_unique_edges_from_graph_data(
   edge_ids
 }
 
+/// Filters by score bounds and sorts by |score|, descending. The kind filter and
+/// `hide_personal` are ignored (D14: one node class, no owners).
 pub fn filter_and_sort_scores(
   scores: Vec<(NodeInfo, NodeScore, NodeCluster)>,
-  ego_info: &NodeInfo,
   filter_options: &FilterOptions,
 ) -> Vec<(NodeInfo, NodeScore, NodeCluster)> {
   let mut filtered_scores: Vec<(NodeInfo, NodeScore, NodeCluster)> = scores
     .into_iter()
-    .filter(|(node_info, score, _)| {
-      // Apply kind filter
-      filter_options
-        .node_kind
-        .map_or(true, |filter_kind| node_info.kind == filter_kind)
-        && !(filter_options.hide_personal
-          && node_info.owner == Some(ego_info.id))
-        && {
-          // Apply score filters
-          (*score > filter_options.score_gt
-            || (!filter_options.score_gte && *score >= filter_options.score_gt))
-            && (*score < filter_options.score_lt
-              || (!filter_options.score_lte
-                && *score <= filter_options.score_lt))
-        }
+    .filter(|(_, score, _)| {
+      (*score > filter_options.score_gt
+        || (!filter_options.score_gte && *score >= filter_options.score_gt))
+        && (*score < filter_options.score_lt
+          || (!filter_options.score_lte && *score <= filter_options.score_lt))
     })
     .collect();
 
   filtered_scores.sort_by(|(_, a, _), (_, b, _)| b.abs().total_cmp(&a.abs()));
   filtered_scores
-}
-
-pub fn prioritize_ego_owned_items(
-  items: &mut Vec<(NodeInfo, NodeScore, NodeCluster)>,
-  ego_info: &NodeInfo,
-) {
-  let mut insert_index = 0;
-  for i in 0..items.len() {
-    if let Some(owner) = items[i].0.owner {
-      if owner == ego_info.id {
-        items.swap(i, insert_index);
-        insert_index += 1;
-      }
-    }
-  }
 }

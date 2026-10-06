@@ -1,5 +1,4 @@
 use crate::data::*;
-use crate::node_registry::*;
 use crate::utils::log::*;
 use crate::vsids::Magnitude;
 
@@ -140,26 +139,12 @@ impl AugGraph {
   ) {
     log_trace!("{:?} {:?} {}", src, dst, amount);
 
-    if amount < 0.0 && !is_user_to_user(&src, &dst) {
-      log_error!(
-        "A negative weight (wall) is allowed only on User→User edges: {} -> {}",
-        src,
-        dst
-      );
-      return;
-    }
-    match self.reg_owner_and_get_ids(src.clone(), dst.clone()) {
+    match self.register_edge_ends(src, dst) {
       Ok((src_id, dst_id)) => {
         self.set_edge_by_id(src_id, dst_id, amount, magnitude);
       },
-      Err(e) => match e {
-        AugGraphError::SelfReference => {
-          log_error!("Self-reference is not allowed.")
-        },
-        AugGraphError::IncorrectNodeKinds(s, d) => {
-          log_error!("Incorrect node kinds combination {} -> {}.", s, d)
-        },
-      },
+      Err(AugGraphError::SelfReference) => log_error!("Self-reference is not allowed."),
+      Err(AugGraphError::EmptyName) => log_error!("Empty node name is not allowed."),
     }
   }
 
@@ -171,101 +156,57 @@ impl AugGraph {
   ) {
     self.mr.clear_walks();
     for edge in edges {
-      match self.reg_owner_and_get_ids(edge.src.clone(), edge.dst.clone()) {
+      match self.register_edge_ends(edge.src, edge.dst) {
         Ok((src_id, dst_id)) => {
           self.set_edge_by_id(src_id, dst_id, edge.amount, edge.magnitude);
         },
-        Err(e) => match e {
-          AugGraphError::SelfReference => {
-            log_error!("Bulk load: self-reference skipped");
-          },
-          AugGraphError::IncorrectNodeKinds(s, d) => {
-            log_error!("Bulk load: bad node kinds {} -> {}, skipped", s, d);
-          },
-        },
+        Err(AugGraphError::SelfReference) => log_error!("Bulk load: self-reference skipped"),
+        Err(AugGraphError::EmptyName) => log_error!("Bulk load: empty node name skipped"),
       }
     }
   }
 
-  pub(crate) fn reg_owner_and_get_ids(
+  /// Registers both ends of an edge (one node class: any non-empty name).
+  pub(crate) fn register_edge_ends(
     &mut self,
     src: NodeName,
     dst: NodeName,
   ) -> Result<(NodeId, NodeId), AugGraphError> {
+    if src.is_empty() || dst.is_empty() {
+      return Err(AugGraphError::EmptyName);
+    }
     if src == dst {
       return Err(AugGraphError::SelfReference);
     }
-
-    let opt_src_kind = node_kind_from_prefix(&src);
-    let opt_dst_kind = node_kind_from_prefix(&dst);
-
-    match (opt_src_kind, opt_dst_kind) {
-      (Some(NodeKind::User), Some(NodeKind::User)) => {
-        let src_id = self.nodes.register(&mut self.mr, src, NodeKind::User);
-        let dst_id = self.nodes.register(&mut self.mr, dst, NodeKind::User);
-        Ok((src_id, dst_id))
-      },
-      (Some(src_kind), Some(NodeKind::User)) => {
-        let dst_id = self.nodes.register(&mut self.mr, dst, NodeKind::User);
-        let src_id =
-          self
-            .nodes
-            .register_with_owner(&mut self.mr, src, src_kind, dst_id);
-        Ok((src_id, dst_id))
-      },
-      (Some(NodeKind::User), Some(dst_kind)) => {
-        let src_id = self.nodes.register(&mut self.mr, src, NodeKind::User);
-        let dst_id = self.nodes.register(&mut self.mr, dst, dst_kind);
-        Ok((src_id, dst_id))
-      },
-      (Some(_), Some(_)) => Err(AugGraphError::IncorrectNodeKinds(src, dst)),
-      _ => Err(AugGraphError::IncorrectNodeKinds(src, dst)),
-    }
+    let src_id = self.nodes.register(&mut self.mr, src);
+    let dst_id = self.nodes.register(&mut self.mr, dst);
+    Ok((src_id, dst_id))
   }
-}
-
-/// A wall (negative weight) may only be set between two users (R2).
-pub fn is_user_to_user(
-  src: &str,
-  dst: &str,
-) -> bool {
-  node_kind_from_prefix(src) == Some(NodeKind::User)
-    && node_kind_from_prefix(dst) == Some(NodeKind::User)
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::data::NodeKind;
   use crate::settings::Settings;
 
   #[test]
-  fn ownership_assigned_on_nonuser_to_user_edge() {
+  fn any_names_register_as_plain_nodes() {
     let mut aug = AugGraph::new(Settings::default());
     aug.set_edge("O1".into(), "U1".into(), 1.0, 0);
-
-    let o1 = aug.nodes.get_by_name("O1").unwrap();
-    let u1 = aug.nodes.get_by_name("U1").unwrap();
-    assert_eq!(o1.kind, NodeKind::Opinion);
-    assert_eq!(o1.owner, Some(u1.id));
-    assert_eq!(u1.kind, NodeKind::User);
-    assert_eq!(u1.owner, None);
-
-    assert_eq!(aug.get_object_owner(o1.id), Some(u1.id));
-    assert_eq!(aug.get_object_owner(u1.id), Some(u1.id));
+    aug.set_edge("alice".into(), "B7".into(), -0.5, 0);
+    for n in ["O1", "U1", "alice", "B7"] {
+      assert!(aug.nodes.get_by_name(n).is_some(), "{n}");
+    }
+    let (a, b) = (aug.nodes.get_by_name("alice").unwrap().id, aug.nodes.get_by_name("B7").unwrap().id);
+    assert_eq!(aug.mr.graph.edge_weight(a, b).unwrap(), Some(-0.5), "a wall between any nodes");
   }
 
   #[test]
-  fn ownership_stable_across_subsequent_edges() {
+  fn empty_names_and_self_edges_are_rejected() {
     let mut aug = AugGraph::new(Settings::default());
-    aug.set_edge("O1".into(), "U1".into(), 1.0, 0);
-    aug.set_edge("O1".into(), "U2".into(), 1.0, 0);
-
-    let o1 = aug.nodes.get_by_name("O1").unwrap();
-    let u1 = aug.nodes.get_by_name("U1").unwrap();
-    let u2 = aug.nodes.get_by_name("U2").unwrap();
-    assert_eq!(o1.owner, Some(u1.id));
-    assert_eq!(u2.owner, None);
+    aug.set_edge("".into(), "U1".into(), 1.0, 0);
+    aug.set_edge("U1".into(), "U1".into(), 1.0, 0);
+    assert!(aug.nodes.is_empty());
   }
 
   fn default_graph() -> AugGraph {

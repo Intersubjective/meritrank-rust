@@ -7,13 +7,54 @@ use super::AugGraph;
 
 impl AugGraph {
   /// Apply a single operation to this graph (immutable ref to op; used by double-buffered processor).
+  /// Prefer `apply_seq_op`, which also reseeds the operation's stream and records its number.
   pub fn apply_op(
     &mut self,
     op: &AugGraphOp,
   ) {
     log_command!("{:?}", op);
-    self.apply_op_inner(op);
-    self.bump_generations();
+    // TV is needed only by the staleness heuristic, and only when there is a snapshot to age.
+    let track = self.settings.snapshot_staleness > 0.0
+      && !self.snapshots.is_empty()
+      && !matches!(op, AugGraphOp::BulkLoadEdges(_));
+    self.mr.set_tv_tracking(track);
+    if let AugGraphOp::ClearEgo(ego) = op {
+      // Eviction keeps the frame's content as a snapshot.
+      self.capture_frame(*ego);
+    }
+
+    // Deleting a node is a hard event for its snapshot (and for samples of it in flight).
+    let deleted = match op {
+      AugGraphOp::DeleteNode(name) => self.nodes.get_by_name(name).map(|i| i.id),
+      _ => None,
+    };
+
+    // A panicking operation may have changed the graph partly: its mutations are still absorbed
+    // before the panic goes on (strict snapshots must never outlive a change).
+    let outcome =
+      std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.apply_op_inner(op)));
+
+    let mut mutations = self.mr.take_mutations();
+    if let Some(d) = deleted {
+      if let Err(i) = mutations.wall_owners.binary_search(&d) {
+        mutations.wall_owners.insert(i, d);
+      }
+    }
+    let dirty = self.mr.take_dirty_egos();
+    match op {
+      AugGraphOp::BulkLoadEdges(_) => self.clear_snapshots(),
+      _ => self.absorb_mutations(&mutations),
+    }
+    for ego in dirty {
+      // Eviction is not a new estimate: the snapshot holds the same content.
+      if matches!(op, AugGraphOp::ClearEgo(e) if *e == ego) {
+        continue;
+      }
+      self.bump_revision(ego);
+    }
+    if let Err(panic) = outcome {
+      std::panic::resume_unwind(panic);
+    }
   }
 
   fn apply_op_inner(
@@ -22,7 +63,14 @@ impl AugGraph {
   ) {
     match op {
       AugGraphOp::WriteReset => {
-        *self = AugGraph::new(self.settings.clone());
+        // A new incarnation: both copies derive the same epoch from the operation.
+        let (stream, seq) = (self.stream, self.applied_seq);
+        let epoch = super::mix64(self.epoch ^ super::mix64(seq));
+        let quota = self.snapshots.quota();
+        *self = AugGraph::build_reset(self.settings.clone(), stream, epoch);
+        self.applied_seq = seq;
+        self.set_snapshot_quota(quota);
+        self.clear_snapshots();
       },
       AugGraphOp::WriteEdge(OpWriteEdge {
         src,
@@ -97,6 +145,8 @@ impl AugGraph {
           self.ensure_calculated(*ego);
         }
       },
+      AugGraphOp::AdmitSnapshots(batch) => self.admit(batch),
+      AugGraphOp::SetSnapshotQuota(quota) => self.set_snapshot_quota(*quota),
     }
   }
 }

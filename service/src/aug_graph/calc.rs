@@ -1,5 +1,4 @@
 use crate::data::*;
-use crate::node_registry::*;
 use crate::utils::log::*;
 
 use meritrank_core::NodeId;
@@ -7,47 +6,44 @@ use meritrank_core::NodeId;
 use super::AugGraph;
 
 impl AugGraph {
+  /// An explicit (re)calculation of the ego's frame, registering it if it is new. Fresh frames
+  /// are seeded per ego (D14): on an unchanged graph the frame is reproduced exactly.
   pub fn calculate(
     &mut self,
     ego: NodeName,
   ) {
     log_trace!("{:?}", ego);
-
-    let kind = match node_kind_from_prefix(&ego) {
-      Some(x) => x,
-      None => {
-        log_error!("Failed to get node kind for {:?}", ego);
-        return;
-      },
-    };
-
-    if kind != NodeKind::User {
-      log_error!("Non-user node used as ego for calculation (rejected): {:?}", ego);
+    if ego.is_empty() {
+      log_error!("Empty node name used as ego (rejected)");
       return;
     }
-
-    let ego_id = self.nodes.register(&mut self.mr, ego, kind);
-
-    match self.mr.calculate(ego_id) {
-      Ok(_) => {},
-      Err(e) => log_error!("{}", e),
-    };
+    let ego_id = self.nodes.register(&mut self.mr, ego);
+    self.calculate_fresh(ego_id);
   }
 
-  /// Calculates the ego unless it already is. Unknown or non-user egos are ignored.
+  /// Calculates the ego unless it already is. Unknown egos are ignored.
   pub fn ensure_calculated(
     &mut self,
     ego_id: NodeId,
   ) {
-    match self.nodes.get_by_id(ego_id) {
-      Some(info) if info.kind == NodeKind::User => {},
-      _ => return,
-    }
-    if self.mr.is_calculated(ego_id) {
+    if self.nodes.get_by_id(ego_id).is_none() || self.mr.is_calculated(ego_id) {
       return;
     }
-    if let Err(e) = self.mr.calculate(ego_id) {
-      log_error!("{}", e);
+    self.calculate_fresh(ego_id);
+  }
+
+  fn calculate_fresh(
+    &mut self,
+    ego_id: NodeId,
+  ) {
+    let seed = self.fresh_seed(ego_id);
+    match self.mr.calculate_seeded(ego_id, seed) {
+      Ok(_) => {
+        self.counters.frames_calculated += 1;
+        // The resident frame is authoritative now.
+        self.drop_snapshot(ego_id);
+      },
+      Err(e) => log_error!("{}", e),
     }
   }
 }
