@@ -271,6 +271,19 @@ favour of `credits_of`; counters canonical), meritrank_service 0.12.0, pgmer2 0.
 
 ---
 
+### D15 — Extension upgrade paths across minor versions (pgmer2 0.9.1)
+
+**Context**: `generate_scripts.sh` built update scripts only by decrementing the last version
+component, so 0.9.0 shipped paths from `0.9.-1` … `0.9.-4` and none from 0.8.x. Tentura runs
+`ALTER EXTENSION pgmer2 UPDATE` at startup; on a database at 0.8.3 it failed with "no update path".
+
+**Decision**: the extension script is a full `CREATE OR REPLACE` of every function, so it serves as
+the update script from any earlier version. Generate paths from every earlier patch of the current
+minor and from patches 0..19 of the two previous minors; a major bump lists extra sources in
+`EXTRA_UPGRADE_FROM`. Verified by updating a 0.8.3 database with the 0.9.0 script (26 functions).
+
+---
+
 ## Phase log
 
 | Phase | Status | Notes |
