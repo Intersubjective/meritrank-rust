@@ -161,11 +161,16 @@ pub struct OpWriteFetchNewEdges {
 
 /// Samples taken by a read, offered to the snapshot store (D14). Valid only for the processor
 /// incarnation `epoch` and the graph state after operation `base_seq`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AdmitBatch {
-  pub epoch:    u64,
-  pub base_seq: u64,
-  pub samples:  std::sync::Arc<Vec<meritrank_core::FrameSample>>,
+  pub epoch:         u64,
+  pub base_seq:      u64,
+  pub samples:       std::sync::Arc<Vec<meritrank_core::FrameSample>>,
+  /// Cluster bounds the read computed from the samples (aligned with `samples`), valid for the
+  /// zero-opinion revision `zero_revision`; stored with the snapshots so that no buffer copy has
+  /// to recompute them.
+  pub bounds:        std::sync::Arc<Vec<Option<Vec<f64>>>>,
+  pub zero_revision: u64,
 }
 
 /// Internal to a subgraph's worker; never on the wire.

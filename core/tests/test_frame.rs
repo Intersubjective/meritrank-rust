@@ -40,6 +40,7 @@ const PARAMS: &[Params] = &[
   Params { alpha: 0.5, discredit: 1.0, decay: 0.0, radius: BlameRadius::Prefix },
   Params { alpha: 0.95, discredit: 2.0, decay: 1.0, radius: BlameRadius::Prefix },
   Params { alpha: 0.85, discredit: 1.0, decay: 0.8, radius: BlameRadius::Voucher },
+  Params { alpha: 0.85, discredit: 1.0, decay: 1e-200, radius: BlameRadius::Prefix },
 ];
 
 fn new_rank(
@@ -303,6 +304,23 @@ fn t1_smaller_sample_is_the_first_walks_of_a_frame() {
   }
 }
 
+/// A frame calculated into a reused block (after other egos were calculated and evicted) is the
+/// same as the sample: nothing of the block's previous content leaks.
+#[test]
+fn t1_reused_block_equals_sample() {
+  let p = PARAMS[1];
+  let mut mr = random_graph(9, 30, 250, p);
+  mr.calculate_seeded(5, 1).unwrap();
+  mr.calculate_seeded(6, 2).unwrap();
+  mr.clear_ego(5).unwrap();
+  mr.calculate_seeded(7, 3).unwrap(); // takes 5's block
+  mr.calculate_seeded(6, 4).unwrap(); // recalculated in place
+  for (ego, seed) in [(7usize, 3u64), (6, 4)] {
+    let sample = mr.sample_frame(ego, 250, seed).unwrap();
+    assert_eq!(Some(&sample), mr.frame_sample(ego).as_ref(), "ego {ego}");
+  }
+}
+
 #[test]
 fn t1_seeded_calculation_ignores_the_resident_stream() {
   let p = PARAMS[0];
@@ -385,9 +403,7 @@ fn t3_frame_copy_scores_as_the_frame() {
     }
     let mut all = mr.get_all_scores(0, None).unwrap();
     all.sort_by_key(|(n, _)| *n);
-    let mut from_copy = copy.scores(p.discredit, p.decay);
-    from_copy.retain(|(n, _)| all.iter().any(|(m, _)| m == n));
-    assert_eq!(bits(&from_copy), bits(&all));
+    assert_eq!(bits(&copy.scores(p.discredit, p.decay)), bits(&all));
   }
 }
 
@@ -415,15 +431,22 @@ fn credits_of_matches_counters() {
 #[test]
 fn t4_repaired_frame_agrees_with_fresh_samples() {
   const W: usize = 20_000;
-  let p = Params { alpha: 0.85, discredit: 0.0, decay: 0.8, radius: BlameRadius::Prefix };
+  let p = Params { alpha: 0.85, discredit: 1.0, decay: 0.8, radius: BlameRadius::Prefix };
   for seed in 0..3u64 {
     let mut mr = random_graph(seed, 30, W, p);
     mr.calculate_seeded(0, seed).unwrap();
     let mut rng = StdRng::seed_from_u64(seed + 77);
-    for _ in 0..25 {
-      let src = rng.random_range(0..30);
+    for step in 0..25 {
+      let src = if step % 5 == 0 { 0 } else { rng.random_range(0..30) };
       let dst = (src + rng.random_range(1..30)) % 30;
-      let w = if rng.random::<f64>() < 0.3 { 0.0 } else { rng.random_range(0.1..3.0) };
+      // Every fifth write is a wall of the frame's own ego (raised, lowered, removed).
+      let w = if step % 5 == 0 {
+        -rng.random_range(0.0..1.5)
+      } else if rng.random::<f64>() < 0.3 {
+        0.0
+      } else {
+        rng.random_range(0.1..3.0)
+      };
       mr.set_edge(src, dst, w).unwrap();
     }
     let fresh = mr.sample_frame(0, W, 10_000 + seed).unwrap();
@@ -434,6 +457,11 @@ fn t4_repaired_frame_agrees_with_fresh_samples() {
       let q = (a + b) / 2.0;
       let se = (2.0 * q * (1.0 - q) / W as f64).sqrt().max(1e-9);
       assert!((a - b).abs() <= 5.0 * se, "seed {seed} node {node}: {a} vs {b}");
+      // Blame per walk lies in [0, 1]: the same bound holds for its mean.
+      let (x, y) = (kept.blame_sum(node, p.decay) / W as f64, fresh.counters.blame_sum(node, p.decay) / W as f64);
+      let q = ((x + y) / 2.0).clamp(0.0, 1.0);
+      let se = (2.0 * q * (1.0 - q) / W as f64).sqrt().max(1e-9);
+      assert!((x - y).abs() <= 5.0 * se, "seed {seed} node {node} blame: {x} vs {y}");
     }
   }
 }
@@ -450,7 +478,7 @@ fn fnv64(bytes: &[u8]) -> u64 {
 /// policy changes it: update GOLDEN deliberately and record why in JOURNAL.md.
 #[test]
 fn t5_golden_sample() {
-  const GOLDEN: u64 = 0; // set from the first implementation run (JOURNAL.md D14)
+  const GOLDEN: u64 = 0x0bfa_1199_1414_1729; // JOURNAL.md D14
   let p = PARAMS[1];
   let mr = random_graph(42, 50, 1_000, p);
   let sample = mr.sample_frame(3, 1_000, 0xD14).unwrap();
@@ -480,6 +508,13 @@ fn t6_sampling_is_storage_neutral() {
     let _ = mr.sample_frame(0, 500, 5).unwrap(); // a resident ego too
 
     assert_eq!(mr.allocated_walks(), before.allocated_walks());
+    for ego in before.calculated_egos() {
+      let a: Vec<Vec<NodeId>> =
+        mr.ego_walks(ego).unwrap().iter().map(|w| w.get_nodes().to_vec()).collect();
+      let b: Vec<Vec<NodeId>> =
+        before.ego_walks(ego).unwrap().iter().map(|w| w.get_nodes().to_vec()).collect();
+      assert_eq!(a, b, "stored walks of {ego}");
+    }
     assert_eq!(mr.visits_capacity(), before.visits_capacity());
     assert_eq!(mr.calculated_egos(), before.calculated_egos());
     for ego in mr.calculated_egos() {
@@ -487,9 +522,11 @@ fn t6_sampling_is_storage_neutral() {
     }
     assert!(mr.take_dirty_egos().is_empty());
     assert!(mr.take_mutations().is_empty());
-    // The resident stream did not move: the same unseeded calculation follows on both.
+    // The resident stream did not move: the same unseeded calculation follows on both — also
+    // after a seeded calculation, which uses its own stream.
     let mut a = mr.clone();
     let mut b = before.clone();
+    a.calculate_seeded(20, 99).unwrap();
     a.calculate(12).unwrap();
     b.calculate(12).unwrap();
     assert_eq!(a.frame_counters(12), b.frame_counters(12));
@@ -556,11 +593,26 @@ fn mutations_report_tv_when_tracking() {
   mr.set_edge(3, 4, 0.0).unwrap(); // and loses it
   assert_eq!(mr.take_mutations().sources[0].tv, Some(1.0));
 
-  // Two changes of one source in one batch: summed, capped at 1.
+  // Two changes of one source in one operation: the net TV, from {.5, .5} to {1/8, 1/8, 2/8, 4/8}.
   mr.set_edge(0, 3, 2.0).unwrap();
   mr.set_edge(0, 4, 4.0).unwrap();
   let tv = mr.take_mutations().sources[0].tv.unwrap();
-  assert!(tv > 0.0 && tv <= 1.0);
+  assert!((tv - 0.75).abs() < 1e-12, "{tv}");
+
+  // A proportional rescale of every out-edge (as VSIDS does) moves no probability: net TV 0.
+  mr.set_edge(0, 1, 0.5).unwrap();
+  mr.set_edge(0, 2, 0.5).unwrap();
+  mr.set_edge(0, 3, 1.0).unwrap();
+  mr.set_edge(0, 4, 2.0).unwrap();
+  let m = mr.take_mutations();
+  assert_eq!(m.sources.len(), 1);
+  assert!(m.sources[0].tv.unwrap() < 1e-12, "{:?}", m);
+
+  // An epsilon weight is a deletion; a wall replacing a positive edge is a positive deletion.
+  mr.set_edge(0, 4, 1e-9).unwrap();
+  let tv = mr.take_mutations().sources[0].tv.unwrap();
+  // {1/8, 1/8, 2/8, 4/8} → {1/4, 1/4, 2/4}: TV = (1/8 + 1/8 + 2/8 + 4/8) / 2 = 1/2.
+  assert!((tv - 0.5).abs() < 1e-12, "{tv}");
 }
 
 #[test]

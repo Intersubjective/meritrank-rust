@@ -65,6 +65,12 @@ pub mod internal_fatal {
   pub const RANK_SET_WALL_GET_WALK: &str = "rank::set_wall get_walk None";
   pub const RANK_ASSERT_BLAME: &str =
     "rank::assert_counters_consistency blame mismatch";
+  // frame.rs
+  pub const FRAME_COUNTER_OVERFLOW: &str = "frame::FrameCounters::apply overflow";
+  pub const FRAME_COUNTER_UNDERFLOW: &str =
+    "frame::FrameCounters::apply removes what was never added";
+  pub const FRAME_DEPTH_OVERFLOW: &str = "frame::walk_contribution depth beyond u32";
+  pub const FRAME_VISITS_OVERFLOW: &str = "frame::FrameSample visits overflow";
 }
 
 #[derive(Debug, Clone)]

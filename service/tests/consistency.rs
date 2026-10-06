@@ -257,8 +257,20 @@ async fn s2_user_edges_reach_contexts_in_one_order() {
     }
     sync(&proc, 1_000 + trial).await;
 
-    // Isolated contexts: the writes reached X only.
+    // Isolated contexts: the writes reached X only, in one order in both copies.
     assert!(weight_of(&edges(&proc, "X").await, "U1", "U2").is_some(), "trial {trial}");
+    let [a, b] = proc.subgraphs_map.get("X").unwrap().copies();
+    let weight = |g: &AugGraph| {
+      let (s, d) = (g.nodes.get_by_name("U1").unwrap().id, g.nodes.get_by_name("U2").unwrap().id);
+      g.mr.graph.edge_weight(s, d).ok().flatten()
+    };
+    for _ in 0..200 {
+      if a.read().applied_seq == b.read().applied_seq {
+        break;
+      }
+      tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    assert_eq!(weight(&a.read()), weight(&b.read()), "trial {trial}: copies diverged");
     for ctx in ["", "Y", "Z"] {
       assert_eq!(weight_of(&edges(&proc, ctx).await, "U1", "U2"), None, "trial {trial}: {ctx:?}");
     }
@@ -844,7 +856,16 @@ async fn concurrent_bulk_loads_do_not_merge() {
 /// frame; with more such peers than the walk cache, every row still gets it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn object_reverse_scores_survive_portions() {
-  let proc = MultiGraphProcessor::new(cache_settings(2_000, 1));
+  // Without snapshots the peers' frames are pinned in portions (the path kept for
+  // MERITRANK_SNAPSHOTS_MB=0); with them, they are sampled.
+  for snapshots_mb in [0, 256] {
+    object_reverse_scores_survive_portions_with(snapshots_mb).await;
+  }
+}
+
+async fn object_reverse_scores_survive_portions_with(snapshots_mb: usize) {
+  let proc =
+    MultiGraphProcessor::new(Settings { snapshots_mb, ..cache_settings(2_000, 1) });
   for (o, u) in [("B1", "U1"), ("B2", "U2"), ("B3", "U3")] {
     write(&proc, "", o, u, 1.0).await; // object → user
     write(&proc, "", "U0", o, 1.0).await; // the ego likes the object

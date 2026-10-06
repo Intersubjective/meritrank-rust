@@ -156,6 +156,11 @@ pass's order. An unpinned request (explicit `WriteCalculate`) never evicts the e
 
 ### 2.7 Caches (S7)
 
+> **Superseded in part by D14 (JOURNAL.md).** Reverse scores no longer need resident peer frames:
+> they come from snapshots or read-local samples, so §2.6's portions are used only with snapshots
+> off. `gen[ego]` became `revisions[ego]`, which does **not** change on `ClearEgo` (the evicted
+> frame is kept as a snapshot); the cluster key is `(ego, revision, zero_rev)` (no kind).
+
 - `cached_scores` is removed: a score is two counter lookups, and every frame a read needs is
   resident. `MERITRANK_SCORES_CACHE_SIZE` and `MERITRANK_SCORES_CACHE_TIMEOUT` become ignored
   (warning at start-up).

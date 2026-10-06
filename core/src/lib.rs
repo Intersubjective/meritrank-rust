@@ -12,7 +12,7 @@ pub mod walk_storage;
 pub use counter::{Counter, CounterIterator};
 pub use errors::MeritRankError;
 pub use frame::{
-  depth_weight, edge_change_tv, generate_walk_into, score, walk_contribution, BlameHist,
+  depth_weight, distribution_tv, edge_change_tv, generate_walk_into, score, walk_contribution, BlameHist,
   Contribution, FrameCounters, FrameSample, Mutations, SourceChange,
 };
 pub use graph::{EdgeId, Graph, NodeId, Weight};

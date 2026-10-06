@@ -3,9 +3,12 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 use crate::constants::{ASSERT, EPSILON, OPTIMIZE_INVALIDATION};
-use crate::counter::Counter;
 use crate::errors::internal_fatal;
 use crate::errors::MeritRankError;
+use crate::frame::{
+  distribution_tv, generate_walk_into, walk_contribution, FrameCounters, FrameSample, Mutations,
+  SampleAccumulator, SourceChange,
+};
 use crate::graph::{Graph, NodeId, Weight};
 use crate::random_walk::RandomWalk;
 use crate::walk_storage::{WalkId, WalkStorage};
@@ -20,27 +23,22 @@ pub enum BlameRadius {
   Voucher,
 }
 
-/// Blame of one node in one frame: the float sum of `b` and the number of absorbed walks that
-/// contribute to it. The entry goes away when the last contributor does — never because the sum
-/// is small (with a tiny γ, legitimate blame can be arbitrarily small).
-#[derive(Clone, Copy, Default, Debug)]
-struct Blame {
-  sum:   f64,
-  walks: u32,
-}
-
 #[derive(Clone)]
 pub struct MeritRank {
   pub graph:        Graph,
   walks:            WalkStorage,
-  /// Credits: for every ego, the number of its unabsorbed walks that visited each node.
-  pos_hits:         IntMap<NodeId, Counter>,
-  /// Blame: for every ego, `Σ b` over its absorbed walks, per node (λ is applied at read time).
-  blame:            IntMap<NodeId, IntMap<NodeId, Blame>>,
+  /// Counters of every calculated ego's frame: credits and blame (λ is applied at read time).
+  frames:           IntMap<NodeId, FrameCounters>,
   /// Egos whose walks exist. An ego can be calculated with empty counters.
   calculated:       IntSet<NodeId>,
   /// Egos whose walks or counters changed since the last `take_dirty_egos`.
   dirty_egos:       IntSet<NodeId>,
+  /// Graph changes since the last `take_mutations`: changed positive sources (with their TV when
+  /// tracked) and owners of changed walls.
+  /// Per changed source: its positive out-edges before its first change (when tracking TV).
+  changed_sources:  std::collections::BTreeMap<NodeId, Option<Vec<(NodeId, Weight)>>>,
+  changed_walls:    std::collections::BTreeSet<NodeId>,
+  tv_tracking:      bool,
   /// Source of every random draw. Callers that need reproducible walks reseed it (`reseed`),
   /// e.g. before each operation.
   rng:              StdRng,
@@ -60,10 +58,12 @@ impl MeritRank {
     Self {
       graph,
       walks: WalkStorage::new(walks_per_ego),
-      pos_hits: IntMap::default(),
-      blame: IntMap::default(),
+      frames: IntMap::default(),
       calculated: IntSet::default(),
       dirty_egos: IntSet::default(),
+      changed_sources: Default::default(),
+      changed_walls: Default::default(),
+      tv_tracking: false,
       rng: StdRng::from_rng(&mut rand::rng()),
       alpha: 0.85,
       discredit: 0.0,
@@ -121,95 +121,38 @@ impl MeritRank {
   // Accounting
   // ------------------------------------------------------------------
 
-  /// Blame weights of an absorbed walk's prefix (empty for an unabsorbed walk). The ego is never
-  /// blamed (R13); each node appears once, with the `b` of its visit nearest to the wall.
-  fn walk_blame(
-    &self,
-    walk: &RandomWalk,
-  ) -> Vec<(NodeId, f64)> {
-    if !walk.absorbed || walk.len() < 2 {
-      return vec![];
-    }
-    let nodes = walk.get_nodes();
-    let ego = nodes[0];
-    let last = nodes.len() - 1;
-    match self.blame_radius {
-      BlameRadius::Voucher => {
-        let wall = nodes[last];
-        let mut out = vec![(wall, 1.0)];
-        let voucher = nodes[last - 1];
-        if voucher != ego && voucher != wall {
-          out.push((voucher, 1.0));
-        }
-        out
-      },
-      BlameRadius::Prefix => {
-        let mut seen: IntSet<NodeId> = IntSet::default();
-        let mut out = vec![];
-        let mut b = 1.0;
-        for i in (1..=last).rev() {
-          let node = nodes[i];
-          if node != ego && seen.insert(node) && b > 0.0 {
-            out.push((node, b));
-          }
-          b *= self.blame_decay;
-        }
-        out
-      },
-    }
-  }
-
+  /// Adds a stored walk's contribution to its ego's counters (`frame::walk_contribution`).
   fn add_contribution(
     &mut self,
     ego: NodeId,
     walk_id: WalkId,
   ) {
-    let walk = match self.walks.get_walk(walk_id) {
-      Some(w) if !w.is_empty() => w,
-      _ => return,
-    };
-    if walk.absorbed {
-      let blame = self.walk_blame(walk);
-      let map = self.blame.entry(ego).or_default();
-      for (node, b) in blame {
-        let entry = map.entry(node).or_default();
-        entry.sum += b;
-        entry.walks += 1;
-      }
-    } else {
-      self
-        .pos_hits
-        .entry(ego)
-        .or_default()
-        .increment_unique_counts(walk.get_nodes());
-    }
+    self.apply_contribution(ego, walk_id, true);
   }
 
+  /// Reverts a stored walk's contribution, as if the walk never existed.
   fn remove_contribution(
     &mut self,
     ego: NodeId,
     walk_id: WalkId,
   ) {
+    self.apply_contribution(ego, walk_id, false);
+  }
+
+  fn apply_contribution(
+    &mut self,
+    ego: NodeId,
+    walk_id: WalkId,
+    add: bool,
+  ) {
     let walk = match self.walks.get_walk(walk_id) {
       Some(w) if !w.is_empty() => w,
       _ => return,
     };
-    if walk.absorbed {
-      let blame = self.walk_blame(walk);
-      if let Some(map) = self.blame.get_mut(&ego) {
-        for (node, b) in blame {
-          if let Some(entry) = map.get_mut(&node) {
-            entry.walks = entry.walks.saturating_sub(1);
-            if entry.walks == 0 {
-              map.remove(&node);
-            } else {
-              entry.sum -= b;
-            }
-          }
-        }
-      }
-    } else if let Some(counter) = self.pos_hits.get_mut(&ego) {
-      counter.decrement_unique_counts(walk.get_nodes());
+    let c = walk_contribution(walk, self.blame_radius, self.blame_decay);
+    if let Err(e) = self.frames.entry(ego).or_default().apply(&c, add) {
+      // Unreachable while the counters follow the walks; the consistency check reports it.
+      log::error!("frame counters of ego {}: {}", ego, e);
     }
   }
 
@@ -236,8 +179,7 @@ impl MeritRank {
   ) -> Result<(), MeritRankError> {
     self.remove_block_contributions(ego);
     self.walks.release_block_for_ego(ego)?;
-    self.pos_hits.remove(&ego);
-    self.blame.remove(&ego);
+    self.frames.remove(&ego);
     if self.calculated.remove(&ego) {
       self.dirty_egos.insert(ego);
     }
@@ -248,12 +190,27 @@ impl MeritRank {
     &mut self,
     ego: NodeId,
   ) -> Result<(), MeritRankError> {
+    // The resident stream is lent to the calculation and given back.
+    let mut rng = std::mem::replace(&mut self.rng, StdRng::seed_from_u64(0));
+    let result = self.calculate_with(ego, &mut rng);
+    self.rng = rng;
+    result
+  }
+
+  fn calculate_with(
+    &mut self,
+    ego: NodeId,
+    rng: &mut StdRng,
+  ) -> Result<(), MeritRankError> {
+    if !self.graph.contains_node(ego) {
+      return Err(MeritRankError::NodeNotFound);
+    }
     self.calculated.insert(ego);
     self.dirty_egos.insert(ego);
     let start_id = self.walks.ensure_block_for_ego(ego)?;
     self.remove_block_contributions(ego);
     self.walks.clear_block(start_id)?;
-    self.pos_hits.entry(ego).or_default();
+    self.frames.insert(ego, FrameCounters::new());
 
     for walk_id in start_id..start_id + self.walks.walks_per_ego() {
       let walk = match self.walks.get_walk_mut(walk_id) {
@@ -264,8 +221,7 @@ impl MeritRank {
           )));
         },
       };
-      walk.push(ego)?;
-      self.graph.continue_walk(walk, self.alpha, &mut self.rng)?;
+      generate_walk_into(&self.graph, ego, self.alpha, rng, walk)?;
       self.add_contribution(ego, walk_id);
       self.walks.update_walk_bookkeeping(walk_id, 0);
     }
@@ -282,13 +238,8 @@ impl MeritRank {
     ego: NodeId,
     target: NodeId,
   ) -> Result<Weight, MeritRankError> {
-    let credits = self
-      .pos_hits
-      .get(&ego)
-      .ok_or(MeritRankError::NodeIsNotCalculated)?
-      .get_count(&target) as Weight;
-    let blame = self.blame_of(ego, target);
-    Ok((credits - self.discredit * blame) / self.walks.walks_per_ego() as Weight)
+    let counters = self.frames.get(&ego).ok_or(MeritRankError::NodeIsNotCalculated)?;
+    Ok(counters.score(target, self.discredit, self.blame_decay, self.walks.walks_per_ego()))
   }
 
   pub fn get_all_scores(
@@ -296,14 +247,7 @@ impl MeritRank {
     ego: NodeId,
     limit: Option<usize>,
   ) -> Result<Vec<(NodeId, Weight)>, MeritRankError> {
-    let pos_counter = self
-      .pos_hits
-      .get(&ego)
-      .ok_or(MeritRankError::NodeIsNotCalculated)?;
-    let mut peers: IntSet<NodeId> = pos_counter.keys().copied().collect();
-    if let Some(blame) = self.blame.get(&ego) {
-      peers.extend(blame.keys().copied());
-    }
+    let peers = self.frames.get(&ego).ok_or(MeritRankError::NodeIsNotCalculated)?.nodes();
 
     let mut peer_scores: Vec<_> = peers
       .into_iter()
@@ -399,6 +343,7 @@ impl MeritRank {
       // Deleting an absent edge (including a tiny weight on one) changes nothing.
       return Ok(());
     }
+    self.record_source_change(src);
     // Without walks through `src` nothing is invalidated, so the probability (which forces the
     // node's lazy distribution to be built) is not needed; this keeps bulk loads O(edges).
     let src_is_visited = self
@@ -518,6 +463,7 @@ impl MeritRank {
     }
     // An effective wall change marks its owner even when evicted (R16).
     self.dirty_egos.insert(ego);
+    self.changed_walls.insert(ego);
     if !self.calculated.contains(&ego) {
       return Ok(());
     }
@@ -611,54 +557,15 @@ impl MeritRank {
     self.assert_counters_consistency()
   }
 
-  /// Recounts every calculated ego's credits and blame from its walks and compares (debug).
+  /// Recounts every calculated ego's counters from its walks and compares them, exactly (debug).
   fn assert_counters_consistency(&self) -> Result<(), MeritRankError> {
     for &ego in &self.calculated {
-      let mut credits = Counter::default();
-      let mut blame: IntMap<NodeId, (f64, u32)> = IntMap::default();
-      if let Some(ids) = self.walks.block_walk_ids(ego) {
-        for walk_id in ids {
-          let walk = match self.walks.get_walk(walk_id) {
-            Some(w) if !w.is_empty() => w,
-            _ => continue,
-          };
-          if walk.absorbed {
-            for (node, b) in self.walk_blame(walk) {
-              let e = blame.entry(node).or_insert((0.0, 0));
-              e.0 += b;
-              e.1 += 1;
-            }
-          } else {
-            credits.increment_unique_counts(walk.get_nodes());
-          }
-        }
-      }
-      let stored = self.pos_hits.get(&ego);
-      let mut nodes: IntSet<NodeId> = credits.keys().copied().collect();
-      if let Some(s) = stored {
-        nodes.extend(s.keys().copied());
-      }
-      for node in nodes {
-        let a = credits.get_count(&node);
-        let b = stored.map_or(0, |s| s.get_count(&node));
-        if a != b {
-          return Err(MeritRankError::InternalFatalError(Some(
-            internal_fatal::RANK_ASSERT_POS_HITS_COUNT,
-          )));
-        }
-      }
-      let empty = IntMap::default();
-      let stored_blame = self.blame.get(&ego).unwrap_or(&empty);
-      let mut nodes: IntSet<NodeId> = blame.keys().copied().collect();
-      nodes.extend(stored_blame.keys().copied());
-      for node in nodes {
-        let (a, a_walks) = blame.get(&node).copied().unwrap_or((0.0, 0));
-        let (b, b_walks) = stored_blame.get(&node).map_or((0.0, 0), |x| (x.sum, x.walks));
-        if a_walks != b_walks || (a - b).abs() > 1e-9 * a.abs().max(1e-300) + 1e-12 * a.abs() {
-          return Err(MeritRankError::InternalFatalError(Some(
-            internal_fatal::RANK_ASSERT_BLAME,
-          )));
-        }
+      let recount = self.recount(ego).transpose()?.unwrap_or_default();
+      let kept = self.frames.get(&ego).cloned().unwrap_or_default();
+      if recount != kept {
+        return Err(MeritRankError::InternalFatalError(Some(
+          internal_fatal::RANK_ASSERT_POS_HITS_COUNT,
+        )));
       }
     }
     Ok(())
@@ -679,8 +586,8 @@ impl MeritRank {
     ego: NodeId,
     seed: u64,
   ) -> Result<(), MeritRankError> {
-    let _ = (ego, seed);
-    todo!("D14: calculate_seeded")
+    let mut rng = StdRng::seed_from_u64(seed);
+    self.calculate_with(ego, &mut rng)
   }
 
   /// A frame of `n` fresh walks of `ego`, generated exactly as `calculate_seeded(ego, seed)`
@@ -691,36 +598,61 @@ impl MeritRank {
     ego: NodeId,
     n: usize,
     seed: u64,
-  ) -> Result<crate::frame::FrameSample, MeritRankError> {
-    let _ = (ego, n, seed);
-    todo!("D14: sample_frame")
+  ) -> Result<FrameSample, MeritRankError> {
+    if !self.graph.contains_node(ego) {
+      return Err(MeritRankError::NodeNotFound);
+    }
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut walk = RandomWalk::new();
+    let mut acc = SampleAccumulator::new(ego);
+    for _ in 0..n {
+      generate_walk_into(&self.graph, ego, self.alpha, &mut rng, &mut walk)?;
+      acc.add(&walk, self.blame_radius, self.blame_decay)?;
+    }
+    Ok(acc.finish())
   }
 
   /// A copy of a resident frame (its counters and footprint), `None` if not calculated.
   pub fn frame_sample(
     &self,
     ego: NodeId,
-  ) -> Option<crate::frame::FrameSample> {
-    let _ = ego;
-    todo!("D14: frame_sample")
+  ) -> Option<FrameSample> {
+    if !self.is_calculated(ego) {
+      return None;
+    }
+    let walks = self.ego_walks(ego)?;
+    let mut sample =
+      FrameSample::from_walks(ego, walks, self.blame_radius, self.blame_decay).ok()?;
+    sample.n = self.walks.walks_per_ego();
+    sample.counters = self.frames.get(&ego).cloned().unwrap_or_default();
+    Some(sample)
   }
 
   /// The counters maintained for a resident frame.
   pub fn frame_counters(
     &self,
     ego: NodeId,
-  ) -> Option<&crate::frame::FrameCounters> {
-    let _ = ego;
-    todo!("D14: frame_counters")
+  ) -> Option<&FrameCounters> {
+    if !self.is_calculated(ego) {
+      return None;
+    }
+    self.frames.get(&ego)
   }
 
   /// The counters of a resident frame recounted from its stored walks.
   pub fn recount_frame(
     &self,
     ego: NodeId,
-  ) -> Option<crate::frame::FrameCounters> {
-    let _ = ego;
-    todo!("D14: recount_frame")
+  ) -> Option<FrameCounters> {
+    self.recount(ego).and_then(|r| r.ok())
+  }
+
+  fn recount(
+    &self,
+    ego: NodeId,
+  ) -> Option<Result<FrameCounters, MeritRankError>> {
+    let walks = self.ego_walks(ego)?;
+    Some(FrameCounters::from_walks(walks, self.blame_radius, self.blame_decay))
   }
 
   /// The stored walks of a resident frame, in slot order.
@@ -728,8 +660,8 @@ impl MeritRank {
     &self,
     ego: NodeId,
   ) -> Option<Vec<&RandomWalk>> {
-    let _ = ego;
-    todo!("D14: ego_walks")
+    let ids = self.walks.block_walk_ids(ego)?;
+    Some(ids.filter_map(|id| self.walks.get_walk(id)).collect())
   }
 
   /// Credits of `node` in `ego`'s frame (0 if none).
@@ -738,13 +670,28 @@ impl MeritRank {
     ego: NodeId,
     node: NodeId,
   ) -> u32 {
-    let _ = (ego, node);
-    todo!("D14: credits_of")
+    self.frames.get(&ego).map_or(0, |c| c.credits(node))
   }
 
   /// Graph changes since the previous call (see `frame::Mutations`).
-  pub fn take_mutations(&mut self) -> crate::frame::Mutations {
-    todo!("D14: take_mutations")
+  pub fn take_mutations(&mut self) -> Mutations {
+    let changed = std::mem::take(&mut self.changed_sources);
+    let sources = changed
+      .into_iter()
+      .map(|(src, before)| {
+        let tv = before.map(|before| {
+          let after: Vec<(NodeId, Weight)> = self
+            .graph
+            .get_node_data(src)
+            .map(|d| d.pos_edges.iter().map(|(&n, &w)| (n, w)).collect())
+            .unwrap_or_default();
+          distribution_tv(&before, &after)
+        });
+        SourceChange { src, tv }
+      })
+      .collect();
+    let wall_owners = std::mem::take(&mut self.changed_walls).into_iter().collect();
+    Mutations { sources, wall_owners }
   }
 
   /// Whether `take_mutations` reports the TV of each changed source (costs O(degree) per write).
@@ -752,13 +699,26 @@ impl MeritRank {
     &mut self,
     on: bool,
   ) {
-    let _ = on;
-    todo!("D14: set_tv_tracking")
+    self.tv_tracking = on;
   }
 
-  /// Credits per ego: the number of unabsorbed walks that visited each node.
-  pub fn get_personal_hits(&self) -> &IntMap<NodeId, Counter> {
-    &self.pos_hits
+  /// Records an effective change of a positive out-edge of `src` (before the graph changes):
+  /// with TV tracking, its out-edges before its first change since the last `take_mutations`.
+  fn record_source_change(
+    &mut self,
+    src: NodeId,
+  ) {
+    if self.changed_sources.contains_key(&src) {
+      return;
+    }
+    let before = self.tv_tracking.then(|| {
+      self
+        .graph
+        .get_node_data(src)
+        .map(|d| d.pos_edges.iter().map(|(&n, &w)| (n, w)).collect())
+        .unwrap_or_default()
+    });
+    self.changed_sources.insert(src, before);
   }
 
   /// Blame of `node` in `ego`'s frame: `Σ b` over the absorbed walks, before λ.
@@ -767,18 +727,13 @@ impl MeritRank {
     ego: NodeId,
     node: NodeId,
   ) -> f64 {
-    self
-      .blame
-      .get(&ego)
-      .and_then(|m| m.get(&node))
-      .map_or(0.0, |b| b.sum)
+    self.frames.get(&ego).map_or(0.0, |c| c.blame_sum(node, self.blame_decay))
   }
 
   /// Clears all walks and hit counters; graph structure is preserved. Used for bulk load cold start.
   pub fn clear_walks(&mut self) {
     self.walks.clear();
-    self.pos_hits.clear();
-    self.blame.clear();
+    self.frames.clear();
     self.dirty_egos.extend(self.calculated.drain());
   }
 }

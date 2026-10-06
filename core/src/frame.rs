@@ -9,10 +9,10 @@
 //!   counters maintained incrementally equal, bit for bit, the counters recounted from the walks.
 //! - `score` is the only score formula.
 
-use integer_hasher::IntMap;
+use integer_hasher::{IntMap, IntSet};
 use rand::Rng;
 
-use crate::errors::MeritRankError;
+use crate::errors::{internal_fatal, MeritRankError};
 use crate::graph::{Graph, NodeId, Weight};
 use crate::random_walk::RandomWalk;
 use crate::rank::BlameRadius;
@@ -23,8 +23,11 @@ pub fn depth_weight(
   decay: Weight,
   depth: u32,
 ) -> Weight {
-  let _ = (decay, depth);
-  todo!("D14: depth_weight")
+  let mut w = 1.0;
+  for _ in 0..depth {
+    w *= decay;
+  }
+  w
 }
 
 /// What one walk contributes to its ego's frame.
@@ -48,8 +51,42 @@ pub fn walk_contribution(
   radius: BlameRadius,
   decay: Weight,
 ) -> Contribution {
-  let _ = (walk, radius, decay);
-  todo!("D14: walk_contribution")
+  let nodes = walk.get_nodes();
+  if !walk.absorbed {
+    let mut credited = nodes.to_vec();
+    credited.sort_unstable();
+    credited.dedup();
+    return Contribution { absorbed: false, credited, blamed: vec![] };
+  }
+  let mut blamed = vec![];
+  if nodes.len() >= 2 {
+    let ego = nodes[0];
+    let last = nodes.len() - 1;
+    match radius {
+      BlameRadius::Voucher => {
+        let wall = nodes[last];
+        blamed.push((wall, 0));
+        let voucher = nodes[last - 1];
+        if voucher != ego && voucher != wall {
+          blamed.push((voucher, 0));
+        }
+      },
+      BlameRadius::Prefix => {
+        let mut seen: IntSet<NodeId> = IntSet::default();
+        let mut b = 1.0;
+        for i in (1..=last).rev() {
+          let node = nodes[i];
+          // `seen` takes the node even when its weight is 0: only its nearest visit counts.
+          if node != ego && seen.insert(node) && b > 0.0 {
+            blamed.push((node, (last - i) as u32));
+          }
+          b *= decay;
+        }
+      },
+    }
+  }
+  blamed.sort_unstable();
+  Contribution { absorbed: true, credited: vec![], blamed }
 }
 
 /// Blame of one node in one frame: how many absorbed walks blamed it at each depth.
@@ -59,11 +96,41 @@ pub struct BlameHist {
   pub counts: Vec<u32>,
 }
 
+impl BlameHist {
+  fn walks(&self) -> u32 {
+    self.counts.iter().sum()
+  }
+
+  /// `Σ_k counts[k] · γ^k` in ascending `k`, the weights by repeated multiplication.
+  fn sum(
+    &self,
+    decay: Weight,
+  ) -> Weight {
+    let mut sum = 0.0;
+    let mut w = 1.0;
+    for &c in &self.counts {
+      if c > 0 {
+        sum += c as Weight * w;
+      }
+      w *= decay;
+    }
+    sum
+  }
+}
+
 /// A frame's counters in canonical form (see the module docs).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FrameCounters {
   credits: IntMap<NodeId, u32>,
   blame:   IntMap<NodeId, BlameHist>,
+}
+
+fn overflow() -> MeritRankError {
+  MeritRankError::InternalFatalError(Some(internal_fatal::FRAME_COUNTER_OVERFLOW))
+}
+
+fn underflow() -> MeritRankError {
+  MeritRankError::InternalFatalError(Some(internal_fatal::FRAME_COUNTER_UNDERFLOW))
 }
 
 impl FrameCounters {
@@ -78,11 +145,58 @@ impl FrameCounters {
     c: &Contribution,
     add: bool,
   ) -> Result<(), MeritRankError> {
-    let _ = (c, add);
-    todo!("D14: FrameCounters::apply")
+    // Check everything first, so that a failure changes nothing.
+    for node in &c.credited {
+      let have = self.credits.get(node).copied().unwrap_or(0);
+      if add && have == u32::MAX {
+        return Err(overflow());
+      }
+      if !add && have == 0 {
+        return Err(underflow());
+      }
+    }
+    for &(node, depth) in &c.blamed {
+      let k = depth as usize;
+      let have = self.blame.get(&node).and_then(|h| h.counts.get(k)).copied().unwrap_or(0);
+      if add && have == u32::MAX {
+        return Err(overflow());
+      }
+      if !add && have == 0 {
+        return Err(underflow());
+      }
+    }
+    for &node in &c.credited {
+      if add {
+        *self.credits.entry(node).or_insert(0) += 1;
+      } else if let Some(v) = self.credits.get_mut(&node) {
+        *v -= 1;
+        if *v == 0 {
+          self.credits.remove(&node);
+        }
+      }
+    }
+    for &(node, depth) in &c.blamed {
+      let k = depth as usize;
+      if add {
+        let h = self.blame.entry(node).or_default();
+        if h.counts.len() <= k {
+          h.counts.resize(k + 1, 0);
+        }
+        h.counts[k] += 1;
+      } else if let Some(h) = self.blame.get_mut(&node) {
+        h.counts[k] -= 1;
+        while h.counts.last() == Some(&0) {
+          h.counts.pop();
+        }
+        if h.counts.is_empty() {
+          self.blame.remove(&node);
+        }
+      }
+    }
+    Ok(())
   }
 
-  /// Counters recounted from scratch from the given walks.
+  /// Counters recounted from scratch from the given walks (empty walks contribute nothing).
   pub fn from_walks<'a, I>(
     walks: I,
     radius: BlameRadius,
@@ -91,8 +205,13 @@ impl FrameCounters {
   where
     I: IntoIterator<Item = &'a RandomWalk>,
   {
-    let _ = (walks, radius, decay);
-    todo!("D14: FrameCounters::from_walks")
+    let mut c = Self::new();
+    for walk in walks {
+      if !walk.is_empty() {
+        c.apply(&walk_contribution(walk, radius, decay), true)?;
+      }
+    }
+    Ok(c)
   }
 
   /// Unabsorbed walks that visited `node`.
@@ -100,8 +219,7 @@ impl FrameCounters {
     &self,
     node: NodeId,
   ) -> u32 {
-    let _ = node;
-    todo!("D14: FrameCounters::credits")
+    self.credits.get(&node).copied().unwrap_or(0)
   }
 
   /// Absorbed walks that blame `node`.
@@ -109,8 +227,7 @@ impl FrameCounters {
     &self,
     node: NodeId,
   ) -> u32 {
-    let _ = node;
-    todo!("D14: FrameCounters::blame_walks")
+    self.blame.get(&node).map_or(0, BlameHist::walks)
   }
 
   /// `Σ_k counts[k] · γ^k`, summed in ascending `k`.
@@ -119,25 +236,26 @@ impl FrameCounters {
     node: NodeId,
     decay: Weight,
   ) -> Weight {
-    let _ = (node, decay);
-    todo!("D14: FrameCounters::blame_sum")
+    self.blame.get(&node).map_or(0.0, |h| h.sum(decay))
   }
 
   pub fn blame_hist(
     &self,
     node: NodeId,
   ) -> Option<&BlameHist> {
-    let _ = node;
-    todo!("D14: FrameCounters::blame_hist")
+    self.blame.get(&node)
   }
 
   /// Every node with credits or blame, sorted.
   pub fn nodes(&self) -> Vec<NodeId> {
-    todo!("D14: FrameCounters::nodes")
+    let mut v: Vec<NodeId> = self.credits.keys().chain(self.blame.keys()).copied().collect();
+    v.sort_unstable();
+    v.dedup();
+    v
   }
 
   pub fn is_empty(&self) -> bool {
-    todo!("D14: FrameCounters::is_empty")
+    self.credits.is_empty() && self.blame.is_empty()
   }
 
   /// Score of `node` over `n` walks.
@@ -148,8 +266,7 @@ impl FrameCounters {
     decay: Weight,
     n: usize,
   ) -> Weight {
-    let _ = (node, discredit, decay, n);
-    todo!("D14: FrameCounters::score")
+    score(self.credits(node), self.blame_sum(node, decay), discredit, n)
   }
 
   /// Test support: a counter set to a given value (overflow tests).
@@ -171,8 +288,7 @@ pub fn score(
   discredit: Weight,
   n: usize,
 ) -> Weight {
-  let _ = (credits, blame_sum, discredit, n);
-  todo!("D14: score")
+  (credits as Weight - discredit * blame_sum) / n as Weight
 }
 
 /// Generates one fresh walk of `ego` into `walk` (cleared first): the ego, then steps until the
@@ -184,8 +300,9 @@ pub fn generate_walk_into<R: Rng + ?Sized>(
   rng: &mut R,
   walk: &mut RandomWalk,
 ) -> Result<(), MeritRankError> {
-  let _ = (graph, ego, alpha, rng, walk);
-  todo!("D14: generate_walk_into")
+  walk.clear();
+  walk.push(ego)?;
+  graph.continue_walk(walk, alpha, rng)
 }
 
 /// A frame of `n` walks taken outside the walk storage (on-demand), or a copy of a resident one.
@@ -200,21 +317,38 @@ pub struct FrameSample {
 }
 
 impl FrameSample {
+  /// A sample from `walks` (their counters and arrivals).
+  pub fn from_walks<'a, I>(
+    ego: NodeId,
+    walks: I,
+    radius: BlameRadius,
+    decay: Weight,
+  ) -> Result<Self, MeritRankError>
+  where
+    I: IntoIterator<Item = &'a RandomWalk>,
+  {
+    let mut acc = SampleAccumulator::new(ego);
+    for walk in walks {
+      if !walk.is_empty() {
+        acc.add(walk, radius, decay)?;
+      }
+    }
+    Ok(acc.finish())
+  }
+
   /// Arrivals at `node` (0 if outside the footprint).
   pub fn visits_of(
     &self,
     node: NodeId,
   ) -> u64 {
-    let _ = node;
-    todo!("D14: FrameSample::visits_of")
+    self.visits.binary_search_by_key(&node, |(n, _)| *n).map_or(0, |i| self.visits[i].1)
   }
 
   pub fn in_footprint(
     &self,
     node: NodeId,
   ) -> bool {
-    let _ = node;
-    todo!("D14: FrameSample::in_footprint")
+    self.visits.binary_search_by_key(&node, |(n, _)| *n).is_ok()
   }
 
   pub fn score(
@@ -223,8 +357,7 @@ impl FrameSample {
     discredit: Weight,
     decay: Weight,
   ) -> Weight {
-    let _ = (node, discredit, decay);
-    todo!("D14: FrameSample::score")
+    self.counters.score(node, discredit, decay, self.n)
   }
 
   /// Every node with credits or blame and its score, sorted by node.
@@ -233,13 +366,73 @@ impl FrameSample {
     discredit: Weight,
     decay: Weight,
   ) -> Vec<(NodeId, Weight)> {
-    let _ = (discredit, decay);
-    todo!("D14: FrameSample::scores")
+    self
+      .counters
+      .nodes()
+      .into_iter()
+      .map(|node| (node, self.score(node, discredit, decay)))
+      .collect()
   }
 
   /// A stable logical serialization (no map order, no capacities), for golden hashes.
   pub fn stable_bytes(&self) -> Vec<u8> {
-    todo!("D14: FrameSample::stable_bytes")
+    let mut out = vec![];
+    let mut put = |x: u64| out.extend_from_slice(&x.to_le_bytes());
+    put(self.ego as u64);
+    put(self.n as u64);
+    let mut nodes = self.counters.nodes();
+    nodes.extend(self.visits.iter().map(|(n, _)| *n));
+    nodes.sort_unstable();
+    nodes.dedup();
+    put(nodes.len() as u64);
+    for node in nodes {
+      put(node as u64);
+      put(self.counters.credits(node) as u64);
+      let counts = self.counters.blame_hist(node).map_or(&[][..], |h| &h.counts[..]);
+      put(counts.len() as u64);
+      for &c in counts {
+        put(c as u64);
+      }
+      put(self.visits_of(node));
+    }
+    out
+  }
+}
+
+/// Builds a `FrameSample` walk by walk.
+pub(crate) struct SampleAccumulator {
+  ego:      NodeId,
+  n:        usize,
+  counters: FrameCounters,
+  visits:   IntMap<NodeId, u64>,
+}
+
+impl SampleAccumulator {
+  pub(crate) fn new(ego: NodeId) -> Self {
+    SampleAccumulator { ego, n: 0, counters: FrameCounters::new(), visits: IntMap::default() }
+  }
+
+  pub(crate) fn add(
+    &mut self,
+    walk: &RandomWalk,
+    radius: BlameRadius,
+    decay: Weight,
+  ) -> Result<(), MeritRankError> {
+    self.counters.apply(&walk_contribution(walk, radius, decay), true)?;
+    for &node in walk.get_nodes() {
+      let v = self.visits.entry(node).or_insert(0);
+      *v = v.checked_add(1).ok_or(MeritRankError::InternalFatalError(Some(
+        internal_fatal::FRAME_VISITS_OVERFLOW,
+      )))?;
+    }
+    self.n += 1;
+    Ok(())
+  }
+
+  pub(crate) fn finish(self) -> FrameSample {
+    let mut visits: Vec<(NodeId, u64)> = self.visits.into_iter().collect();
+    visits.sort_unstable();
+    FrameSample { ego: self.ego, n: self.n, counters: self.counters, visits }
   }
 }
 
@@ -276,6 +469,74 @@ pub fn edge_change_tv(
   w: Weight,
   w_new: Weight,
 ) -> Weight {
-  let _ = (sum, w, w_new);
-  todo!("D14: edge_change_tv")
+  let sum_new = sum - w + w_new;
+  let before = sum > 0.0;
+  let after = sum_new > 0.0;
+  match (before, after) {
+    (false, false) => 0.0,
+    (true, false) | (false, true) => 1.0,
+    (true, true) => {
+      let others = (sum - w).max(0.0);
+      let tv = 0.5 * ((1.0 / sum_new - 1.0 / sum).abs() * others + (w_new / sum_new - w / sum).abs());
+      tv.min(1.0)
+    },
+  }
+}
+
+/// Total variation between two next-step distributions given by positive weights (a node with no
+/// weight is a dead end: TV 1 against any non-dead end, 0 against another dead end).
+pub fn distribution_tv(
+  before: &[(NodeId, Weight)],
+  after: &[(NodeId, Weight)],
+) -> Weight {
+  let sb: Weight = before.iter().map(|(_, w)| *w).sum();
+  let sa: Weight = after.iter().map(|(_, w)| *w).sum();
+  match (sb > 0.0, sa > 0.0) {
+    (false, false) => 0.0,
+    (true, false) | (false, true) => 1.0,
+    (true, true) => {
+      let mut p: IntMap<NodeId, (Weight, Weight)> = IntMap::default();
+      for &(n, w) in before {
+        p.entry(n).or_default().0 += w / sb;
+      }
+      for &(n, w) in after {
+        p.entry(n).or_default().1 += w / sa;
+      }
+      let mut diffs: Vec<(NodeId, Weight)> = p.into_iter().map(|(n, (b, a))| (n, (a - b).abs())).collect();
+      diffs.sort_unstable_by_key(|(n, _)| *n); // a fixed summation order
+      (0.5 * diffs.iter().map(|(_, d)| d).sum::<Weight>()).min(1.0)
+    },
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn blame_overflow_is_an_error() {
+    let mut c = FrameCounters::new();
+    c.blame.insert(3, BlameHist { counts: vec![0, u32::MAX] });
+    let before = c.clone();
+    let r = c.apply(
+      &Contribution { absorbed: true, credited: vec![], blamed: vec![(1, 0), (3, 1)] },
+      true,
+    );
+    assert!(r.is_err());
+    assert_eq!(c, before);
+  }
+
+  #[test]
+  fn hist_trailing_zeros_are_trimmed() {
+    let mut c = FrameCounters::new();
+    let deep = Contribution { absorbed: true, credited: vec![], blamed: vec![(5, 4)] };
+    let shallow = Contribution { absorbed: true, credited: vec![], blamed: vec![(5, 1)] };
+    c.apply(&shallow, true).unwrap();
+    c.apply(&deep, true).unwrap();
+    c.apply(&deep, false).unwrap();
+    assert_eq!(c.blame_hist(5).unwrap().counts, vec![0, 1]);
+    let mut d = FrameCounters::new();
+    d.apply(&shallow, true).unwrap();
+    assert_eq!(c, d);
+  }
 }

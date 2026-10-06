@@ -48,3 +48,10 @@ statement_timeout`.
 
 `mr_rpc_attempts()` returns the number of request frames this backend has sent,
 retries included; diff it around a statement to count real round trips.
+
+## One node class, isolated contexts (pgmer2 0.9.0)
+
+With meritrank_service 0.12.0 every node is a plain node and contexts are isolated (JOURNAL.md
+D14). The `kind` and `hide_personal` arguments of `mr_scores` / `mr_neighbors` are kept for
+compatibility and ignored; a write in a context reaches only that context; `mr_create_context`
+creates an empty context.

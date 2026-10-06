@@ -7,7 +7,16 @@ use meritrank_service::data::{
   OpWriteCalculate, OpWriteDeleteNode, OpWriteEdge, ReqData, Request, ResNodeList, ResStats,
   Response,
 };
-use meritrank_service::node_registry::node_kind_from_prefix;
+
+/// The load test picks its workload by the naming convention of the dump (`U…` users, `B…`
+/// beacons); the service itself has one node class (D14).
+fn node_kind_from_prefix(name: &str) -> Option<NodeKind> {
+  match name.chars().next() {
+    Some('U') => Some(NodeKind::User),
+    Some('B') => Some(NodeKind::Beacon),
+    _ => None,
+  }
+}
 use meritrank_service::processor_stats::ProcessorStats;
 use meritrank_service::settings::Settings;
 use meritrank_service::state_manager::MultiGraphProcessor;

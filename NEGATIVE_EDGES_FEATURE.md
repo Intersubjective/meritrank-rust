@@ -1,5 +1,9 @@
 # Feature: Negative Edges as Absorbing Walls
 
+> **D14 (meritrank_service 0.12.0, JOURNAL.md) supersedes R2 and R7:** there is one node class and
+> contexts are isolated, so a wall is valid between any two nodes in any context, and it stays in
+> the context it is written to (no fan-out, no seeding of new contexts).
+
 **Status: IMPLEMENTED** on `feature/negative-edges` (2026-09-27), on top of the service-consistency
 track (`SERVICE_CONSISTENCY_PLAN.md`, merged into `main`). Implementation notes and deviations:
 journal D27. Phase 1 below is the scope.

@@ -307,3 +307,55 @@ async fn bulk_load_equals_sequential_writes_per_context() {
   assert_eq!(edges(&bulk, "").await.len(), 2);
   assert_eq!(edges(&bulk, "X").await.len(), 3);
 }
+
+/// VSIDS state is per context: magnitudes written in one context do not scale another's edges.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn vsids_is_per_context() {
+  let proc = MultiGraphProcessor::new(settings());
+  for m in [0u32, 50, 400, 1600] {
+    request(
+      &proc,
+      "X",
+      ReqData::WriteEdge(OpWriteEdge { src: "U1".into(), dst: format!("U{}", 10 + m), amount: 1.0, magnitude: m }),
+    )
+    .await;
+  }
+  write(&proc, "", "U1", "U2", 1.0).await;
+  write(&proc, "", "U1", "U3", 2.0).await;
+  sync(&proc).await;
+  assert_eq!(
+    edges(&proc, "").await,
+    vec![("U1".into(), "U2".into(), 1.0), ("U1".into(), "U3".into(), 2.0)]
+  );
+}
+
+/// The old poll special case is gone: a neighbours read with kind PollVariant, a `U` ego and a
+/// `P` focus lists the focus' neighbours like any other read.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn poll_names_are_plain_nodes() {
+  let proc = MultiGraphProcessor::new(settings());
+  write(&proc, "", "U1", "V1", 1.0).await;
+  write(&proc, "", "V1", "P1", 1.0).await;
+  sync(&proc).await;
+  let rows = scores(
+    request(
+      &proc,
+      "",
+      ReqData::ReadNeighbors(OpReadNeighbors {
+        ego:           "U1".into(),
+        focus:         "P1".into(),
+        direction:     NEIGHBORS_INBOUND,
+        kind:          Some(NodeKind::PollVariant),
+        hide_personal: false,
+        lt:            100.0,
+        lte:           false,
+        gt:            -100.0,
+        gte:           false,
+        index:         0,
+        count:         100,
+      }),
+    )
+    .await,
+  );
+  assert_eq!(rows.iter().map(|r| r.target.as_str()).collect::<Vec<_>>(), vec!["V1"]);
+}

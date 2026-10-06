@@ -5,34 +5,31 @@ use crate::utils::{log::*, quantiles::*};
 
 use meritrank_core::{NodeId, Weight};
 
-use super::{record_frame_access, AugGraph};
+use super::{snapshots::scope_bounds, AugGraph};
 
 impl AugGraph {
+  /// Recomputes and caches the ego's cluster bounds.
   pub fn update_node_score_clustering(
     &self,
     ego: NodeId,
-    kind: NodeKind,
   ) -> super::ClusterGroupBounds {
-    log_trace!("{} {:?}", ego, kind);
-    let node_ids = self.nodes.nodes_by_kind(kind);
-    let bounds = self.calculate_score_clusters_bounds(ego, kind, node_ids);
-    self
-      .cached_score_clusters
-      .insert(self.cluster_key(ego, kind), bounds.clone());
+    log_trace!("{}", ego);
+    let bounds = self.calculate_score_clusters_bounds(ego);
+    self.cached_score_clusters.insert(self.cluster_key(ego), bounds.clone());
     bounds
   }
 
+  /// Quantile bounds of the ego's positive scores over every node (one node class, D14).
   fn calculate_score_clusters_bounds(
     &self,
     ego: NodeId,
-    kind: NodeKind,
-    node_ids: &[NodeId],
   ) -> Vec<NodeScore> {
-    log_trace!("{} {:?}", ego, kind);
+    log_trace!("{}", ego);
 
-    let scores: Vec<NodeScore> = node_ids
-      .iter()
-      .map(|dst| self.fetch_raw_score(ego, *dst))
+    let scores: Vec<NodeScore> = self
+      .score_candidates(ego)
+      .into_iter()
+      .map(|dst| self.fetch_raw_score(ego, dst))
       .filter(|score| *score >= f64::EPSILON)
       .collect();
 
@@ -43,30 +40,80 @@ impl AugGraph {
     calculate_quantiles_bounds(scores, self.settings.num_score_quantiles)
   }
 
+  /// The nodes that can score non-zero in the ego's frame: those of its walks (frame, snapshot or
+  /// read-local sample) and those with a zero opinion. Every other node scores exactly 0, so the
+  /// bounds over these equal the bounds over every node (the quantiles sort their input) — at
+  /// O(footprint) instead of O(nodes).
+  fn score_candidates(
+    &self,
+    ego: NodeId,
+  ) -> Vec<NodeId> {
+    let mut nodes: Vec<NodeId> = match self.walk_nodes(ego) {
+      Some(v) => v,
+      None => return (0..self.nodes.len()).collect(),
+    };
+    if self.settings.zero_opinion_factor != 0.0 {
+      nodes.extend(
+        self
+          .zero_opinion
+          .iter()
+          .enumerate()
+          .filter(|(_, z)| **z != 0.0)
+          .map(|(id, _)| id),
+      );
+    }
+    nodes.retain(|n| *n < self.nodes.len());
+    nodes.sort_unstable();
+    nodes.dedup();
+    nodes
+  }
+
+  /// The ego's cluster bounds: from the cache (keyed by the ego's revision and the zero-opinion
+  /// revision), or — for an ego sampled by the current read — computed for this read only.
+  fn cluster_bounds(
+    &self,
+    ego: NodeId,
+  ) -> Vec<Weight> {
+    if !self.mr.is_calculated(ego) {
+      if let Some(b) = self.snapshots.get(ego).and_then(|s| s.bounds_at(self.zero_revision)) {
+        return b.clone();
+      }
+    }
+    if let Some(b) = self.cached_score_clusters.get(&self.cluster_key(ego)) {
+      if self.mr.is_calculated(ego) || self.snapshots.contains(ego) {
+        return b;
+      }
+    }
+    if !self.mr.is_calculated(ego) && !self.snapshots.contains(ego) {
+      // A read-local sample: its bounds are not cached across reads (another read may sample
+      // the ego on a changed graph under the same revision).
+      if let Some(b) = scope_bounds(ego, || self.calculate_score_clusters_bounds(ego)) {
+        return b;
+      }
+    }
+    self.update_node_score_clustering(ego)
+  }
+
   pub fn apply_score_clustering(
     &self,
     ego_id: NodeId,
     score: NodeScore,
-    kind: NodeKind,
   ) -> (NodeScore, NodeCluster) {
-    log_trace!("{} {} {:?}", ego_id, score, kind);
+    log_trace!("{} {}", ego_id, score);
 
     if score < f64::EPSILON {
       //  Clusterize only positive scores.
       return (score, 0);
     }
 
-    let bounds: &Vec<Weight> = &self
-      .cached_score_clusters
-      .get(&self.cluster_key(ego_id, kind))
-      .unwrap_or_else(|| self.update_node_score_clustering(ego_id, kind));
+    let bounds = self.cluster_bounds(ego_id);
 
-    if bounds_are_empty(bounds) {
+    if bounds_are_empty(&bounds) {
       return (score, 1); // Return 1 instead of 0 for empty bounds
     }
     let mut cluster = 1; // Start with cluster 1
 
-    for bound in bounds {
+    for bound in &bounds {
       if score <= *bound {
         break;
       }
@@ -85,16 +132,8 @@ impl AugGraph {
     let filter_options = data.score_options;
 
     if let Some(ego_info) = self.nodes.get_by_name(&ego) {
-      if !self.ensure_ego_is_user(&ego, ego_info) {
-        return vec![];
-      }
       let scores = self.fetch_all_scores(ego_info);
-      self.apply_filters_and_pagination(
-        scores,
-        ego_info,
-        &filter_options,
-        false,
-      )
+      self.apply_filters_and_pagination(scores, ego_info, &filter_options)
     } else {
       // Ego not in this context's graph (no edges involving this user were written here).
       log_warning!("Ego not found in context (no scores): {:?}", ego);
@@ -119,10 +158,6 @@ impl AugGraph {
       },
     };
 
-    if !self.ensure_ego_is_user(&ego, ego_info) {
-      return vec![];
-    }
-
     let dst_id = match self.nodes.get_by_name(&dst) {
       Some(x) => x.id,
       None => {
@@ -131,16 +166,9 @@ impl AugGraph {
       },
     };
 
-    let (score, cluster) = self.apply_score_clustering(
-      ego_info.id,
-      self.fetch_raw_score(ego_info.id, dst_id),
-      ego_info.kind,
-    );
-    let (reverse_score, reverse_cluster) =
-      match self.get_object_owner(dst_id) {
-        Some(dst_owner_id) => self.fetch_score_clustered(dst_owner_id, ego_info.id),
-        None => (0.0, 0),
-      };
+    let (score, cluster) =
+      self.apply_score_clustering(ego_info.id, self.fetch_raw_score(ego_info.id, dst_id));
+    let (reverse_score, reverse_cluster) = self.fetch_score_clustered(dst_id, ego_info.id);
 
     vec![ScoreResult {
       ego: ego.into(),
@@ -157,11 +185,7 @@ impl AugGraph {
     ego: NodeId,
     dst: NodeId,
   ) -> (NodeScore, NodeCluster) {
-    self.apply_score_clustering(
-      ego,
-      self.fetch_raw_score(ego, dst),
-      self.nodes.id_to_info[ego].kind,
-    )
+    self.apply_score_clustering(ego, self.fetch_raw_score(ego, dst))
   }
 
   pub(crate) fn apply_filters_and_pagination(
@@ -169,14 +193,8 @@ impl AugGraph {
     scores: Vec<(NodeInfo, NodeScore, NodeCluster)>,
     ego_info: &NodeInfo,
     filter_options: &FilterOptions,
-    prioritize_ego_owned_nodes: bool,
   ) -> Vec<ScoreResult> {
-    let mut filtered_sorted_scores =
-      filter_and_sort_scores(scores, ego_info, filter_options);
-
-    if prioritize_ego_owned_nodes {
-      prioritize_ego_owned_items(&mut filtered_sorted_scores, ego_info);
-    }
+    let filtered_sorted_scores = filter_and_sort_scores(scores, filter_options);
 
     self.paginate_and_format_items(
       filtered_sorted_scores,
@@ -201,10 +219,7 @@ impl AugGraph {
       .iter()
       .map(|(target_info, score, cluster)| {
         let (reverse_score, reverse_cluster) =
-          match self.get_object_owner(target_info.id) {
-            Some(owner_id) => self.fetch_score_clustered(owner_id, ego_info.id),
-            None => (0.0, 0),
-          };
+          self.fetch_score_clustered(target_info.id, ego_info.id);
         ScoreResult {
           ego: ego_info.name.clone(),
           target: target_info.name.clone(),
@@ -227,15 +242,10 @@ impl AugGraph {
 
     let score = self.fetch_raw_score(ego_id, dst_id);
 
-    let kind_opt = self
-      .nodes
-      .get_by_id(dst_id)
-      .and_then(|node_info| Some(node_info.kind));
-
-    if let Some(kind) = kind_opt {
-      self.apply_score_clustering(ego_id, score, kind)
+    if self.nodes.get_by_id(dst_id).is_some() {
+      self.apply_score_clustering(ego_id, score)
     } else {
-      (score, 0) // Default cluster if kind is None
+      (score, 0)
     }
   }
 
@@ -249,9 +259,7 @@ impl AugGraph {
       .iter()
       .filter_map(|(dst_id, score)| {
         self.nodes.get_by_id(*dst_id).map(|node_info| {
-          let cluster = self
-            .apply_score_clustering(ego_info.id, *score, node_info.kind)
-            .1;
+          let cluster = self.apply_score_clustering(ego_info.id, *score).1;
           (node_info.clone(), *score, cluster)
         })
       })
@@ -310,13 +318,10 @@ impl AugGraph {
   ) -> NodeScore {
     log_trace!("{} {} {}", ego_id, dst_id, self.settings.num_walks);
 
-    record_frame_access(ego_id);
-    match self.mr.get_node_score(ego_id, dst_id) {
-      Ok(score) => self.with_zero_opinion(dst_id, score),
-      Err(e) => {
-        log_trace!("Failed to get node score: {}", e);
-        0.0
-      },
+    // From the resident frame, a snapshot, or a read-local sample (D14).
+    match self.walk_score(ego_id, dst_id) {
+      Some(score) => self.with_zero_opinion(dst_id, score),
+      None => 0.0,
     }
   }
 
@@ -332,7 +337,7 @@ impl AugGraph {
       zero_opinion_factor
     );
 
-    record_frame_access(ego_id);
+    super::record_frame_access(ego_id);
     match self.mr.get_all_scores(ego_id, None) {
       Ok(scores) => {
         let scores = self.with_zero_opinions(scores);
