@@ -236,7 +236,11 @@ fan-out of user edges into every context made contexts non-isolated.
    walks). The read runs under one read guard of the published copy on a blocking thread; before
    it returns, its samples (with the cluster bounds it computed) are enqueued as
    `AdmitSnapshots`. Admission is validated against a log of the graph's mutations since the
-   read's `(epoch, applied_seq)`. Evicting a frame keeps it as a snapshot (same revision). The
+   read's `(epoch, applied_seq)`. A warm read (no missing peer) runs on the request's task; a
+   read with missing peers samples them in chunks of 32, each under its own short read guard
+   (the writer's replay into the copy waits at most one chunk: max 39 ms on the dense
+   benchmark instead of 1.35 s), then assembles the answer under one guard, keeping a chunk's
+   sample only if the same mutation-log check passes. Evicting a frame keeps it as a snapshot (same revision). The
    store is replicated state (changed only in `apply_op`), FIFO within a byte quota per copy.
 4. *Validity.* Strict (`c = 0`): any change of a positive out-edge of a footprint node, or a wall
    change of the owner, drops the snapshot — then a snapshot always equals a fresh calculation.
